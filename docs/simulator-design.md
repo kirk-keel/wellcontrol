@@ -1,0 +1,278 @@
+# Well control simulator — design
+
+A training simulator where a student plans a kill, lines up the rig, brings the
+pump online, and works the choke to circulate the influx out — with the well
+responding to what they actually do rather than what they intended.
+
+**Status: design agreed. Stage 1 (headless engine) in progress.**
+
+Decisions taken:
+
+| Decision | Choice |
+| --- | --- |
+| Build order | Engine first, headless. UI decided later, once there is something to drive. |
+| Lineup fidelity | Simplified — about a dozen key valves, not the full manifold. |
+| Audience | Both, self-study first. Instructor fault-injection comes later. |
+
+---
+
+## 1. Why the existing engine cannot be reused
+
+The library already simulates a kill. It solves the wrong direction.
+
+| | Existing `simulate_circulation` | What the simulator needs |
+| --- | --- | --- |
+| Question | "What pressure must the driller hold to keep BHP constant?" | "The student set the choke to 35%. What does BHP do?" |
+| Direction | Inverse — assumes the target is met | Forward — computes the consequence |
+| Failure | Cannot represent it | Must represent it faithfully |
+| Time | Volume-stepped, quasi-static | Time-stepped, dynamic |
+| Driver | The plan | The student's hands |
+
+The existing engine is still used — it produces the *plan* the student works to,
+and the *target* the debrief scores them against. But the thing under the
+student's hands is new.
+
+**This is the main body of work and the main risk.** Everything else is
+plumbing around it.
+
+---
+
+## 2. The forward engine
+
+### State
+
+```
+time, dt
+annulus:  ordered fluid zones (volume, density, is_gas)
+string:   ordered fluid zones
+influx:   volume, top/bottom position, pressure, temperature
+surface:  casing pressure, standpipe pressure
+pits:     active volume, trip tank volume, gain/loss vs baseline
+equipment: pump spm, choke position, valve states, BOP states
+```
+
+### Each timestep
+
+1. **Resolve the flow path** from the valve graph (§3). No path from pump to
+   well → the pump deadheads. No path from well to pits → closed system.
+2. **Pump delivers** `Q_in = spm × output × efficiency`, or zero if deadheaded.
+3. **Choke passes** `Q_out = Cd · A(position) · √(2ΔP / ρ)` — the standard
+   orifice relation. A closed choke passes nothing regardless of pressure.
+4. **Volume balance** drives surface pressure through system compressibility:
+
+   ```
+   dP_casing/dt = (Q_in + q_influx − Q_out − q_loss) / (C_system · V_system)
+   ```
+
+   `C_system` combines mud compressibility, free gas, and casing expansion.
+   This single equation is what makes the choke *feel* right: with little gas
+   in the hole the system is stiff and a small choke movement swings pressure
+   hard; with gas near surface it is soft and sluggish. Learning that
+   difference is most of what choke operation is.
+
+5. **BHP** `= P_casing + annulus hydrostatic + annular friction`.
+6. **Influx** enters on underbalance, via a productivity index:
+   `q_influx = PI · (Pf − BHP)` when `BHP < Pf`, else zero.
+7. **Losses** when the shoe is over-pressured:
+   `q_loss = LI · (P_shoe − P_frac)` when `P_shoe > P_frac`.
+8. **Gas expands** per Boyle as it rises and pressure falls.
+9. **Positions advance** by displaced volume.
+
+### Why this shape
+
+Every failure mode a student must feel emerges from the model rather than being
+scripted:
+
+- Choke too open → BHP falls → **influx takes another kick** (step 6)
+- Choke too closed → BHP rises → **shoe breaks down** (step 7)
+- Shut the choke with the pump running → **pressure spikes** (step 4)
+- Gas near surface → **choke gets violent** (step 4 via `C_system`)
+- Pump up with the choke shut → **deadhead** (step 1)
+
+Nothing is a canned animation. That matters: students learn the *coupling*, not
+a sequence.
+
+### Numerical notes
+
+Mud is nearly incompressible, so the pressure equation is stiff. Fixed small
+steps (~0.05 s) with the compressibility term are stable enough and cheap; an
+implicit step is the fallback if it is not. Simulation time is decoupled from
+wall time by a speed multiplier (§6).
+
+---
+
+## 3. Lineup as a graph
+
+"Lining up the standpipe, choke/kill manifold, trip tank, BOP" becomes a
+directed graph. Nodes are equipment, edges are valves.
+
+```
+mud pumps → standpipe manifold → standpipe → topdrive → drill string
+      → bit → annulus → BOP stack → ┬ choke line → choke manifold → MGS → pits
+                                    ├ kill line
+                                    └ flowline (BOP open) → shakers → pits
+trip tank ↔ annulus
+```
+
+Each valve is open or closed. Each timestep, the engine asks:
+
+- Is there a path **pump → well**? If not, the pump deadheads.
+- Is there a path **well → pits**? If not, the system is closed.
+- Which route are returns taking — flowline, choke line, or kill line?
+
+This gives lineup practice with real consequences, and it is honest: a student
+who opens the wrong manifold valve gets no returns and has to work out why,
+exactly as on a rig. Wrong lineups are not scored as "incorrect" — they simply
+do not work.
+
+**Open question (§9.2): how many valves.** A real choke manifold has a dozen.
+Modelling all of them is more realistic and more tedious.
+
+---
+
+## 4. Screens
+
+The student switches between panels; an instructor can see all of them.
+
+| Screen | Shows | Controls |
+| --- | --- | --- |
+| **Driller's console** | Standpipe pressure, SPM, pit volume, flow out, stroke counters, hookload | Pump start/stop, SPM |
+| **Choke panel** | Casing and drill pipe pressure, stroke counter, pump rate, choke position | Choke open/close, choke select |
+| **BOP panel** | Annular and ram status, accumulator pressure | Open/close each element |
+| **Manifold lineup** | Schematic of the circulating system | Click valves open/closed |
+| **Well schematic** | Cross-section: mud, kill mud, influx position, shoe, bit | — |
+| **Kill sheet** | The plan the student made, target vs actual | — |
+| **Debrief** | BHP trace vs target, event log, verdict | — |
+
+The choke panel is where the kill is executed and deserves the most care: it
+needs the drill pipe gauge, the casing gauge, the stroke counter and the choke
+in one view, because that is the instrument scan the student must build.
+
+---
+
+## 5. Scenario and assessment
+
+**A scenario** defines the well (reusing `WellState`), the kick, the starting
+lineup, and the objective. Scenarios are data, so instructors can add them.
+
+```
+scenario:
+  well:            an existing WellState
+  kick:            influx volume, pore pressure, PI
+  initial_lineup:  which valves start open
+  objective:       "kill the well using the Driller's Method"
+  faults:          optional — a plugged choke at stroke 2,000, a pump failure
+```
+
+**Assessment** is computed from the recorded trace, not from following a script:
+
+- Time spent with BHP outside a ±50 psi band around formation pressure
+- Peak shoe pressure against the fracture pressure
+- Peak casing pressure against MAASP
+- Additional influx taken (bbl)
+- Whether the well was killed, and the time taken
+- Event log with timestamps for the debrief
+
+Scoring on **outcome and margin**, not on procedure order, so a student who
+achieves constant bottomhole pressure by a slightly unusual route is not
+penalised.
+
+---
+
+## 6. Time
+
+A real kill runs three to five hours. The simulator needs:
+
+- **Speed multiplier** — 1×, 10×, 60×, and pause
+- **Physics decoupled from wall clock** — the engine advances by simulated `dt`
+  regardless of how fast that is displayed
+- **Automatic slow-down at the interesting moments** — optional: drop to 1×
+  when gas reaches the choke, which is when the student most needs the time
+
+---
+
+## 7. Where it sits
+
+```
+src/wellcontrol/sim/
+  state.py       simulation state
+  flowpath.py    valve graph and path resolution
+  equipment.py   pump, choke, BOP, trip tank models
+  engine.py      the timestep integrator
+  scenario.py    scenario definitions
+  assessment.py  event log and scoring
+```
+
+Pure Python, no UI dependency, fully testable headless — the same discipline as
+the rest of the library. The UI is a client of the engine, not part of it.
+
+---
+
+## 8. Proposed build order
+
+Each stage is useful on its own and de-risks the next.
+
+1. **Engine, headless.** Flow path, pump, choke, volume balance, influx and
+   loss response. Driven by a script. Tested against the invariants: a
+   perfectly-executed kill must reproduce the existing quasi-static solver's
+   answer to within a few psi.
+2. **Assessment and event log.** Still headless. A scripted "good kill" and a
+   scripted "bad kill" produce sensibly different verdicts.
+3. **One screen — the choke panel.** The minimum needed to actually fly a kill.
+4. **The rest of the screens**, lineup schematic last since it is the most UI-heavy.
+5. **Scenario library** and instructor debrief.
+
+Stage 1 is where the real risk is. If the engine is right, everything else is
+presentation.
+
+---
+
+## 9. Decisions needed before building
+
+### 9.1 UI stack
+
+Streamlit reruns the entire script on every interaction and has no game loop.
+It is a poor fit for real-time gauges and clickable schematics — workable with
+fragments and auto-refresh, but it will feel laggy and the panels will be
+widgets rather than instruments.
+
+| Option | For | Against |
+| --- | --- | --- |
+| **Streamlit** | One stack, reuses everything, fastest to build | Laggy, crude panels, fights the use case |
+| **Web app** (FastAPI + browser) | Proper real-time, real gauges and P&ID schematics, multiple windows | New stack, considerably more work |
+| **Desktop** (Qt) | Best control | Not shareable, wrong for training |
+
+**Recommendation: defer.** Build the engine headless first — it is UI-agnostic
+and the hard part. Decide the UI when there is something to drive.
+
+### 9.2 Lineup fidelity
+
+- **Simplified** — a dozen key valves. Teaches the concept, less tedious.
+- **Full manifold** — every valve. Realistic, and closer to a real rig's
+  lineup drill.
+
+### 9.3 Physics fidelity
+
+Two places where more realism costs a lot of complexity:
+
+- **Gas** — single bubble (as now) versus dispersed/slug flow. Single bubble
+  is defensible for training and much simpler.
+- **Oil-based mud** — gas going into solution and breaking out near surface is
+  a genuinely different and important behaviour, but a large modelling job.
+
+### 9.4 Who uses it
+
+Whether this is for **self-study** (student alone, automatic debrief) or
+**instructor-led** (instructor injects faults, watches all screens) changes the
+priority of the debrief and fault-injection features.
+
+---
+
+## 10. What this does not attempt
+
+Stated so the scope is honest:
+
+- Not a certified training device. No IWCF or IADC accreditation is implied.
+- Not a rig-floor visual simulator — no 3D, no crew, no tripping mechanics
+  beyond volumes.
+- Not a substitute for hands-on time on a real choke.

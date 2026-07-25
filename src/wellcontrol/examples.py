@@ -176,7 +176,9 @@ def horizontal_well_kill_sheet() -> KillSheet:
     annulus, survey = horizontal_well()
     return KillSheet(
         sidpp_psi=350.0,
-        sicp_psi=520.0,
+        # Influx in the lateral has no vertical height, so it displaces no
+        # hydrostatic and the two gauges read the same.
+        sicp_psi=350.0,
         pit_gain_bbl=15.0,
         mud_weight_ppg=10.2,
         annulus=annulus,
@@ -347,7 +349,11 @@ def _well_state(configuration: WellConfiguration):
             slow_circulating_rate=SlowCirculatingRate(spm=30.0, pressure_psi=950.0),
             configuration=configuration,
             sidpp_psi=450.0,
-            sicp_psi=520.0,
+            # The influx lies in the lateral, so it has no vertical height and
+            # displaces no hydrostatic. Both gauges read through the same mud
+            # to the same TVD, so SICP equals SIDPP. A difference would mean
+            # the influx had reached the build section.
+            sicp_psi=450.0,
             pit_gain_bbl=20.0,
             frac_gradient_ppg=14.2,
             shoe_md_ft=12200.0,
@@ -385,7 +391,9 @@ def _well_state(configuration: WellConfiguration):
             slow_circulating_rate=SlowCirculatingRate(spm=35.0, pressure_psi=750.0),
             configuration=configuration,
             sidpp_psi=350.0,
-            sicp_psi=520.0,
+            # Influx in the lateral: no vertical height, no hydrostatic
+            # displaced, so SICP equals SIDPP.
+            sicp_psi=350.0,
             pit_gain_bbl=15.0,
             frac_gradient_ppg=13.5,
             shoe_md_ft=7200.0,

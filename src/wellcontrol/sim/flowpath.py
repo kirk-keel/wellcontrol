@@ -1,0 +1,326 @@
+"""The circulating system as a graph of equipment joined by valves.
+
+Lining the rig up is half of well control practice, and it is the half a
+calculation cannot teach. Here the system is a directed graph: equipment are
+nodes, valves are edges, and every timestep the engine asks two questions.
+
+* Is there a path from the pump into the well? If not, the pump deadheads.
+* Is there a path from the well out to the pits? If not, the system is closed
+  and anything pumped in has nowhere to go.
+
+**Wrong lineups are not scored as mistakes; they simply do not work.** A student
+who leaves the choke line closed gets no returns and has to work out why, which
+is exactly what happens on a rig. Nothing here tells them what they did wrong.
+
+## The rule that matters most
+
+With the BOP **open**, returns take the flowline and there is no pressure
+control -- the well is open to atmosphere and the choke is irrelevant. With the
+BOP **closed**, returns can only leave through the choke or kill line, and the
+choke controls the well.
+
+Students reliably try to circulate a kick with the annular still open. The model
+lets them, and nothing happens to the casing pressure, which is the lesson.
+"""
+
+from __future__ import annotations
+
+from collections import deque
+from dataclasses import dataclass, field
+from enum import Enum
+
+
+class Node(str, Enum):
+    """A piece of equipment fluid can be in or pass through."""
+
+    PUMP = "mud pump"
+    STANDPIPE = "standpipe"
+    STRING = "drill string"
+    BIT = "bit"
+    ANNULUS = "annulus"
+    BOP = "BOP stack"
+    FLOWLINE = "flowline"
+    CHOKE_LINE = "choke line"
+    KILL_LINE = "kill line"
+    CHOKE_MANIFOLD = "choke manifold"
+    SEPARATOR = "mud gas separator"
+    PITS = "active pits"
+    TRIP_TANK = "trip tank"
+
+
+class ValveState(str, Enum):
+    OPEN = "open"
+    CLOSED = "closed"
+
+
+@dataclass
+class Valve:
+    """A valve, or a BOP element, joining two nodes.
+
+    Attributes:
+        name: Key used to operate it.
+        label: What it is called on the rig floor.
+        frm: Upstream node.
+        to: Downstream node.
+        state: Open or closed.
+        is_bop: True for BOP elements, which seal the annulus when *closed* --
+            the opposite sense to every other valve here.
+        throttling: True for an adjustable choke, whose opening is a position
+            rather than a state.
+    """
+
+    name: str
+    label: str
+    frm: Node
+    to: Node
+    state: ValveState = ValveState.CLOSED
+    is_bop: bool = False
+    throttling: bool = False
+
+    @property
+    def is_open(self) -> bool:
+        return self.state is ValveState.OPEN
+
+
+def default_valves() -> list[Valve]:
+    """The simplified lineup: the dozen or so valves that change the outcome.
+
+    Deliberately not a full choke manifold. Every valve here has a consequence
+    a student can feel; adding the rest would add tedium without adding
+    lessons.
+    """
+    return [
+        Valve("pump_discharge", "Mud pump discharge", Node.PUMP, Node.STANDPIPE),
+        Valve("standpipe_valve", "Standpipe valve", Node.STANDPIPE, Node.STRING),
+        Valve("kelly_cock", "Kelly cock", Node.STRING, Node.BIT,
+              state=ValveState.OPEN),
+        # The bit is always open to the annulus unless the nozzles plug.
+        Valve("bit_nozzles", "Bit nozzles", Node.BIT, Node.ANNULUS,
+              state=ValveState.OPEN),
+
+        # BOP elements. Closed means the annulus is sealed, so the sense is
+        # inverted relative to every other valve.
+        Valve("annular", "Annular preventer", Node.ANNULUS, Node.BOP,
+              state=ValveState.OPEN, is_bop=True),
+        Valve("upper_rams", "Upper pipe rams", Node.ANNULUS, Node.BOP,
+              state=ValveState.OPEN, is_bop=True),
+        Valve("lower_rams", "Lower pipe rams", Node.ANNULUS, Node.BOP,
+              state=ValveState.OPEN, is_bop=True),
+
+        # Returns with the stack open.
+        Valve("flowline", "Flowline to shakers", Node.BOP, Node.FLOWLINE,
+              state=ValveState.OPEN),
+        Valve("shakers_to_pits", "Shakers to pits", Node.FLOWLINE, Node.PITS,
+              state=ValveState.OPEN),
+
+        # Returns with the stack closed.
+        Valve("choke_line_valve", "Choke line valve", Node.ANNULUS,
+              Node.CHOKE_LINE),
+        Valve("kill_line_valve", "Kill line valve", Node.ANNULUS,
+              Node.KILL_LINE),
+        Valve("choke_line_to_manifold", "Choke line to manifold",
+              Node.CHOKE_LINE, Node.CHOKE_MANIFOLD),
+        Valve("kill_line_to_manifold", "Kill line to manifold",
+              Node.KILL_LINE, Node.CHOKE_MANIFOLD),
+
+        Valve("choke_1", "Adjustable choke 1", Node.CHOKE_MANIFOLD,
+              Node.SEPARATOR, throttling=True),
+        Valve("choke_2", "Adjustable choke 2", Node.CHOKE_MANIFOLD,
+              Node.SEPARATOR, throttling=True),
+        Valve("choke_bypass", "Choke manifold bypass", Node.CHOKE_MANIFOLD,
+              Node.SEPARATOR),
+        Valve("separator_to_pits", "Separator to pits", Node.SEPARATOR,
+              Node.PITS, state=ValveState.OPEN),
+
+        Valve("trip_tank_valve", "Trip tank to annulus", Node.TRIP_TANK,
+              Node.ANNULUS),
+    ]
+
+
+@dataclass
+class ReturnRoute:
+    """How returns are leaving the well, if they are."""
+
+    open_to_pits: bool
+    through_choke: bool
+    route: tuple[Node, ...] = ()
+
+    @property
+    def description(self) -> str:
+        if not self.open_to_pits:
+            return "closed in — no return path"
+        if self.through_choke:
+            return "returns through the choke manifold"
+        return "returns up the flowline — no pressure control"
+
+
+@dataclass
+class FlowPath:
+    """The lineup, and what it permits."""
+
+    valves: list[Valve] = field(default_factory=default_valves)
+
+    def __post_init__(self) -> None:
+        self._by_name = {v.name: v for v in self.valves}
+
+    # -- operating -----------------------------------------------------------
+
+    def valve(self, name: str) -> Valve:
+        if name not in self._by_name:
+            raise KeyError(
+                f"No valve called '{name}'. Available: "
+                f"{', '.join(sorted(self._by_name))}"
+            )
+        return self._by_name[name]
+
+    def set_valve(self, name: str, state: ValveState | str) -> None:
+        self.valve(name).state = ValveState(state)
+
+    def open(self, *names: str) -> None:
+        for name in names:
+            self.set_valve(name, ValveState.OPEN)
+
+    def close(self, *names: str) -> None:
+        for name in names:
+            self.set_valve(name, ValveState.CLOSED)
+
+    # -- state ---------------------------------------------------------------
+
+    @property
+    def bop_elements(self) -> list[Valve]:
+        return [v for v in self.valves if v.is_bop]
+
+    @property
+    def bop_is_closed(self) -> bool:
+        """True when any BOP element is closed, sealing the annulus."""
+        return any(not v.is_open for v in self.bop_elements)
+
+    @property
+    def closed_bop_elements(self) -> list[str]:
+        return [v.label for v in self.bop_elements if not v.is_open]
+
+    # -- path resolution -----------------------------------------------------
+
+    def _edges(self) -> dict[Node, list[Node]]:
+        """Adjacency for the currently open valves.
+
+        BOP elements do not appear as ordinary edges, because their sense is
+        inverted -- closing one *removes* a route rather than adding one. The
+        annulus reaches the BOP outlet, and so the flowline, only while every
+        element is open. The choke and kill lines take off from the stack below
+        the elements, so they stay available with the stack shut, which is the
+        whole point of having them.
+        """
+        edges: dict[Node, list[Node]] = {}
+        for valve in self.valves:
+            if valve.is_bop or not valve.is_open:
+                continue
+            edges.setdefault(valve.frm, []).append(valve.to)
+
+        if not self.bop_is_closed:
+            edges.setdefault(Node.ANNULUS, []).append(Node.BOP)
+        return edges
+
+    @staticmethod
+    def _reachable(
+        edges: dict[Node, list[Node]], start: Node, goal: Node
+    ) -> tuple[Node, ...] | None:
+        queue: deque[tuple[Node, ...]] = deque([(start,)])
+        seen = {start}
+        while queue:
+            path = queue.popleft()
+            if path[-1] is goal:
+                return path
+            for nxt in edges.get(path[-1], ()):
+                if nxt not in seen:
+                    seen.add(nxt)
+                    queue.append(path + (nxt,))
+        return None
+
+    def injection_path(self) -> tuple[Node, ...] | None:
+        """Route from the pump into the annulus, or None if the pump is blocked.
+
+        None means the pump is deadheaded: it is running against a closed
+        valve, and pressure will build with nowhere to go.
+        """
+        return self._reachable(
+            self._edges(), Node.PUMP, Node.ANNULUS
+        )
+
+    @property
+    def pump_is_deadheaded(self) -> bool:
+        return self.injection_path() is None
+
+    def return_route(self) -> ReturnRoute:
+        """How returns leave the well, given the lineup and the BOP.
+
+        With the stack open, returns take the flowline and there is no pressure
+        control however the choke is set. With the stack closed, they can only
+        go out the choke or kill line.
+        """
+        edges = self._edges()
+
+        if not self.bop_is_closed:
+            path = self._reachable(edges, Node.ANNULUS, Node.PITS)
+            if path is not None and Node.FLOWLINE in path:
+                return ReturnRoute(True, False, path)
+
+        # Stack closed: the flowline is sealed off, so only routes through the
+        # choke or kill line count.
+        for entry in (Node.CHOKE_LINE, Node.KILL_LINE):
+            if entry not in edges.get(Node.ANNULUS, ()):
+                continue
+            path = self._reachable(edges, entry, Node.PITS)
+            if path is not None:
+                return ReturnRoute(True, True, (Node.ANNULUS,) + path)
+
+        return ReturnRoute(False, False, ())
+
+    @property
+    def is_closed_in(self) -> bool:
+        """True when nothing can leave the well."""
+        return not self.return_route().open_to_pits
+
+    def active_chokes(self) -> list[Valve]:
+        """Throttling valves on a live return route.
+
+        More than one open choke is a lineup error rather than twice the
+        capacity, and the engine treats the total area accordingly.
+        """
+        route = self.return_route()
+        if not route.through_choke:
+            return []
+        return [
+            v for v in self.valves
+            if v.throttling and v.is_open
+            and self._reachable(
+                self._edges(), v.to, Node.PITS
+            ) is not None
+        ]
+
+    def bypass_is_open(self) -> bool:
+        """The bypass defeats the choke: returns go round it, uncontrolled."""
+        valve = self.valve("choke_bypass")
+        if not valve.is_open:
+            return False
+        edges = self._edges()
+        return self._reachable(edges, valve.to, Node.PITS) is not None
+
+    # -- reporting -----------------------------------------------------------
+
+    def summary(self) -> dict[str, object]:
+        route = self.return_route()
+        return {
+            "BOP": (
+                f"closed: {', '.join(self.closed_bop_elements)}"
+                if self.bop_is_closed else "open"
+            ),
+            "Pump path": (
+                "blocked — deadheaded" if self.pump_is_deadheaded
+                else " → ".join(n.value for n in self.injection_path())
+            ),
+            "Returns": route.description,
+            "Open valves": ", ".join(
+                v.label for v in self.valves if v.is_open and not v.is_bop
+            ) or "none",
+        }

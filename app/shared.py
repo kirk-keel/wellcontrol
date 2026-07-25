@@ -115,7 +115,7 @@ DEFAULTS: dict[str, dict[str, float]] = {
     "surface_horizontal": dict(
         total_md=12000.0, shoe_md=7200.0, casing_id=8.681, hole_id=6.0,
         bit_md=12000.0, dp_od=4.0, dp_id=3.34, dc_od=4.75, dc_id=2.25,
-        dc_len=400.0, mw=10.2, sidpp=350.0, sicp=520.0, pit_gain=15.0,
+        dc_len=400.0, mw=10.2, sidpp=350.0, sicp=350.0, pit_gain=15.0,
         scr_spm=35.0, scr_psi=750.0, frac=13.5, clf=0.0,
         air_gap=0.0, water_depth=0.0, kop=4000.0, build=3.0, dp_weight=14.0,
     ),
@@ -129,7 +129,7 @@ DEFAULTS: dict[str, dict[str, float]] = {
     "subsea_horizontal": dict(
         total_md=17000.0, shoe_md=12200.0, casing_id=8.681, hole_id=6.0,
         bit_md=17000.0, dp_od=4.0, dp_id=3.34, dc_od=4.75, dc_id=2.25,
-        dc_len=400.0, mw=12.5, sidpp=450.0, sicp=520.0, pit_gain=20.0,
+        dc_len=400.0, mw=12.5, sidpp=450.0, sicp=450.0, pit_gain=20.0,
         scr_spm=30.0, scr_psi=950.0, frac=14.2, clf=350.0,
         air_gap=75.0, water_depth=5000.0, kop=9000.0, build=3.0, dp_weight=14.0,
     ),
