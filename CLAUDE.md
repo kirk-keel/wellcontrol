@@ -142,6 +142,8 @@ Bad files are rejected with a message naming the row, never coerced. A well cont
 
 `Annulus` validates that the string physically fits the hole at construction, naming the component and section. Pairing a tally with the wrong hole section is a plausible mistake and used to fail deep inside a volume calculation.
 
+**Only tested against synthetic files so far.** The samples were written to look like real exports — irregular station spacing, a lateral wandering either side of 90°, a tally that does not land exactly on the bit — and each of those details found a bug. But no file from an actual well has been through it yet. Expect real exports to bring header spellings, unit columns, footer rows and merged cells the parser has not seen; extend `SURVEY_ALIASES` / `TALLY_ALIASES` and the validation rather than loosening the rejections.
+
 ## Stripping is half an operation
 
 A kick with the bit off bottom needs stripping *then* a circulating kill. `strip_then_kill(well, "drillers" | "wait_and_weight")` returns a `KillSequence` pairing both phases, using `WellState.with_bit_at()` to rebuild the string with the bit on bottom for the second. It reports combined time and which phase peaks at the shoe — on the horizontal reference well that is the *stripping*, which planning the kill alone would miss.
