@@ -273,6 +273,65 @@ class Survey:
 
         return cls(stations)
 
+    def extended_to(self, md: float) -> "Survey":
+        """Project the survey down to a deeper measured depth.
+
+        **The deepest survey station is almost never at the bit.** Surveys are
+        taken behind the bit -- typically at the MWD sensor, 40-100 ft up the
+        BHA -- so a real survey file routinely stops short of total depth. The
+        last stand drilled since the survey is unsurveyed hole.
+
+        The standard treatment, and the one a directional driller uses to report
+        TVD at the bit, is to hold the last recorded inclination and azimuth
+        through the unsurveyed interval. That is a tangent projection: no
+        curvature is assumed where none has been measured.
+
+        The extrapolated interval is short by construction. If it is not, the
+        result is a guess rather than a projection, so anything beyond
+        ``max_extension_ft`` is rejected rather than silently extended.
+
+        Args:
+            md: Measured depth to extend to, ft. If it is at or above the
+                deepest station the survey is returned unchanged, so this is
+                safe to call unconditionally.
+
+        Returns:
+            A new Survey. The original is not modified.
+
+        Raises:
+            ValueError: if the extension is longer than 500 ft, which means the
+                survey and the depth disagree by more than a stand of unsurveyed
+                hole -- usually a units or data-entry problem.
+        """
+        max_extension_ft = 500.0
+        last = self.stations[-1]
+        if md <= last.md + 1e-6:
+            return self
+
+        span = md - last.md
+        if span > max_extension_ft:
+            raise ValueError(
+                f"The deepest survey station is at {last.md:.0f} ft MD but the "
+                f"depth given is {md:.0f} ft, leaving {span:.0f} ft of "
+                f"unsurveyed hole. Holding the last inclination that far is a "
+                f"guess, not a projection (limit {max_extension_ft:.0f} ft). "
+                "Check that the survey and the depth are in the same units and "
+                "that no stations are missing."
+            )
+
+        inclination = math.radians(last.inclination_deg)
+        azimuth = math.radians(last.azimuth_deg)
+        projected = SurveyStation(
+            md=md,
+            tvd=last.tvd + span * math.cos(inclination),
+            inclination_deg=last.inclination_deg,
+            azimuth_deg=last.azimuth_deg,
+            north_ft=last.north_ft + span * math.sin(inclination) * math.cos(azimuth),
+            east_ft=last.east_ft + span * math.sin(inclination) * math.sin(azimuth),
+            dogleg_severity=0.0,  # A tangent projection has no curvature.
+        )
+        return Survey([*self.stations, projected])
+
     # -- conversions ---------------------------------------------------------
 
     @property

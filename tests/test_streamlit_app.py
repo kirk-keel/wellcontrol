@@ -327,8 +327,7 @@ class TestImportPlumbing:
             nominal.annulus.string.internal_volume_bbl, rel=0.01
         )
 
-    def test_survey_shallower_than_total_depth_is_rejected(self):
-        from wellcontrol.survey import Survey
+    def _vertical_values(self):
         from wellcontrol.wellconfig import (
             BOPLocation, Trajectory, WellConfiguration,
         )
@@ -341,9 +340,30 @@ class TestImportPlumbing:
             pump_kind="triplex", rod_od=0.0, safety=0.0, stand_length=93.0,
             migration=0.0,
         )
+        return shared, config, values
+
+    def test_survey_far_shallower_than_total_depth_is_rejected(self):
+        """A huge gap is a units or data error, not a sensor offset."""
+        from wellcontrol.survey import Survey
+
+        shared, config, values = self._vertical_values()
         short = Survey.vertical(5000.0)
-        with pytest.raises(ValueError, match="below the deepest survey station"):
+        with pytest.raises(ValueError, match="unsurveyed hole"):
             shared.build_well(config, values, survey_override=short)
+
+    def test_survey_ending_behind_the_bit_is_extended(self):
+        """The normal case: the last station is a stand above total depth."""
+        from wellcontrol.survey import Survey
+
+        shared, config, values = self._vertical_values()
+        gap = 40.0
+        short = Survey.vertical(values["total_md"] - gap)
+
+        well = shared.build_well(config, values, survey_override=short)
+
+        assert well.survey.total_md == pytest.approx(values["total_md"])
+        # Vertical hole, so the projected station gains TVD foot for foot.
+        assert well.survey.total_tvd == pytest.approx(values["total_md"])
 
 
 # --------------------------------------------------------------------------

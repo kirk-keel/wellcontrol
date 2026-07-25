@@ -58,6 +58,14 @@ SURVEY_ALIASES: dict[str, tuple[str, ...]] = {
     ),
 }
 
+#: Columns that carry a running total rather than a per-row value. Used to
+#: cross-check the import; a tally that disagrees with its own cumulative
+#: column has been read wrongly.
+CUMULATIVE_ALIASES: tuple[str, ...] = (
+    "cumlength", "cumlengthft", "cumulativelength", "runninglength",
+    "bottomdepth", "bottomdepthft", "depthout",
+)
+
 #: Header spellings seen in real pipe tallies.
 TALLY_ALIASES: dict[str, tuple[str, ...]] = {
     "name": (
@@ -70,10 +78,11 @@ TALLY_ALIASES: dict[str, tuple[str, ...]] = {
         "length", "lengthft", "length ft", "len", "totallength",
         "total length", "footage", "cumlength",
     ),
-    "count": (
-        "count", "joints", "jts", "qty", "quantity", "number", "no", "num",
-        "pieces",
-    ),
+    # Deliberately narrow. "no" and "num" were here once and substring-matched
+    # "Item_No", so every component's length was multiplied by its row number
+    # -- a real tally imported as 2.5 million feet with only a soft warning.
+    # A count column is worth having but not worth guessing at.
+    "count": ("count", "joints", "jts", "qty", "quantity", "pieces"),
     "weight": (
         "weight", "weightlbft", "lb/ft", "lbft", "nominalweight", "ppf",
     ),
@@ -85,19 +94,60 @@ def _normalise(header: str) -> str:
     return "".join(c for c in header.lower() if c.isalnum() or c == " ").strip()
 
 
+def _tokens(header: str) -> list[str]:
+    """Split a header into words on separators and case changes.
+
+    ``MD_ft`` becomes ``["md", "ft"]`` and ``Item_No`` becomes
+    ``["item", "no"]``. Matching on whole tokens is what lets a two-letter
+    alias like ``md`` or ``od`` be used safely: it matches ``MD_ft`` but not
+    ``wood``, because ``wood`` is a single token.
+    """
+    out: list[str] = []
+    current = ""
+    for character in header:
+        if character.isalnum():
+            current += character.lower()
+        elif current:
+            out.append(current)
+            current = ""
+    if current:
+        out.append(current)
+    return out
+
+
 def _resolve_columns(
-    headers: list[str], aliases: dict[str, tuple[str, ...]]
+    headers: list[str], aliases: dict[str, tuple[str, ...]],
+    avoid: dict[str, tuple[str, ...]] | None = None,
 ) -> dict[str, str]:
     """Map canonical names onto the file's actual headers.
 
-    Exact alias matches win; a header that merely *contains* an alias is used
-    only if nothing matched exactly, so "MD" does not lose to "TVD MD".
+    Three passes, narrowing in confidence:
+
+    1. The whole header matches an alias exactly.
+    2. One of the header's **tokens** matches an alias. ``MD_ft`` matches
+       ``md`` here; ``wood`` does not match ``od``, because token matching
+       respects word boundaries where substring matching does not.
+    3. The header *contains* an alias, for aliases long enough to be
+       unambiguous. This is the loosest pass and the one that caused a real
+       misread, so short aliases are excluded from it.
+
+    Args:
+        avoid: Normalised header forms a given canonical must not match --
+            used to stop a cumulative column being taken as a per-row one.
     """
     found: dict[str, str] = {}
     normalised = {h: _normalise(h) for h in headers}
+    tokenised = {h: _tokens(h) for h in headers}
+    avoid = avoid or {}
+
+    def blocked(canonical: str, header: str) -> bool:
+        compact = normalised[header].replace(" ", "")
+        return compact in avoid.get(canonical, ())
 
     for canonical, options in aliases.items():
         for header, plain in normalised.items():
+            if blocked(canonical, header):
+                continue
             if plain in options or plain.replace(" ", "") in options:
                 found[canonical] = header
                 break
@@ -105,15 +155,41 @@ def _resolve_columns(
     for canonical, options in aliases.items():
         if canonical in found:
             continue
+        for header in headers:
+            if header in found.values() or blocked(canonical, header):
+                continue
+            if any(token in options for token in tokenised[header]):
+                found[canonical] = header
+                break
+
+    for canonical, options in aliases.items():
+        if canonical in found:
+            continue
         for header, plain in normalised.items():
-            if header in found.values():
+            if header in found.values() or blocked(canonical, header):
                 continue
             compact = plain.replace(" ", "")
-            if any(o.replace(" ", "") in compact for o in options):
+            if any(
+                len(o) >= 4 and o.replace(" ", "") in compact for o in options
+            ):
                 found[canonical] = header
                 break
 
     return found
+
+
+def _looks_like_a_row_index(values: list[float]) -> bool:
+    """True when a column is just numbering the rows.
+
+    A count column and an index column are easy to confuse -- both are small
+    integers in the first rows. An index counts 1, 2, 3 with every row; a
+    genuine count repeats and jumps. Treating an index as a count multiplies
+    every length by its position, so it is worth detecting explicitly.
+    """
+    if len(values) < 3:
+        return False
+    steps = [b - a for a, b in zip(values, values[1:])]
+    return all(abs(step - 1.0) < 1e-9 for step in steps)
 
 
 def _to_float(value: object, row: int, column: str) -> float:
@@ -359,6 +435,57 @@ def import_survey(
 # Pipe tally
 # --------------------------------------------------------------------------
 
+def _cross_check_against_cumulative(
+    rows: list[dict[str, str]], result: "TallyImport"
+) -> None:
+    """Check the summed lengths against the file's own running total.
+
+    Most real tallies carry a cumulative length or a bottom depth. When they
+    do, the file is stating what it should add up to, and a large disagreement
+    means the import has misread something -- a count column that was really an
+    index, a length column that was really a cumulative one, footer rows picked
+    up as data.
+
+    Treated as an **error, not a warning**. A tally that disagrees with itself
+    by a factor is not a judgement call.
+
+    Raises:
+        ValueError: when the totals differ by more than 2%.
+    """
+    if not rows:
+        return
+    normalised = {h: _normalise(h).replace(" ", "") for h in rows[0]}
+    header = next(
+        (h for h, plain in normalised.items() if plain in CUMULATIVE_ALIASES),
+        None,
+    )
+    if header is None:
+        return
+
+    stated = None
+    for row in reversed(rows):
+        text = (row.get(header) or "").strip().replace(",", "")
+        if text:
+            try:
+                stated = float(text)
+            except ValueError:
+                continue
+            break
+    if stated is None or stated <= 0:
+        return
+
+    total = result.total_length_ft
+    result.columns_used["cumulative check"] = header
+    if abs(total - stated) > 0.02 * stated:
+        raise ValueError(
+            f"The lengths add up to {total:,.1f} ft, but the file's own "
+            f"'{header}' column ends at {stated:,.1f} ft. The import has "
+            "misread something -- most often a column that numbers the rows "
+            "being taken as a joint count, or a cumulative length being taken "
+            "as a per-row length. Check the column headings."
+        )
+
+
 def import_tally(
     source: str | Path | io.StringIO,
     *,
@@ -385,7 +512,11 @@ def import_tally(
     if not rows:
         raise ValueError("No data rows found in the tally file.")
 
-    columns = _resolve_columns(list(rows[0].keys()), TALLY_ALIASES)
+    # A cumulative column must never be taken as the per-row length.
+    columns = _resolve_columns(
+        list(rows[0].keys()), TALLY_ALIASES,
+        avoid={"length": CUMULATIVE_ALIASES},
+    )
     result = TallyImport(rows_read=len(rows), columns_used=dict(columns))
 
     for required, description in (
@@ -399,13 +530,36 @@ def import_tally(
                 f"{', '.join(rows[0].keys())}"
             )
 
+    # A count column that is really a row index would multiply every length by
+    # its position. Check before trusting it.
+    use_count = "count" in columns
+    if use_count:
+        raw = []
+        for row in rows:
+            text = (row.get(columns["count"]) or "").strip()
+            if text:
+                try:
+                    raw.append(float(text.replace(",", "")))
+                except ValueError:
+                    raw = []
+                    break
+        if _looks_like_a_row_index(raw):
+            use_count = False
+            result.warn(
+                f"Column '{columns['count']}' counts 1, 2, 3 with every row, so "
+                "it is numbering the rows rather than counting joints. It has "
+                "been ignored. Multiplying each length by it would have been a "
+                "large and silent error."
+            )
+            result.columns_used.pop("count", None)
+
     components: list[Pipe] = []
     for index, row in enumerate(rows, start=2):
         od = _to_float(row[columns["od"]], index, "outside diameter")
         bore = _to_float(row[columns["id"]], index, "inside diameter")
         length = _to_float(row[columns["length"]], index, "length")
 
-        if "count" in columns:
+        if use_count:
             raw_count = (row.get(columns["count"]) or "").strip()
             if raw_count:
                 count = _to_float(raw_count, index, "count")
@@ -439,6 +593,7 @@ def import_tally(
         components.reverse()
 
     result.components = components
+    _cross_check_against_cumulative(rows, result)
 
     if expected_bit_depth_ft is not None:
         total = result.total_length_ft

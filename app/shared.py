@@ -119,6 +119,24 @@ DEFAULTS: dict[str, dict[str, float]] = {
         scr_spm=35.0, scr_psi=750.0, frac=13.5, clf=0.0,
         air_gap=0.0, water_depth=0.0, kop=4000.0, build=3.0, dp_weight=14.0,
     ),
+    # An imported survey can classify a well as deviated, which is the most
+    # common real trajectory -- a build to a tangent angle that is nowhere near
+    # 90 degrees. These entries keep DEFAULTS in step with the trajectories
+    # WellConfiguration.from_key already accepts.
+    "surface_deviated": dict(
+        total_md=12500.0, shoe_md=8200.0, casing_id=8.681, hole_id=8.5,
+        bit_md=12500.0, dp_od=5.0, dp_id=4.276, dc_od=6.75, dc_id=3.0,
+        dc_len=700.0, mw=12.2, sidpp=480.0, sicp=776.0, pit_gain=22.0,
+        scr_spm=30.0, scr_psi=320.0, frac=15.8, clf=0.0,
+        air_gap=0.0, water_depth=0.0, kop=2000.0, build=2.5, dp_weight=19.5,
+    ),
+    "subsea_deviated": dict(
+        total_md=16000.0, shoe_md=11500.0, casing_id=12.415, hole_id=12.25,
+        bit_md=16000.0, dp_od=5.5, dp_id=4.778, dc_od=8.0, dc_id=3.0,
+        dc_len=800.0, mw=12.5, sidpp=500.0, sicp=700.0, pit_gain=25.0,
+        scr_spm=30.0, scr_psi=900.0, frac=13.8, clf=350.0,
+        air_gap=75.0, water_depth=5000.0, kop=3000.0, build=2.5, dp_weight=21.9,
+    ),
     "subsea_vertical": dict(
         total_md=15000.0, shoe_md=11000.0, casing_id=12.415, hole_id=12.25,
         bit_md=15000.0, dp_od=5.5, dp_id=4.778, dc_od=8.0, dc_id=3.0,
@@ -193,13 +211,11 @@ def build_well(
     bit_md = values["bit_md"]
 
     if survey_override is not None:
-        survey = survey_override
-        if total_md > survey.total_md + 1.0:
-            raise ValueError(
-                f"Total depth ({total_md:,.0f} ft) is below the deepest survey "
-                f"station ({survey.total_md:,.0f} ft). Extend the survey or "
-                "reduce the total depth."
-            )
+        # A real survey stops behind the bit, so the file routinely ends a
+        # stand or so above total depth. Hold the last inclination through the
+        # unsurveyed hole; extended_to() rejects the case where the gap is too
+        # large to be the usual sensor offset.
+        survey = survey_override.extended_to(total_md)
     elif config.is_horizontal:
         survey = Survey.build_and_hold(
             kop_md=values["kop"],
