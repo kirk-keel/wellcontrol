@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 
 from . import rounding
 from .geometry import Annulus, Pump
-from .hydrostatics import hydrostatic_pressure
+from .hydrostatics import hydrostatic_pressure, signed_hydrostatic
 from .survey import Survey
 from .units import PSI_PER_PPG_FT
 
@@ -338,9 +338,11 @@ class KillSheet:
         fraction = min(1.0, volume / string_volume) if string_volume else 1.0
 
         front_tvd = self.survey.tvd_at(front_md)
+        # The span below the front is signed: in an undulating lateral the
+        # hole can rise, putting the front deeper than the bit.
         hydrostatic = hydrostatic_pressure(
             self.kill_mud_weight_ppg, front_tvd
-        ) + hydrostatic_pressure(
+        ) + signed_hydrostatic(
             self.mud_weight_ppg, self.bit_tvd_ft - front_tvd
         )
         fcp_friction = self.scr_psi * self.kill_mud_weight_ppg / self.mud_weight_ppg
@@ -352,7 +354,7 @@ class KillSheet:
             - self.choke_line_friction_psi
         )
 
-    def schedule_segments(self) -> list[ScheduleSegment]:
+    def schedule_segments(self, min_strokes: float = 5.0) -> list[ScheduleSegment]:
         """The schedule broken at every point where its slope changes.
 
         Breaks at two kinds of boundary:
@@ -364,6 +366,13 @@ class KillSheet:
 
         On a vertical well with a uniform string this returns a single
         segment, which is why the classic one-line kill sheet works there.
+
+        Args:
+            min_strokes: Segments shorter than this are merged into the one
+                above. A real BHA has short components -- a 4.5 ft bit sub, a
+                3 ft float sub -- and each is technically a break in the
+                schedule, but a segment worth two strokes is not something a
+                driller can work to. Set to zero to see every break.
         """
         bit_md = self.bit_md_ft
         boundaries = {0.0, bit_md}
@@ -409,7 +418,55 @@ class KillSheet:
                     end_pressure_psi=self.drill_pipe_pressure_at(bottom),
                 )
             )
-        return segments
+
+        return self._merge_slivers(segments, min_strokes)
+
+    @staticmethod
+    def _merge_slivers(
+        segments: list[ScheduleSegment], min_strokes: float
+    ) -> list[ScheduleSegment]:
+        """Fold segments too short to work to into the one above them.
+
+        Keeps the boundary that matters -- the end of the merged run -- and
+        drops the ones that would have the driller changing target every two
+        strokes.
+        """
+        if min_strokes <= 0 or len(segments) <= 1:
+            return segments
+
+        merged: list[ScheduleSegment] = []
+        for segment in segments:
+            if merged and segment.strokes < min_strokes:
+                previous = merged[-1]
+                merged[-1] = ScheduleSegment(
+                    name=previous.name,
+                    reason=previous.reason,
+                    top_md=previous.top_md,
+                    bottom_md=segment.bottom_md,
+                    start_strokes=previous.start_strokes,
+                    end_strokes=segment.end_strokes,
+                    start_pressure_psi=previous.start_pressure_psi,
+                    end_pressure_psi=segment.end_pressure_psi,
+                )
+            else:
+                merged.append(segment)
+
+        # A short first segment has nothing above it; fold it downward.
+        while len(merged) > 1 and merged[0].strokes < min_strokes:
+            first, second = merged[0], merged[1]
+            merged[:2] = [
+                ScheduleSegment(
+                    name=second.name,
+                    reason=first.reason,
+                    top_md=first.top_md,
+                    bottom_md=second.bottom_md,
+                    start_strokes=first.start_strokes,
+                    end_strokes=second.end_strokes,
+                    start_pressure_psi=first.start_pressure_psi,
+                    end_pressure_psi=second.end_pressure_psi,
+                )
+            ]
+        return merged
 
     def format_segments(self) -> str:
         """Render the segment breakdown as a fixed-width table."""
@@ -589,7 +646,7 @@ class KillSheet:
             front_md = self.kill_mud_depth_at_volume(volume)
             front_tvd = self.survey.tvd_at(front_md)
 
-            hydrostatic = hydrostatic_pressure(kmw, front_tvd) + hydrostatic_pressure(
+            hydrostatic = hydrostatic_pressure(kmw, front_tvd) + signed_hydrostatic(
                 omw, bit_tvd - front_tvd
             )
             friction = scr + (fcp_friction - scr) * fraction

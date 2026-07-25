@@ -23,18 +23,36 @@ class TestValidation:
             Survey([SurveyStation(0.0, 0.0)])
 
     def test_tvd_cannot_outrun_md(self):
-        with pytest.raises(ValueError, match="exceeds MD gain"):
+        with pytest.raises(ValueError, match="faster than measured depth"):
             Survey([
                 SurveyStation(0.0, 0.0),
                 SurveyStation(1000.0, 1500.0),
             ])
 
-    def test_tvd_cannot_decrease(self):
-        with pytest.raises(ValueError, match="drilled upward"):
+    def test_tvd_may_decrease(self):
+        """A real lateral wanders either side of 90 degrees, so the hole goes
+        slightly uphill in places and TVD comes back up. That is normal, not
+        an error.
+        """
+        survey = Survey([
+            SurveyStation(0.0, 0.0),
+            SurveyStation(1000.0, 1000.0),
+            SurveyStation(2000.0, 900.0),
+        ])
+        assert survey.total_tvd == pytest.approx(900.0)
+
+    def test_tvd_cannot_change_faster_than_md(self):
+        """Impossible in either direction -- the hole cannot be shorter than
+        its own vertical extent."""
+        with pytest.raises(ValueError, match="faster than measured depth"):
             Survey([
-                SurveyStation(0.0, 0.0),
+                SurveyStation(0.0, 1000.0),
+                SurveyStation(1000.0, 2500.0),
+            ])
+        with pytest.raises(ValueError, match="faster than measured depth"):
+            Survey([
+                SurveyStation(0.0, 2500.0),
                 SurveyStation(1000.0, 1000.0),
-                SurveyStation(2000.0, 900.0),
             ])
 
     def test_out_of_range_md_is_rejected(self):

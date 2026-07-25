@@ -347,7 +347,31 @@ class Annulus:
             )
         self.wellbore = wellbore
         self.string = string
+        self._check_the_string_fits()
         self._intervals = self._build()
+
+    def _check_the_string_fits(self) -> None:
+        """Reject a string that cannot physically go in this hole.
+
+        Caught here rather than when a volume is first requested, because the
+        failure then surfaces deep inside an unrelated calculation with a
+        message that does not say which component is too big or where. The
+        usual cause is a pipe tally paired with the wrong hole section.
+        """
+        for top_md, bottom_md, component in self.string.intervals():
+            for section in self.wellbore.sections:
+                overlap_top = max(top_md, section.top_md)
+                overlap_bottom = min(bottom_md, section.bottom_md)
+                if overlap_bottom - overlap_top <= 1e-6:
+                    continue
+                if component.od_in > section.id_in + 1e-9:
+                    raise ValueError(
+                        f"'{component.name}' has an outside diameter of "
+                        f"{component.od_in} in, which does not fit inside "
+                        f"'{section.name}' at {section.id_in} in. They overlap "
+                        f"between {overlap_top:,.0f} and {overlap_bottom:,.0f} ft "
+                        "MD. Check the pipe tally is for this hole section."
+                    )
 
     def _build(self) -> list[AnnularInterval]:
         breaks = {0.0, self.string.bit_depth_md, self.wellbore.total_depth_md}

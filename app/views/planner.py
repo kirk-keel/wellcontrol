@@ -22,7 +22,10 @@ from shared import (  # noqa: E402
     chapter_exists,
     chapter_title,
     detect_theme,
+    read_upload_as_csv,
+    trajectory_from_survey,
 )
+from wellcontrol.importers import import_survey, import_tally  # noqa: E402
 from wellcontrol.methods import METHODS, get_method, strip_then_kill  # noqa: E402
 from wellcontrol.plotting import plot_kill, trace_table  # noqa: E402
 from wellcontrol.wellconfig import WellConfiguration  # noqa: E402
@@ -55,6 +58,34 @@ defaults = DEFAULTS[config.key]
 
 with st.sidebar:
     st.header("Well data")
+
+    with st.expander("📄 Import survey and tally", expanded=False):
+        st.caption(
+            "Optional. Uploading the real survey and tally replaces the "
+            "idealised geometry below — TVD comes from the actual trajectory "
+            "and string volume from the actual components. CSV or Excel. "
+            "See `samples/` for the formats."
+        )
+        survey_file = st.file_uploader(
+            "Directional survey",
+            type=["csv", "xlsx", "xlsm", "xls"],
+            help="Needs measured depth and inclination. Azimuth and TVD are "
+                 "used when present. TVD is computed by minimum curvature "
+                 "otherwise.",
+            key="survey_upload",
+        )
+        tally_file = st.file_uploader(
+            "Pipe tally",
+            type=["csv", "xlsx", "xlsm", "xls"],
+            help="Needs OD, ID and length. A joints or count column multiplies "
+                 "the length.",
+            key="tally_upload",
+        )
+        tally_bottom_up = st.checkbox(
+            "Tally is written bottom-up (bit first)",
+            value=True,
+            help="Untick for a tally written from surface down.",
+        )
 
     with st.expander("Hole and casing", expanded=True):
         total_md = st.number_input(
@@ -182,11 +213,69 @@ values = dict(
 )
 
 # --------------------------------------------------------------------------
+# Imports
+# --------------------------------------------------------------------------
+
+imported_survey = None
+imported_components = None
+import_notes: list[str] = []
+
+if survey_file is not None:
+    try:
+        outcome = import_survey(read_upload_as_csv(survey_file))
+        imported_survey = outcome.survey
+        import_notes.extend(outcome.warnings)
+        derived = trajectory_from_survey(imported_survey)
+        if derived is not config.trajectory:
+            config = WellConfiguration(config.bop, derived)
+            import_notes.append(
+                f"Trajectory taken from the survey as **{derived.label}** "
+                f"(maximum inclination {imported_survey.max_inclination_deg:.1f}°), "
+                "overriding the selection above."
+            )
+        st.success(
+            f"**Survey imported** — {outcome.rows_read} stations, "
+            f"{imported_survey.total_md:,.0f} ft MD / "
+            f"{imported_survey.total_tvd:,.0f} ft TVD, "
+            f"max inclination {imported_survey.max_inclination_deg:.1f}°, "
+            f"max dogleg {imported_survey.max_dogleg_severity:.1f}°/100 ft. "
+            + ("TVD computed by minimum curvature."
+               if outcome.tvd_was_computed else "TVD taken from the file.")
+        )
+    except ValueError as exc:
+        st.error(f"**Survey import failed:** {exc}")
+        st.stop()
+
+if tally_file is not None:
+    try:
+        outcome = import_tally(
+            read_upload_as_csv(tally_file),
+            bottom_up=tally_bottom_up,
+            expected_bit_depth_ft=bit_md,
+        )
+        imported_components = outcome.components
+        import_notes.extend(outcome.warnings)
+        st.success(
+            f"**Tally imported** — {len(outcome.components)} components, "
+            f"{outcome.total_length_ft:,.0f} ft total, "
+            f"{outcome.internal_volume_bbl:,.1f} bbl internal volume."
+        )
+    except ValueError as exc:
+        st.error(f"**Tally import failed:** {exc}")
+        st.stop()
+
+if import_notes:
+    with st.expander(f"📄 {len(import_notes)} note(s) on the imported data",
+                     expanded=True):
+        for note in import_notes:
+            st.markdown(f"- {note}")
+
+# --------------------------------------------------------------------------
 # Build and plan
 # --------------------------------------------------------------------------
 
 try:
-    well = build_well(config, values)
+    well = build_well(config, values, imported_survey, imported_components)
 except Exception as exc:
     st.error(f"**Cannot build this well:** {exc}")
     st.stop()

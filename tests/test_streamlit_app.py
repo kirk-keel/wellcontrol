@@ -207,6 +207,145 @@ class TestStripThenKillSection:
         assert "Then kill the well" not in headers
 
 
+class TestImportPlumbing:
+    """The upload path, tested through the shared helpers.
+
+    AppTest cannot drive a file_uploader, so the widgets are checked for
+    presence and the logic behind them is exercised directly.
+    """
+
+    @staticmethod
+    def _shared():
+        import sys
+        from pathlib import Path as _Path
+
+        app_dir = _Path(__file__).resolve().parent.parent / "app"
+        if str(app_dir) not in sys.path:
+            sys.path.insert(0, str(app_dir))
+        import shared
+
+        return shared
+
+    class _Upload:
+        def __init__(self, name: str, data: bytes):
+            self.name = name
+            self._data = data
+
+        def getvalue(self) -> bytes:
+            return self._data
+
+    def test_uploaders_are_present(self):
+        app = _run()
+        labels = " ".join(str(u.label) for u in app.sidebar.file_uploader)
+        assert "Directional survey" in labels
+        assert "Pipe tally" in labels
+
+    def test_reads_csv_upload(self):
+        shared = self._shared()
+        upload = self._Upload("survey.csv", b"MD,Inc,Azi\n0,0,0\n1000,0,0\n")
+        assert "MD,Inc,Azi" in shared.read_upload_as_csv(upload)
+
+    def test_strips_a_byte_order_mark(self):
+        shared = self._shared()
+        upload = self._Upload(
+            "survey.csv", "﻿MD,Inc,Azi\n0,0,0\n1000,0,0\n".encode("utf-8")
+        )
+        assert shared.read_upload_as_csv(upload).startswith("MD")
+
+    def test_reads_excel_upload(self):
+        import io as _io
+
+        import pandas as pd
+
+        shared = self._shared()
+        frame = pd.DataFrame({"MD": [0, 1000], "Inc": [0, 0], "Azi": [0, 0]})
+        buffer = _io.BytesIO()
+        frame.to_excel(buffer, index=False)
+        upload = self._Upload("survey.xlsx", buffer.getvalue())
+        text = shared.read_upload_as_csv(upload)
+        assert "MD" in text and "1000" in text
+
+    @pytest.mark.parametrize("max_inc,expected", [
+        (0.0, "Vertical"), (35.0, "Deviated"), (90.0, "Horizontal"),
+    ])
+    def test_trajectory_derived_from_the_survey(self, max_inc, expected):
+        from wellcontrol.survey import Survey
+
+        shared = self._shared()
+        survey = Survey.from_minimum_curvature([
+            (0.0, 0.0, 0.0), (3000.0, max_inc, 0.0), (6000.0, max_inc, 0.0),
+        ])
+        assert shared.trajectory_from_survey(survey).label == expected
+
+    def test_imported_survey_drives_the_well(self):
+        from pathlib import Path as _Path
+
+        from wellcontrol.importers import import_survey
+        from wellcontrol.wellconfig import (
+            BOPLocation, Trajectory, WellConfiguration,
+        )
+
+        shared = self._shared()
+        samples = _Path(__file__).resolve().parent.parent / "samples"
+        survey = import_survey(samples / "survey_horizontal.csv").survey
+
+        config = WellConfiguration(BOPLocation.SURFACE, Trajectory.HORIZONTAL)
+        values = dict(shared.DEFAULTS[config.key])
+        values.update(
+            riser_id=19.5, liner_id=6.5, stroke_len=12.0, pump_eff=0.95,
+            pump_kind="triplex", rod_od=0.0, safety=0.0, stand_length=93.0,
+            migration=0.0,
+        )
+        well = shared.build_well(config, values, survey_override=survey)
+        assert well.bit_tvd_ft == pytest.approx(survey.tvd_at(values["bit_md"]))
+        assert well.bit_tvd_ft < well.bit_md_ft
+
+    def test_imported_tally_changes_the_string_volume(self):
+        from pathlib import Path as _Path
+
+        from wellcontrol.importers import import_tally
+        from wellcontrol.wellconfig import (
+            BOPLocation, Trajectory, WellConfiguration,
+        )
+
+        shared = self._shared()
+        samples = _Path(__file__).resolve().parent.parent / "samples"
+        components = import_tally(samples / "pipe_tally.csv").components
+
+        config = WellConfiguration(BOPLocation.SURFACE, Trajectory.HORIZONTAL)
+        values = dict(shared.DEFAULTS[config.key])
+        values.update(
+            riser_id=19.5, liner_id=6.5, stroke_len=12.0, pump_eff=0.95,
+            pump_kind="triplex", rod_od=0.0, safety=0.0, stand_length=93.0,
+            migration=0.0,
+        )
+        nominal = shared.build_well(config, values)
+        real = shared.build_well(config, values, string_components=components)
+
+        assert len(real.annulus.string.components) == 8
+        assert real.annulus.string.internal_volume_bbl != pytest.approx(
+            nominal.annulus.string.internal_volume_bbl, rel=0.01
+        )
+
+    def test_survey_shallower_than_total_depth_is_rejected(self):
+        from wellcontrol.survey import Survey
+        from wellcontrol.wellconfig import (
+            BOPLocation, Trajectory, WellConfiguration,
+        )
+
+        shared = self._shared()
+        config = WellConfiguration(BOPLocation.SURFACE, Trajectory.VERTICAL)
+        values = dict(shared.DEFAULTS[config.key])
+        values.update(
+            riser_id=19.5, liner_id=6.5, stroke_len=12.0, pump_eff=0.95,
+            pump_kind="triplex", rod_od=0.0, safety=0.0, stand_length=93.0,
+            migration=0.0,
+        )
+        short = Survey.vertical(5000.0)
+        with pytest.raises(ValueError, match="below the deepest survey station"):
+            shared.build_well(config, values, survey_override=short)
+
+
 # --------------------------------------------------------------------------
 # Learn page
 # --------------------------------------------------------------------------

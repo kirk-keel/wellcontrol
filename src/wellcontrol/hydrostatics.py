@@ -42,6 +42,24 @@ def hydrostatic_pressure(mud_weight_ppg: float, tvd_ft: float, exact: bool = Fal
     return ppg_to_gradient(mud_weight_ppg, exact) * tvd_ft
 
 
+def signed_hydrostatic(
+    density_ppg: float, vertical_span_ft: float, exact: bool = False
+) -> float:
+    """Hydrostatic over a vertical span that may be negative, psi.
+
+    :func:`hydrostatic_pressure` rejects a negative depth, which is the right
+    behaviour for a depth. But a *span* between two points in a well can
+    genuinely be negative: a real lateral undulates, so a point further along
+    the hole is sometimes shallower than one behind it, and the interval
+    between them takes pressure away rather than adding it.
+
+    Use this wherever the two ends come from a survey and their order is not
+    guaranteed. Using the guarded version there turns a real well into a
+    crash.
+    """
+    return ppg_to_gradient(density_ppg, exact) * vertical_span_ft
+
+
 def mud_weight_for_pressure(pressure_psi: float, tvd_ft: float, exact: bool = False) -> float:
     """Mud weight that generates a given pressure at a given TVD, ppg."""
     if tvd_ft <= 0:

@@ -212,6 +212,84 @@ sheet.schedule_segments()          # the breakdown
 sheet.drill_pipe_pressure_at(md)   # pressure with the front at any depth
 ```
 
+## Import the real survey
+
+Everything above uses a generated build-and-hold trajectory: a constant build
+rate and a perfectly straight lateral. Real wells are neither, and kill mud
+weight comes straight off TVD.
+
+```python
+from wellcontrol.importers import import_survey
+
+outcome = import_survey("samples/survey_horizontal.csv")
+outcome.survey.total_tvd                 # 5,909 ft
+outcome.survey.max_inclination_deg       # 90.3
+outcome.survey.max_dogleg_severity       # 3.0 deg/100 ft
+outcome.tvd_was_computed                 # True
+```
+
+The file needs measured depth and inclination. Headers are matched loosely, so
+`MD`, `Measured Depth`, `Depth` and `Hole Depth` all work.
+
+**TVD is computed by minimum curvature** — the industry standard, which fits a
+circular arc between stations rather than assuming the hole runs straight
+between them. Through a build the difference accumulates: over a 0-to-90°
+build in 1,000 ft of hole, straight-line averaging gives 500 ft of TVD where
+the arc gives 637 ft. If the file carries its own TVD column that is used
+instead, because the surveyor's TVD is authoritative.
+
+### A real lateral goes uphill
+
+The sample survey has stations at 90.1°, 89.8°, 90.2° — the hole wanders either
+side of horizontal, which is what real laterals do. Two consequences worth
+knowing:
+
+**TVD comes back up in places.** A well control library that insists TVD only
+increases will reject a perfectly ordinary horizontal well. Only a TVD change
+*faster* than the measured depth change is impossible.
+
+**A point ahead of the kill mud front can be deeper than the bit.** The
+hydrostatic contribution of that interval is genuinely negative. Anywhere both
+ends of a span come from a survey, the span is signed:
+
+```python
+from wellcontrol.hydrostatics import signed_hydrostatic
+
+signed_hydrostatic(11.4, -40.0)    # -23.7 psi — the hole rose
+```
+
+## Import the pipe tally
+
+The same argument applies to the string. Strokes to bit comes off string
+volume, and a real tally has eight or ten components across several sizes:
+
+```python
+from wellcontrol.importers import import_tally
+
+outcome = import_tally("samples/pipe_tally.csv", expected_bit_depth_ft=12000)
+len(outcome.components)          # 8
+outcome.total_length_ft          # 11,985
+outcome.internal_volume_bbl      # 125.2
+outcome.warnings                 # the 15 ft gap to the bit
+```
+
+A `Joints` or `Count` column multiplies the length, so a tally can say "12
+joints at 30.5 ft" rather than 366.
+
+Importing both changes the schedule breakdown from four segments to five on
+this well, because the real BHA introduces its own pipe size changes. Segments
+shorter than a few strokes are merged — a 4.5 ft bit sub is technically a break
+in the schedule, but not one a driller can work to.
+
+**The string must fit the hole.** An 8 in collar in a 6 in lateral is rejected
+by name:
+
+```
+'8in Drill Collars' has an outside diameter of 8.0 in, which does not fit
+inside '6in Lateral' at 6.0 in. They overlap between 9,500 and 10,000 ft MD.
+Check the pipe tally is for this hole section.
+```
+
 ## Building a survey
 
 ```python

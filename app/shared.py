@@ -29,7 +29,7 @@ from wellcontrol.killsheet import SlowCirculatingRate  # noqa: E402
 from wellcontrol.methods.base import WellState  # noqa: E402
 from wellcontrol.subsea import SubseaGeometry  # noqa: E402
 from wellcontrol.survey import Survey  # noqa: E402
-from wellcontrol.wellconfig import WellConfiguration  # noqa: E402
+from wellcontrol.wellconfig import Trajectory, WellConfiguration  # noqa: E402
 
 CONTENT_DIR = _ROOT / "content"
 
@@ -136,8 +136,54 @@ DEFAULTS: dict[str, dict[str, float]] = {
 }
 
 
-def build_well(config: WellConfiguration, values: dict) -> WellState:
+def read_upload_as_csv(uploaded) -> str:
+    """CSV text from an uploaded file, converting Excel on the way.
+
+    Tallies in particular tend to live in spreadsheets rather than CSV, so
+    accepting both saves a manual export step -- and a manual export step is
+    where transcription errors get introduced.
+    """
+    name = getattr(uploaded, "name", "").lower()
+    data = uploaded.getvalue()
+    if name.endswith((".xlsx", ".xlsm", ".xls")):
+        import io as _io
+
+        import pandas as pd
+
+        frame = pd.read_excel(_io.BytesIO(data))
+        return frame.to_csv(index=False)
+    return data.decode("utf-8-sig", errors="replace")
+
+
+def trajectory_from_survey(survey: Survey) -> Trajectory:
+    """Classify a real survey, rather than trusting a dropdown.
+
+    Once a survey is imported the trajectory is a fact about the file, not a
+    choice -- and getting it wrong changes which warnings a method raises.
+    """
+    peak = survey.max_inclination_deg
+    if peak >= 85.0:
+        return Trajectory.HORIZONTAL
+    if peak >= 1.0:
+        return Trajectory.DEVIATED
+    return Trajectory.VERTICAL
+
+
+def build_well(
+    config: WellConfiguration,
+    values: dict,
+    survey_override: Survey | None = None,
+    string_components: list[Pipe] | None = None,
+) -> WellState:
     """Assemble a WellState from the form values.
+
+    Args:
+        config: BOP location and trajectory.
+        values: The sidebar inputs.
+        survey_override: An imported survey, used in place of the generated
+            trajectory.
+        string_components: An imported pipe tally, bottom-up. The last item is
+            treated as the drill pipe and resized to reach the bit.
 
     Raises:
         ValueError: with a message suitable for showing to the user.
@@ -146,7 +192,15 @@ def build_well(config: WellConfiguration, values: dict) -> WellState:
     shoe_md = values["shoe_md"]
     bit_md = values["bit_md"]
 
-    if config.is_horizontal:
+    if survey_override is not None:
+        survey = survey_override
+        if total_md > survey.total_md + 1.0:
+            raise ValueError(
+                f"Total depth ({total_md:,.0f} ft) is below the deepest survey "
+                f"station ({survey.total_md:,.0f} ft). Extend the survey or "
+                "reduce the total depth."
+            )
+    elif config.is_horizontal:
         survey = Survey.build_and_hold(
             kop_md=values["kop"],
             build_rate_deg_per_100ft=values["build"],
@@ -184,15 +238,23 @@ def build_well(config: WellConfiguration, values: dict) -> WellState:
     )
     wellbore = Wellbore(sections)
 
-    collars = Pipe(
-        name="Drill Collars", od_in=values["dc_od"], id_in=values["dc_id"],
-        length_ft=values["dc_len"],
-    )
-    drill_pipe = Pipe(
-        name="Drill Pipe", od_in=values["dp_od"], id_in=values["dp_id"],
-        length_ft=0.0,
-    )
-    string = DrillString.from_bha([collars], drill_pipe, bit_md)
+    if string_components:
+        if len(string_components) == 1:
+            string = DrillString.from_bha([], string_components[0], bit_md)
+        else:
+            string = DrillString.from_bha(
+                list(string_components[:-1]), string_components[-1], bit_md
+            )
+    else:
+        collars = Pipe(
+            name="Drill Collars", od_in=values["dc_od"], id_in=values["dc_id"],
+            length_ft=values["dc_len"],
+        )
+        drill_pipe = Pipe(
+            name="Drill Pipe", od_in=values["dp_od"], id_in=values["dp_id"],
+            length_ft=0.0,
+        )
+        string = DrillString.from_bha([collars], drill_pipe, bit_md)
     annulus = Annulus(wellbore, string)
 
     pump = Pump(

@@ -45,6 +45,23 @@ Two pages:
 - **Learn** — the `content/` chapters rendered in the app, with a contents list
   and prev/next navigation.
 
+### Importing real geometry
+
+The planner accepts a **directional survey** and a **pipe tally** as CSV or
+Excel, replacing the idealised geometry. TVD then comes from the actual
+trajectory (minimum curvature) and string volume from the actual components —
+which is what kill mud weight and strokes to bit are built on.
+
+```python
+from wellcontrol.importers import import_survey, import_tally
+
+survey = import_survey("samples/survey_horizontal.csv").survey
+tally = import_tally("samples/pipe_tally.csv").components
+```
+
+Working examples of both formats, and the accepted column headings, are in
+[`samples/`](samples/README.md).
+
 Combinations that cannot work say so. Volumetric and Lube-and-Bleed both depend
 on gas migrating upward, and gas in a horizontal lateral does not migrate, so
 those are reported as blocked rather than producing numbers for a procedure that
@@ -113,6 +130,7 @@ up. See [the rounding rules](content/05-kill-sheet.md#rounding-is-directional).
 | `wellconfig` | Well configurations: BOP location × trajectory |
 | `stripping` | Stripping and snubbing: bleed volumes, balance point, surge |
 | `content` | Reads the teaching chapters for rendering in an app |
+| `importers` | Reads real directional surveys and pipe tallies from CSV |
 | `methods` | Seven kill methods with per-configuration applicability |
 | `plotting` | Diagnostic kill plots (matplotlib) |
 

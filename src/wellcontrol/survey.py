@@ -32,12 +32,20 @@ class SurveyStation:
         tvd: True vertical depth, ft.
         inclination_deg: Angle from vertical. 0 = vertical, 90 = horizontal.
         azimuth_deg: Compass heading of the wellbore, degrees.
+        north_ft: Northing from the wellhead, ft.
+        east_ft: Easting from the wellhead, ft.
+        dogleg_severity: Curvature over the interval above this station,
+            deg/100 ft. Zero at the first station, which has no interval
+            above it.
     """
 
     md: float
     tvd: float
     inclination_deg: float = 0.0
     azimuth_deg: float = 0.0
+    north_ft: float = 0.0
+    east_ft: float = 0.0
+    dogleg_severity: float = 0.0
 
 
 class Survey:
@@ -45,8 +53,13 @@ class Survey:
 
     Interpolation is linear in TVD vs MD between stations, which is accurate
     enough for well control work when stations are at normal 30-100 ft spacing.
-    (Minimum-curvature is the right method for building the survey itself; this
-    class consumes an already-computed survey.)
+    Use :meth:`from_minimum_curvature` to build one from measured depth,
+    inclination and azimuth, which is what a real survey file contains.
+
+    **TVD is allowed to decrease.** A real lateral wanders either side of 90
+    degrees, so the hole goes slightly uphill in places and TVD comes back up.
+    Only a TVD change faster than the measured depth change is rejected, since
+    that is geometrically impossible rather than merely unusual.
     """
 
     def __init__(self, stations: list[SurveyStation]):
@@ -57,17 +70,17 @@ class Survey:
         for a, b in zip(ordered, ordered[1:]):
             if b.md == a.md:
                 raise ValueError(f"Duplicate survey station at MD {a.md}")
-            if b.tvd < a.tvd - 1e-9:
-                raise ValueError(
-                    f"TVD decreases between MD {a.md} and {b.md}. "
-                    "This well is drilled upward; that is not supported."
-                )
             span = b.md - a.md
-            if b.tvd - a.tvd > span + 1e-6:
+            # TVD may fall as well as rise: a real lateral undulates either
+            # side of 90 degrees and the hole genuinely goes slightly uphill in
+            # places. What is impossible is TVD changing faster than MD, in
+            # either direction, since the hole cannot be shorter than its own
+            # vertical extent.
+            if abs(b.tvd - a.tvd) > span + 1e-6:
                 raise ValueError(
-                    f"TVD gain ({b.tvd - a.tvd:.1f} ft) exceeds MD gain "
-                    f"({span:.1f} ft) between MD {a.md} and {b.md}. "
-                    "TVD can never increase faster than MD."
+                    f"TVD changes by {b.tvd - a.tvd:.1f} ft over {span:.1f} ft "
+                    f"of hole between MD {a.md} and {b.md}. TVD cannot change "
+                    "faster than measured depth."
                 )
 
         self.stations = ordered
@@ -83,6 +96,108 @@ class Survey:
             SurveyStation(md=0.0, tvd=0.0, inclination_deg=0.0),
             SurveyStation(md=total_depth, tvd=total_depth, inclination_deg=0.0),
         ])
+
+    @classmethod
+    def from_minimum_curvature(
+        cls,
+        stations: list[tuple[float, float, float]],
+        tie_in_tvd_ft: float = 0.0,
+        tie_in_north_ft: float = 0.0,
+        tie_in_east_ft: float = 0.0,
+    ) -> "Survey":
+        """Build a survey from measured depth, inclination and azimuth.
+
+        This is what a real survey file contains -- TVD is computed, not
+        recorded. **Minimum curvature** is the industry standard method: it
+        fits a circular arc between each pair of stations rather than assuming
+        the hole runs straight between them, which matters through a build
+        where the straight-line assumption accumulates error.
+
+        For each interval, the dogleg angle comes from::
+
+            cos B = cos(I2 - I1) - sin(I1) sin(I2) (1 - cos(A2 - A1))
+
+        and a ratio factor ``RF = (2/B) tan(B/2)`` scales the straight-line
+        result onto the arc. RF is 1 for a straight interval and grows with
+        curvature, so ignoring it under-states TVD through a build.
+
+        Args:
+            stations: ``(md, inclination_deg, azimuth_deg)`` in depth order.
+            tie_in_tvd_ft: TVD of the first station, if the survey does not
+                start at surface.
+            tie_in_north_ft: Northing of the first station.
+            tie_in_east_ft: Easting of the first station.
+
+        Raises:
+            ValueError: if fewer than two stations, or the depths do not
+                increase, with a message naming the offending station.
+        """
+        if len(stations) < 2:
+            raise ValueError(
+                f"A survey needs at least two stations; got {len(stations)}."
+            )
+
+        ordered = sorted(stations, key=lambda s: s[0])
+        built: list[SurveyStation] = [
+            SurveyStation(
+                md=ordered[0][0],
+                tvd=tie_in_tvd_ft,
+                inclination_deg=ordered[0][1],
+                azimuth_deg=ordered[0][2],
+                north_ft=tie_in_north_ft,
+                east_ft=tie_in_east_ft,
+                dogleg_severity=0.0,
+            )
+        ]
+
+        for (md1, inc1, azi1), (md2, inc2, azi2) in zip(ordered, ordered[1:]):
+            span = md2 - md1
+            if span <= 0:
+                raise ValueError(
+                    f"Survey depths must increase: {md1:.1f} ft is followed by "
+                    f"{md2:.1f} ft."
+                )
+
+            i1, i2 = math.radians(inc1), math.radians(inc2)
+            a1, a2 = math.radians(azi1), math.radians(azi2)
+
+            cos_beta = math.cos(i2 - i1) - math.sin(i1) * math.sin(i2) * (
+                1.0 - math.cos(a2 - a1)
+            )
+            beta = math.acos(max(-1.0, min(1.0, cos_beta)))
+
+            # A straight interval has no arc to correct for; the limit of the
+            # ratio factor as the dogleg goes to zero is 1.
+            ratio = 1.0 if beta < 1e-9 else (2.0 / beta) * math.tan(beta / 2.0)
+            half = span / 2.0
+
+            previous = built[-1]
+            built.append(
+                SurveyStation(
+                    md=md2,
+                    tvd=previous.tvd
+                    + half * (math.cos(i1) + math.cos(i2)) * ratio,
+                    inclination_deg=inc2,
+                    azimuth_deg=azi2,
+                    north_ft=previous.north_ft
+                    + half
+                    * (
+                        math.sin(i1) * math.cos(a1)
+                        + math.sin(i2) * math.cos(a2)
+                    )
+                    * ratio,
+                    east_ft=previous.east_ft
+                    + half
+                    * (
+                        math.sin(i1) * math.sin(a1)
+                        + math.sin(i2) * math.sin(a2)
+                    )
+                    * ratio,
+                    dogleg_severity=math.degrees(beta) * 100.0 / span,
+                )
+            )
+
+        return cls(built)
 
     @classmethod
     def build_and_hold(
@@ -159,6 +274,20 @@ class Survey:
         return cls(stations)
 
     # -- conversions ---------------------------------------------------------
+
+    @property
+    def max_inclination_deg(self) -> float:
+        return max(s.inclination_deg for s in self.stations)
+
+    @property
+    def max_dogleg_severity(self) -> float:
+        """Worst curvature in the survey, deg/100 ft.
+
+        Worth checking on an imported survey: anything much above 10 deg/100 ft
+        in a section that should be smooth usually means a bad station or a
+        units problem rather than a real dogleg.
+        """
+        return max((s.dogleg_severity for s in self.stations), default=0.0)
 
     @property
     def total_md(self) -> float:
