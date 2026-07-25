@@ -169,7 +169,7 @@ sheet = examples.vertical_land_well_kill_sheet()
 
 sheet.strokes_to_bit             # 1466  — kill mud reaches the bit
 sheet.strokes_bit_to_surface     # 4017  — influx reaches surface
-sheet.total_strokes              # 5482  — one full circulation
+sheet.total_strokes              # 5483  — one full circulation
 ```
 
 These count from the same instant but measure different things. Mud is

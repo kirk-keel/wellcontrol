@@ -41,22 +41,22 @@ Take a kick with SIDPP 350 psi in 10.2 ppg mud.
 **Correct**, using TVD:
 
 ```
-KMW = 10.2 + 350 / (0.052 × 5910) = 10.2 + 1.14 = 11.34 ppg
+KMW = 10.2 + 350 / (0.052 × 5910) = 10.2 + 1.14 = 11.339 → mixed as 11.4 ppg
 ```
 
 **Wrong**, using MD:
 
 ```
-KMW = 10.2 + 350 / (0.052 × 12000) = 10.2 + 0.56 = 10.76 ppg
+KMW = 10.2 + 350 / (0.052 × 12000) = 10.2 + 0.56 = 10.761 → mixed as 10.8 ppg
 ```
 
 ```python
 sheet = examples.horizontal_well_kill_sheet()
-sheet.kill_mud_weight_ppg                       # 11.34 ppg
-10.2 + 350 / (0.052 * 12000)                    # 10.76 ppg
+sheet.kill_mud_weight_ppg                       # 11.4 ppg
+rounding.kill_mud_weight(10.2 + 350/(0.052*12000))   # 10.8 ppg
 ```
 
-The mud is **0.58 ppg too light**. Circulating it around leaves the well roughly
+The mud is **0.6 ppg too light**. Circulating it around leaves the well roughly
 180 psi underbalanced at the formation. The well does not die, it keeps flowing,
 and the crew has just spent three hours confirming that their kill sheet was
 wrong.
@@ -173,10 +173,10 @@ print(sheet.format_segments())
 ```
 Section       From MD    To MD   Strokes          DP psi  psi/100 stk
 ------------------------------------------------------------------------
-Vertical            0     4000       370    1100 -> 892      56.3 down
-Build            4000     7000       278     892 -> 800      33.0 down
-Lateral          7000    11600       426     800 -> 832      -7.7 UP
-Lateral         11600    12000        17     832 -> 834      -7.7 UP
+Vertical            0     4000       370    1100 -> 880      59.3 down
+Build            4000     7000       278     880 -> 784      34.8 down
+Lateral          7000    11600       426     784 -> 818       8.1 UP
+Lateral         11600    12000        17     818 -> 819       8.1 UP
 ```
 
 Three regimes, and note the sign in the lateral. **Drill pipe pressure has to be
@@ -199,12 +199,13 @@ distance above and below it, so the strokes-to-depth relationship changes.
 Even the vertical reference well needs two segments for this reason:
 
 ```
-Vertical            0     9400      1427    1000 -> 671      23.1 down
-Vertical         9400    10000        39     671 -> 648      57.6 down
+Vertical            0     9400      1427    1000 -> 658      24.0 down
+Vertical         9400    10000        39     658 -> 634      60.0 down
 ```
 
-The last 600 ft of collars takes 39 strokes and needs pressure coming down more
-than twice as fast. On a tapered string there is a break at every size change.
+The last 600 ft of collars takes 39 strokes and needs pressure coming down two
+and a half times as fast. On a tapered string there is a break at every size
+change.
 
 ```python
 sheet.schedule_segments()          # the breakdown

@@ -122,8 +122,12 @@ class TestScheduleSegments:
             assert segments[0].start_pressure_psi == pytest.approx(
                 sheet.initial_circulating_pressure_psi, abs=1.0
             )
+            # Ends below FCP by the overbalance the rounded-up kill weight
+            # carries -- the segments hold BHP exactly at formation pressure.
             assert segments[-1].end_pressure_psi == pytest.approx(
-                sheet.final_circulating_pressure_psi, abs=1.0
+                sheet.final_circulating_pressure_psi
+                - sheet.rounding_overbalance_psi,
+                abs=1.0,
             )
 
     def test_segments_agree_with_the_step_schedule(self):

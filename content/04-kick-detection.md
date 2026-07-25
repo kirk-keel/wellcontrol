@@ -101,7 +101,8 @@ Pf = SIDPP + 0.052 × MW × TVD
 
 ```python
 analysis.formation_pressure_psi        # 5392.0 psi
-analysis.formation_pressure_emw_ppg    # 10.37 ppg
+analysis.formation_pressure_emw_ppg    # 10.369 ppg (unrounded — a
+                                       # measurement, not a kill weight)
 ```
 
 SIDPP *is* the underbalance — it is the exact amount by which the mud was too

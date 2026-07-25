@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import rounding
 from .units import PSI_PER_PPG_FT, psi_to_psia
 
 
@@ -53,10 +54,24 @@ def frac_pressure_at_shoe(frac_gradient_ppg: float, shoe_tvd_ft: float) -> float
     return PSI_PER_PPG_FT * frac_gradient_ppg * shoe_tvd_ft
 
 
+def max_allowable_mud_weight(frac_gradient_ppg: float) -> float:
+    """Maximum Allowable Mud Weight at the shoe, ppg.
+
+    The fracture gradient expressed as the heaviest mud the shoe will stand,
+    **rounded down to the nearest tenth**. A fracture gradient of 12.87 ppg
+    gives an MAMW of 12.8, not 12.9 -- claiming the extra tenth would be
+    claiming strength the formation has not been shown to have.
+    """
+    return rounding.max_allowable_mud_weight(frac_gradient_ppg)
+
+
 def maasp(
     frac_gradient_ppg: float, current_mud_weight_ppg: float, shoe_tvd_ft: float
-) -> float:
+) -> int:
     """Maximum Allowable Annular Surface Pressure, psi.
+
+    **Rounded down to a whole psi**, because it is a limit. 1181.6 is written
+    as 1181; rounding up would claim margin the well does not have.
 
     The most casing pressure the well can be held at before the shoe breaks
     down::
@@ -74,7 +89,7 @@ def maasp(
       the well gets away from you.
     """
     delta = frac_gradient_ppg - current_mud_weight_ppg
-    return PSI_PER_PPG_FT * delta * shoe_tvd_ft
+    return rounding.pressure_limit(PSI_PER_PPG_FT * delta * shoe_tvd_ft)
 
 
 # --------------------------------------------------------------------------
@@ -121,8 +136,13 @@ class KickTolerance:
         return frac_pressure_at_shoe(self.frac_gradient_ppg, self.shoe_tvd_ft)
 
     @property
-    def maasp_psi(self) -> float:
+    def maasp_psi(self) -> int:
         return maasp(self.frac_gradient_ppg, self.mud_weight_ppg, self.shoe_tvd_ft)
+
+    @property
+    def max_allowable_mud_weight_ppg(self) -> float:
+        """MAMW at the shoe, ppg, rounded down to a tenth."""
+        return max_allowable_mud_weight(self.frac_gradient_ppg)
 
     @property
     def max_formation_pressure_psi(self) -> float:

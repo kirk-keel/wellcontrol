@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .. import rounding
 from ..units import PSI_PER_PPG_FT, psi_to_psia
 from .base import (
     Applicability,
@@ -262,25 +263,34 @@ def _common_summary(well: WellState) -> dict[str, object]:
     sheet = well.kill_sheet
     summary: dict[str, object] = {
         "Original mud weight (ppg)": round(well.mud_weight_ppg, 2),
-        "Kill mud weight (ppg)": round(well.kill_mud_weight_ppg, 2),
-        "Formation pressure (psi)": round(well.formation_pressure_psi),
+        "Kill mud weight, calculated (ppg)": round(
+            well.kill_mud_weight_exact_ppg, 3
+        ),
+        "Kill mud weight, as mixed (ppg)": well.kill_mud_weight_ppg,
+        "Formation pressure (psi)": rounding.pressure(well.formation_pressure_psi),
         "Bit MD / TVD (ft)": f"{well.bit_md_ft:.0f} / {well.bit_tvd_ft:.0f}",
         "Influx density (ppg)": round(well.influx_density_ppg, 2),
-        "SCR at kill rate (psi)": round(well.slow_circulating_rate.pressure_psi),
-        "ICP (psi)": round(sheet.initial_circulating_pressure_psi),
-        "FCP (psi)": round(sheet.final_circulating_pressure_psi),
-        "String volume (bbl)": round(sheet.string_volume_bbl, 1),
-        "Annulus volume (bbl)": round(sheet.annulus_volume_bbl, 1),
-        "Strokes to bit": round(sheet.strokes_to_bit),
-        "Strokes bit to surface": round(sheet.strokes_bit_to_surface),
+        "SCR at kill rate (psi)": rounding.pressure(
+            well.slow_circulating_rate.pressure_psi
+        ),
+        "ICP (psi)": rounding.pressure(sheet.initial_circulating_pressure_psi),
+        "FCP (psi)": rounding.pressure(sheet.final_circulating_pressure_psi),
+        "Pressure per step, 10 steps (psi)": sheet.pressure_step_psi,
+        "String volume (bbl)": rounding.volume(sheet.string_volume_bbl),
+        "Annulus volume (bbl)": rounding.volume(sheet.annulus_volume_bbl),
+        "Strokes to bit": rounding.strokes(sheet.strokes_to_bit),
+        "Strokes bit to surface": rounding.strokes(sheet.strokes_bit_to_surface),
     }
     if well.effective_choke_line_friction:
-        summary["Choke line friction (psi)"] = round(
+        summary["Choke line friction (psi)"] = rounding.pressure(
             well.effective_choke_line_friction
         )
+    mamw = well.max_allowable_mud_weight_ppg
+    if mamw is not None:
+        summary["MAMW at shoe (ppg)"] = mamw
     maasp = well.maasp_psi(well.kill_mud_weight_ppg)
     if maasp is not None:
-        summary["MAASP at kill mud weight (psi)"] = round(maasp)
+        summary["MAASP at kill mud weight (psi)"] = maasp
     return summary
 
 

@@ -27,6 +27,26 @@ Run the app — or double-click `Launch Kill Planner.bat`, which builds the venv
 
 `[dev]` is dependency-free (library + tests). `[app]` adds matplotlib, streamlit, pandas. `tests/test_streamlit_app.py` skips itself via `importorskip` when streamlit is absent, so the core suite stays dependency-free.
 
+## Rounding is directional
+
+Never use `round()` on a well control quantity. Every rule goes the way that adds margin, and `wellcontrol/rounding.py` implements them:
+
+| Quantity | Direction | Places |
+| --- | --- | :-: |
+| Kill mud weight | **up** | 1 |
+| Max allowable mud weight | **down** | 1 |
+| MAASP / MASP | **down** | 0 |
+| Pressure per step | **down** | 0 |
+| Strokes | **up** | 0 |
+
+Pressures and strokes carry no decimals.
+
+**Rounded values are the operational ones.** The rig mixes 10.4 ppg, so FCP is built from 10.4, not 10.369. Where the unrounded figure is useful, it is available under an `_exact` name (`kill_mud_weight_exact_ppg`).
+
+A consequence worth knowing: rounding the kill weight up makes the mud heavier than the mud that exactly balances the formation, so `KillSheet.rounding_overbalance_psi` (16 psi on the reference well) is real extra margin. It also means the depth-accurate schedule, which solves for exactly balanced, finishes *below* the nominal FCP by that amount. Not a bug — work to FCP.
+
+The float handling matters: `10.4 * 10` is `104.00000000000001`, so a naive `ceil` would give 10.5. Every function snaps to a tolerance first.
+
 ## The invariant that governs everything
 
 **Pressure calculations take TVD. Circulation calculations take MD.**

@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from . import rounding
 from .geometry import Annulus, Pump
 from .hydrostatics import hydrostatic_pressure
 from .survey import Survey
@@ -208,19 +209,36 @@ class KillSheet:
         return self.sidpp_psi + hydrostatic_pressure(self.mud_weight_ppg, self.bit_tvd_ft)
 
     @property
-    def kill_mud_weight_ppg(self) -> float:
-        """Kill mud weight, ppg::
+    def kill_mud_weight_exact_ppg(self) -> float:
+        """Kill mud weight before rounding, ppg::
 
             KMW = OMW + SIDPP / (0.052 x TVD)
 
         Uses **TVD**. On a deviated well, using MD here gives a kill mud weight
         that is too light by the ratio TVD/MD, and the well will not die.
+
+        Shown for the working. What gets mixed is
+        :attr:`kill_mud_weight_ppg`.
         """
         return (
             self.mud_weight_ppg
             + self.sidpp_psi / (PSI_PER_PPG_FT * self.bit_tvd_ft)
             + self.safety_factor_ppg
         )
+
+    @property
+    def kill_mud_weight_ppg(self) -> float:
+        """Kill mud weight as it would be mixed, ppg.
+
+        **Rounded up to the nearest tenth.** 10.37 is mixed as 10.4. Rounding
+        down would put lighter mud in the hole than the well needs, which is
+        the one direction this figure must never err in.
+
+        This is the operational value, so everything downstream -- the final
+        circulating pressure, the schedule, MAASP at kill weight -- is built
+        from it rather than from the unrounded figure.
+        """
+        return rounding.kill_mud_weight(self.kill_mud_weight_exact_ppg)
 
     @property
     def scr_psi(self) -> float:
@@ -411,35 +429,113 @@ class KillSheet:
             )
         return "\n".join(lines)
 
+    @property
+    def rounding_overbalance_psi(self) -> float:
+        """Extra bottomhole pressure bought by rounding the kill weight up, psi.
+
+        The mud that gets mixed is heavier than the mud that exactly balances
+        the formation, because the kill weight rounds up to a tenth. That
+        difference is real overbalance::
+
+            0.052 x (KMW_mixed - KMW_calculated) x TVD
+
+        On the reference well, 10.369 rounds to 10.4 and the well ends up
+        16 psi overbalanced. That is the margin the rounding rule exists to
+        create.
+
+        It also explains a discrepancy that looks like an error and is not.
+        :attr:`final_circulating_pressure_psi` follows the standard formula
+        ``SCR x KMW / OMW`` and is the number the driller holds. But the
+        pressure that would hold bottomhole pressure *exactly* at formation
+        pressure is this much lower -- see :meth:`drill_pipe_pressure_at`.
+        Holding FCP keeps the extra margin; that is the intent.
+        """
+        return hydrostatic_pressure(
+            self.kill_mud_weight_ppg - self.kill_mud_weight_exact_ppg,
+            self.bit_tvd_ft,
+        )
+
+    @property
+    def balanced_final_pressure_psi(self) -> float:
+        """Drill pipe pressure holding bottomhole pressure exactly at Pf, psi.
+
+        Lower than :attr:`final_circulating_pressure_psi` by
+        :attr:`rounding_overbalance_psi`. Shown for completeness -- the number
+        to work to is FCP.
+        """
+        return self.drill_pipe_pressure_at(self.bit_md_ft)
+
+    @property
+    def pressure_step_psi(self) -> int:
+        """Pressure taken off per step of the schedule, psi.
+
+        **Rounded down.** A schedule spanning 516 psi over ten steps is worked
+        as 51 psi per step, not 51.6. Rounding up would take drill pipe
+        pressure -- and with it bottomhole pressure -- down faster than
+        intended, eating into the overbalance a little on every step.
+
+        The cost is that ten steps of 51 psi come to 510, not 516, so the
+        schedule lands 6 psi above FCP. Slightly more pressure on the well than
+        planned is the right way for that error to fall.
+        """
+        return self.pressure_step_for(10)
+
+    def pressure_step_for(self, steps: int) -> int:
+        """Pressure per step for a schedule of a given number of steps, psi."""
+        if steps < 1:
+            raise ValueError("Need at least one step")
+        span = (
+            self.initial_circulating_pressure_psi
+            - self.final_circulating_pressure_psi
+        )
+        return rounding.pressure_step(span / steps)
+
+    def strokes_step_for(self, steps: int) -> int:
+        """Strokes per step for a schedule of a given number of steps."""
+        if steps < 1:
+            raise ValueError("Need at least one step")
+        return rounding.strokes(self.strokes_to_bit / steps)
+
     def schedule_linear(self, steps: int = 10) -> list[ScheduleStep]:
         """The classic straight-line schedule, as printed on a paper kill sheet.
 
-        Interpolates linearly in strokes from ICP down to FCP over the strokes
-        to the bit. This is what crews use and what is drilled in training. It
-        is exact for a vertical well with a uniform string, and close enough
-        for most others.
+        Comes down from ICP in whole-psi steps, each rounded **down**, over the
+        strokes to the bit. This is what crews use and what is drilled in
+        training. It is exact for a vertical well with a uniform string, and
+        close enough for most others.
+
+        Because the step is floored, the steps do not land exactly on FCP --
+        they finish slightly above it. The final row is set to FCP, which is
+        the number to hold once kill mud is at the bit.
 
         Compare against :meth:`schedule_by_depth` to see how much the
-        approximation costs on this particular well.
+        straight-line approximation costs on this particular well.
         """
         if steps < 1:
             raise ValueError("Need at least one step")
         icp = self.initial_circulating_pressure_psi
         fcp = self.final_circulating_pressure_psi
-        total = self.strokes_to_bit
+        step_psi = self.pressure_step_for(steps)
+        step_strokes = self.strokes_step_for(steps)
 
         out: list[ScheduleStep] = []
         for i in range(steps + 1):
-            fraction = i / steps
-            strokes = total * fraction
+            last = i == steps
+            strokes = (
+                float(rounding.strokes(self.strokes_to_bit))
+                if last else float(step_strokes * i)
+            )
             volume = self.pump.volume_for(strokes)
             out.append(
                 ScheduleStep(
                     strokes=strokes,
-                    drill_pipe_pressure_psi=icp - (icp - fcp) * fraction,
+                    drill_pipe_pressure_psi=(
+                        float(rounding.pressure(fcp)) if last
+                        else float(rounding.pressure(icp) - step_psi * i)
+                    ),
                     volume_bbl=volume,
                     kill_mud_md_ft=self.kill_mud_depth_at_volume(volume),
-                    note="Kill mud at the bit" if i == steps else "",
+                    note="Kill mud at the bit" if last else "",
                 )
             )
         return out
@@ -466,7 +562,13 @@ class KillSheet:
           stroke increments do not buy equal depth.
 
         On a vertical well with a uniform string it reduces to the straight
-        line and the two schedules agree.
+        line and the two schedules agree in shape.
+
+        **The final value is below FCP**, by
+        :attr:`rounding_overbalance_psi`. That is not an error: this schedule
+        holds bottomhole pressure exactly at formation pressure, while FCP is
+        computed from the rounded-up kill weight and therefore carries extra
+        margin. Work to FCP; the difference is the margin the rounding buys.
         """
         if steps < 1:
             raise ValueError("Need at least one step")
@@ -495,8 +597,8 @@ class KillSheet:
 
             out.append(
                 ScheduleStep(
-                    strokes=strokes,
-                    drill_pipe_pressure_psi=pressure,
+                    strokes=float(rounding.strokes(strokes)),
+                    drill_pipe_pressure_psi=float(rounding.pressure(pressure)),
                     volume_bbl=volume,
                     kill_mud_md_ft=front_md,
                     note="Kill mud at the bit" if i == steps else "",
@@ -618,21 +720,36 @@ class KillSheet:
     # -- reporting -----------------------------------------------------------
 
     def summary(self) -> dict[str, float]:
-        """The headline kill sheet numbers."""
+        """The headline kill sheet numbers, rounded the way they are used.
+
+        Kill mud weight up to a tenth, pressures to whole psi, strokes to
+        whole numbers. The unrounded kill mud weight is included so the
+        working can be checked.
+        """
         return {
             "Original mud weight (ppg)": round(self.mud_weight_ppg, 2),
-            "Kill mud weight (ppg)": round(self.kill_mud_weight_ppg, 2),
-            "Formation pressure (psi)": round(self.formation_pressure_psi, 0),
+            "Kill mud weight, calculated (ppg)": round(
+                self.kill_mud_weight_exact_ppg, 3
+            ),
+            "Kill mud weight, as mixed (ppg)": self.kill_mud_weight_ppg,
+            "Formation pressure (psi)": rounding.pressure(
+                self.formation_pressure_psi
+            ),
             "Bit TVD (ft)": round(self.bit_tvd_ft, 0),
             "Bit MD (ft)": round(self.bit_md_ft, 0),
-            "SCR at kill rate (psi)": round(self.scr_psi, 0),
-            "ICP (psi)": round(self.initial_circulating_pressure_psi, 0),
-            "FCP (psi)": round(self.final_circulating_pressure_psi, 0),
-            "String volume (bbl)": round(self.string_volume_bbl, 1),
-            "Annulus volume (bbl)": round(self.annulus_volume_bbl, 1),
-            "Strokes to bit": round(self.strokes_to_bit, 0),
-            "Strokes bit to surface": round(self.strokes_bit_to_surface, 0),
-            "Total strokes": round(self.total_strokes, 0),
+            "SCR at kill rate (psi)": rounding.pressure(self.scr_psi),
+            "ICP (psi)": rounding.pressure(
+                self.initial_circulating_pressure_psi
+            ),
+            "FCP (psi)": rounding.pressure(self.final_circulating_pressure_psi),
+            "Pressure per step, 10 steps (psi)": self.pressure_step_psi,
+            "String volume (bbl)": rounding.volume(self.string_volume_bbl),
+            "Annulus volume (bbl)": rounding.volume(self.annulus_volume_bbl),
+            "Strokes to bit": rounding.strokes(self.strokes_to_bit),
+            "Strokes bit to surface": rounding.strokes(
+                self.strokes_bit_to_surface
+            ),
+            "Total strokes": rounding.strokes(self.total_strokes),
         }
 
     def format_schedule(self, schedule: list[ScheduleStep]) -> str:

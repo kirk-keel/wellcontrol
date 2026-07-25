@@ -215,7 +215,7 @@ Choosing the follow-on method changes the totals substantially:
 | Driller's Method | 1.7 hr | 5.3 hr | **7.0 hr** |
 | Wait and Weight | 1.7 hr | 3.0 hr | **4.7 hr** |
 
-Both reach the same 10.37 ppg kill mud weight and the same peak shoe pressure;
+Both reach the same 10.4 ppg kill mud weight and the same peak shoe pressure;
 the difference is entirely in exposure time.
 
 ## Running it

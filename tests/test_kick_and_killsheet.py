@@ -2,7 +2,7 @@
 
 import pytest
 
-from wellcontrol import examples
+from wellcontrol import examples, rounding
 from wellcontrol.kick import (
     ShutInAnalysis,
     classify_influx,
@@ -203,9 +203,27 @@ class TestGas:
 
 class TestVerticalKillSheet:
     def test_kill_mud_weight(self):
-        """9.6 + 400 / (0.052 x 10000) = 9.6 + 0.7692 = 10.369 ppg"""
+        """9.6 + 400 / (0.052 x 10000) = 10.3692, mixed as 10.4.
+
+        Kill mud weight rounds UP to a tenth. Rounding down would put lighter
+        mud in the hole than the well needs.
+        """
         sheet = examples.vertical_land_well_kill_sheet()
-        assert sheet.kill_mud_weight_ppg == pytest.approx(10.3692, abs=0.0001)
+        assert sheet.kill_mud_weight_exact_ppg == pytest.approx(10.3692, abs=0.0001)
+        assert sheet.kill_mud_weight_ppg == pytest.approx(10.4)
+
+    def test_rounding_up_buys_real_overbalance(self):
+        """0.052 x (10.4 - 10.3692) x 10000 = 16 psi."""
+        sheet = examples.vertical_land_well_kill_sheet()
+        assert sheet.rounding_overbalance_psi == pytest.approx(16.0, abs=0.5)
+
+    def test_balanced_final_pressure_is_below_fcp_by_that_margin(self):
+        """FCP is the number to hold; the exactly-balanced pressure is lower
+        because the mixed mud is heavier than the mud that just balances."""
+        sheet = examples.vertical_land_well_kill_sheet()
+        assert sheet.final_circulating_pressure_psi - sheet.balanced_final_pressure_psi == (
+            pytest.approx(sheet.rounding_overbalance_psi, abs=0.5)
+        )
 
     def test_icp(self):
         """SIDPP + SCR = 400 + 600 = 1000 psi"""
@@ -213,9 +231,12 @@ class TestVerticalKillSheet:
         assert sheet.initial_circulating_pressure_psi == pytest.approx(1000.0)
 
     def test_fcp(self):
-        """SCR x KMW / OMW = 600 x 10.3692 / 9.6 = 648.08 psi"""
+        """SCR x KMW / OMW = 600 x 10.4 / 9.6 = 650 psi.
+
+        Built from the mud as mixed (10.4), not as calculated (10.3692).
+        """
         sheet = examples.vertical_land_well_kill_sheet()
-        assert sheet.final_circulating_pressure_psi == pytest.approx(648.08, abs=0.01)
+        assert sheet.final_circulating_pressure_psi == pytest.approx(650.0, abs=0.01)
 
     def test_strokes_to_bit(self):
         """171.573 bbl / 0.1170410 bbl/stk = 1465.9 strokes"""
@@ -253,30 +274,53 @@ class TestVerticalKillSheet:
             slow_circulating_rate=SlowCirculatingRate(30.0, 600.0),
             safety_factor_ppg=0.3,
         )
-        assert sheet.kill_mud_weight_ppg == pytest.approx(10.6692, abs=0.0001)
+        assert sheet.kill_mud_weight_exact_ppg == pytest.approx(10.6692, abs=0.0001)
+        assert sheet.kill_mud_weight_ppg == pytest.approx(10.7)
 
 
 class TestSchedules:
     def test_linear_schedule_endpoints(self):
+        """Starts at ICP, ends at FCP, in whole psi and whole strokes."""
         sheet = examples.vertical_land_well_kill_sheet()
         schedule = sheet.schedule_linear(steps=10)
         assert schedule[0].drill_pipe_pressure_psi == pytest.approx(1000.0)
-        assert schedule[-1].drill_pipe_pressure_psi == pytest.approx(648.08, abs=0.01)
-        assert schedule[-1].strokes == pytest.approx(sheet.strokes_to_bit)
+        assert schedule[-1].drill_pipe_pressure_psi == pytest.approx(650.0)
+        assert schedule[-1].strokes == pytest.approx(
+            float(rounding.strokes(sheet.strokes_to_bit))
+        )
 
-    def test_depth_schedule_matches_at_the_endpoints(self):
-        """Both methods must agree at ICP and FCP -- they only differ in
-        between.
+    def test_pressure_step_rounds_down(self):
+        """(1000 - 650) / 10 = 35.0 exactly here, so flooring changes nothing;
+        the mechanism is checked directly in test_rounding.
+        """
+        sheet = examples.vertical_land_well_kill_sheet()
+        assert sheet.pressure_step_for(10) == 35
+        assert sheet.pressure_step_for(3) == 116        # 116.67 floored
+
+    def test_schedule_steps_are_whole_numbers(self):
+        sheet = examples.vertical_land_well_kill_sheet()
+        for step in sheet.schedule_linear(steps=10):
+            assert step.drill_pipe_pressure_psi == int(step.drill_pipe_pressure_psi)
+            assert step.strokes == int(step.strokes)
+
+    def test_schedules_start_together_and_end_apart(self):
+        """Both start at ICP. They no longer both end at FCP: the depth-accurate
+        schedule holds bottomhole pressure exactly at formation pressure, and
+        the rounded-up kill mud is heavier than that requires, so it finishes
+        below FCP by the rounding overbalance.
         """
         sheet = examples.vertical_land_well_kill_sheet()
         linear = sheet.schedule_linear(steps=10)
         by_depth = sheet.schedule_by_depth(steps=10)
+
         assert by_depth[0].drill_pipe_pressure_psi == pytest.approx(
-            linear[0].drill_pipe_pressure_psi, abs=0.01
+            linear[0].drill_pipe_pressure_psi, abs=1.0
         )
-        assert by_depth[-1].drill_pipe_pressure_psi == pytest.approx(
-            linear[-1].drill_pipe_pressure_psi, abs=0.01
+        gap = (
+            linear[-1].drill_pipe_pressure_psi
+            - by_depth[-1].drill_pipe_pressure_psi
         )
+        assert gap == pytest.approx(sheet.rounding_overbalance_psi, abs=1.0)
 
     def test_schedules_diverge_in_the_middle(self):
         """The collars hold only 4.6 bbl but span 600 ft, so equal stroke
@@ -347,16 +391,17 @@ class TestMethods:
 
 class TestHorizontalKillSheet:
     def test_kill_mud_weight_uses_tvd(self):
-        """350 psi over 5909.86 ft TVD needs 1.139 ppg, giving 11.34 ppg.
-        Using the 12000 ft MD would give only 10.76 ppg and the well would
-        stay alive.
+        """350 psi over 5909.86 ft TVD needs 1.139 ppg, giving 11.339, mixed
+        as 11.4. Using the 12000 ft MD would give 10.761, mixed as 10.8, and
+        the well would stay alive.
         """
         sheet = examples.horizontal_well_kill_sheet()
-        assert sheet.kill_mud_weight_ppg == pytest.approx(11.339, abs=0.005)
+        assert sheet.kill_mud_weight_exact_ppg == pytest.approx(11.339, abs=0.005)
+        assert sheet.kill_mud_weight_ppg == pytest.approx(11.4)
 
         wrong = 10.2 + 350.0 / (0.052 * 12000.0)
         assert wrong == pytest.approx(10.761, abs=0.005)
-        assert sheet.kill_mud_weight_ppg - wrong > 0.5
+        assert sheet.kill_mud_weight_ppg - rounding.kill_mud_weight(wrong) > 0.5
 
     def test_bit_tvd_is_far_above_bit_md(self):
         sheet = examples.horizontal_well_kill_sheet()

@@ -42,10 +42,13 @@ add it.
 from wellcontrol import examples
 sheet = examples.vertical_land_well_kill_sheet()
 
-sheet.kill_mud_weight_ppg     # 10.37 ppg
+sheet.kill_mud_weight_exact_ppg    # 10.369 ppg — calculated
+sheet.kill_mud_weight_ppg          # 10.4   ppg — as mixed
 ```
 
-9.6 + 400/(0.052 × 10,000) = 9.6 + 0.77 = **10.37 ppg**.
+9.6 + 400/(0.052 × 10,000) = 9.6 + 0.77 = 10.369, mixed as **10.4 ppg**.
+Kill mud weight always rounds **up** to a tenth — see
+[the rounding rules](#rounding-is-directional) below.
 
 **TVD, not MD.** On a deviated well this is where kills fail — see
 [Directional wells](08-directional-wells.md).
@@ -93,10 +96,11 @@ the formation on its own. But the heavier mud costs more friction, so FCP is
 above the original SCR.
 
 ```python
-sheet.final_circulating_pressure_psi      # 648 psi
+sheet.final_circulating_pressure_psi      # 650 psi
 ```
 
-600 × 10.37/9.6 = **648 psi**. Scaling friction linearly with density is the
+600 × 10.4/9.6 = **650 psi** — built from the mud **as mixed**, not as
+calculated. Scaling friction linearly with density is the
 standard assumption and holds well at kill rates, where flow is
 turbulent-dominated.
 
@@ -108,6 +112,26 @@ the string. The classic kill sheet interpolates in a straight line:
 ```python
 print(sheet.format_schedule(sheet.schedule_linear(steps=10)))
 ```
+
+```
+  Strokes  Volume bbl  Kill mud MD    DP psi  Note
+------------------------------------------------------------
+        0         0.0            0      1000
+      147        17.2          969       965
+      294        34.4         1937       930
+      441        51.6         2906       895
+      588        68.8         3875       860
+      735        86.0         4843       825
+      882       103.2         5812       790
+     1029       120.4         6781       755
+     1176       137.6         7749       720
+     1323       154.8         8718       685
+     1466       171.6        10000       650  Kill mud at the bit
+```
+
+**35 psi per step**, in whole psi — `(1000 − 650) / 10 = 35`. If the span had
+not divided evenly the step would be rounded **down**, so the schedule finishes
+slightly above FCP rather than below it.
 
 This library also computes a **depth-accurate** schedule, which tracks where the
 kill mud front actually is, converts that MD to TVD, and solves for the drill
@@ -122,37 +146,70 @@ P_dp = Pf − [0.052 × KMW × TVD_front + 0.052 × OMW × (TVD_bit − TVD_fron
 print(sheet.format_schedule(sheet.schedule_by_depth(steps=10)))
 ```
 
-```
-  Strokes  Volume bbl  Kill mud MD    DP psi  Note
-------------------------------------------------------------
-        0         0.0            0      1000
-      147        17.2          966       966
-      293        34.3         1932       932
-      440        51.5         2898       899
-      586        68.6         3864       865
-      733        85.8         4830       831
-      880       102.9         5796       797
-     1026       120.1         6762       763
-     1173       137.3         7728       729
-     1319       154.4         8694       696
-     1466       171.6        10000       648  Kill mud at the bit
-```
-
-Look at the last row. The final 10% of the volume covers 1,306 ft of depth,
+Look at where it lands. The final 10% of the volume covers 1,306 ft of depth,
 because the drill collars hold only 4.6 bbl over their 600 ft while drill pipe
 holds 10.7 bbl over the same length. Equal stroke increments do not buy equal
-depth.
+depth. See [Directional wells](08-directional-wells.md) for the full breakdown
+by section.
 
-Both methods agree exactly at ICP and FCP; they differ in between. The straight
-line is what crews use and is close enough on most wells — but the divergence
-grows with tapered strings, large-bore collars, and deviation.
+Both start at ICP. They no longer both finish at FCP — see the rounding note
+below.
+
+## Rounding is directional
+
+Every rounding rule in well control goes the way that **adds margin**. None of
+them is round-to-nearest.
+
+| Quantity | Direction | Places | Why |
+| --- | --- | :-: | --- |
+| Kill mud weight | **up** | 1 | Heavier mud, more overbalance |
+| Max allowable mud weight | **down** | 1 | Lower ceiling, less chance of fracturing |
+| MAASP / MASP | **down** | 0 | Lower limit, more margin before breakdown |
+| Pressure per step | **down** | 0 | Smaller decrement, pressure stays higher longer |
+| Strokes | **up** | 0 | Stopping short of a target is the failure mode |
+
+Pressures carry no decimals — no gauge on a rig resolves better than a few psi.
+Strokes carry none either; there is no such thing as a fraction of a stroke.
+
+```python
+from wellcontrol import rounding
+
+rounding.kill_mud_weight(10.37)          # 10.4
+rounding.max_allowable_mud_weight(12.87) # 12.8
+rounding.pressure_limit(1181.6)          # 1181
+rounding.pressure_step(51.6)             # 51
+rounding.strokes(1465.1)                 # 1466
+```
+
+**The rounded values are the operational ones.** The rig mixes 10.4 ppg, so FCP
+is `600 × 10.4/9.6 = 650`, not `600 × 10.369/9.6 = 648`.
+
+### Rounding up buys real overbalance
+
+The mud actually mixed is heavier than the mud that exactly balances the
+formation:
+
+```
+0.052 × (10.4 − 10.369) × 10,000 = 16 psi
+```
+
+```python
+sheet.rounding_overbalance_psi      # 16.0
+sheet.balanced_final_pressure_psi   # 634 — holds BHP exactly at Pf
+sheet.final_circulating_pressure_psi # 650 — the number you hold
+```
+
+So holding FCP leaves the well **16 psi overbalanced**. That is the margin the
+rounding rule exists to create, and it is why the depth-accurate schedule
+finishes at 634 rather than 650: it solves for exactly balanced, while FCP
+carries the margin. **Work to FCP.**
 
 ## Volumes and timing
 
 ```python
 sheet.strokes_to_bit          # 1466
 sheet.strokes_bit_to_surface  # 4017
-sheet.total_strokes           # 5482
+sheet.total_strokes           # 5483
 sheet.total_minutes()         # 183 minutes at 30 spm
 ```
 

@@ -26,6 +26,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
+from .. import rounding
 from ..geometry import Annulus, Pump
 from ..killsheet import KillSheet, SlowCirculatingRate
 from ..subsea import SubseaGeometry
@@ -245,7 +246,8 @@ class WellState:
         )
 
     @property
-    def kill_mud_weight_ppg(self) -> float:
+    def kill_mud_weight_exact_ppg(self) -> float:
+        """Kill mud weight before rounding, ppg. For showing the working."""
         return (
             self.mud_weight_ppg
             + self.sidpp_psi / (PSI_PER_PPG_FT * self.bit_tvd_ft)
@@ -253,17 +255,39 @@ class WellState:
         )
 
     @property
+    def kill_mud_weight_ppg(self) -> float:
+        """Kill mud weight as it would be mixed, ppg.
+
+        **Rounded up to the nearest tenth** -- see :mod:`wellcontrol.rounding`.
+        This is the operational value, so every downstream figure is built
+        from it.
+        """
+        return rounding.kill_mud_weight(self.kill_mud_weight_exact_ppg)
+
+    @property
     def frac_pressure_psi(self) -> float | None:
         if self.frac_gradient_ppg is None or self.shoe_tvd_ft is None:
             return None
         return PSI_PER_PPG_FT * self.frac_gradient_ppg * self.shoe_tvd_ft
 
-    def maasp_psi(self, mud_weight_ppg: float | None = None) -> float | None:
-        """MAASP for a mud weight, defaulting to the mud currently in the hole."""
+    def maasp_psi(self, mud_weight_ppg: float | None = None) -> int | None:
+        """MAASP for a mud weight, defaulting to the mud currently in the hole.
+
+        **Rounded down to a whole psi**, because it is a limit.
+        """
         if self.frac_gradient_ppg is None or self.shoe_tvd_ft is None:
             return None
         weight = self.mud_weight_ppg if mud_weight_ppg is None else mud_weight_ppg
-        return PSI_PER_PPG_FT * (self.frac_gradient_ppg - weight) * self.shoe_tvd_ft
+        return rounding.pressure_limit(
+            PSI_PER_PPG_FT * (self.frac_gradient_ppg - weight) * self.shoe_tvd_ft
+        )
+
+    @property
+    def max_allowable_mud_weight_ppg(self) -> float | None:
+        """MAMW at the shoe, ppg, rounded down to a tenth."""
+        if self.frac_gradient_ppg is None:
+            return None
+        return rounding.max_allowable_mud_weight(self.frac_gradient_ppg)
 
     # -- influx --------------------------------------------------------------
 

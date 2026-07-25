@@ -131,7 +131,8 @@ class TestWellState:
         well = examples.well_state(SURFACE_HORIZONTAL)
         assert well.bit_md_ft == pytest.approx(12000.0)
         assert well.bit_tvd_ft == pytest.approx(5909.86, abs=0.5)
-        assert well.kill_mud_weight_ppg == pytest.approx(11.339, abs=0.01)
+        assert well.kill_mud_weight_exact_ppg == pytest.approx(11.339, abs=0.01)
+        assert well.kill_mud_weight_ppg == pytest.approx(11.4)
 
     def test_influx_density_resolved_when_it_has_height(self):
         well = examples.well_state(SURFACE_VERTICAL)
@@ -378,13 +379,23 @@ class TestSimulatorInvariants:
         assert snapshots[0].drill_pipe_psi == pytest.approx(icp, abs=1.0)
 
     def test_drill_pipe_pressure_reaches_fcp_at_the_bit(self, config):
+        """Lands on FCP less the rounding overbalance.
+
+        The simulator holds bottomhole pressure exactly at formation pressure.
+        The mud actually mixed is heavier than that requires, because the kill
+        weight rounds up, so the pressure needed is lower than the nominal FCP
+        by exactly that margin.
+        """
         well, snapshots = self._snapshots(config)
-        fcp = well.kill_sheet.final_circulating_pressure_psi
+        sheet = well.kill_sheet
+        target = (
+            sheet.final_circulating_pressure_psi - sheet.rounding_overbalance_psi
+        )
         string_volume = well.annulus.string.internal_volume_bbl
         at_bit = min(
             snapshots, key=lambda s: abs(s.volume_pumped_bbl - string_volume)
         )
-        assert at_bit.drill_pipe_psi == pytest.approx(fcp, abs=15.0)
+        assert at_bit.drill_pipe_psi == pytest.approx(target, abs=15.0)
 
     def test_casing_pressure_ends_near_zero(self, config):
         """A complete kill leaves the annulus full of kill mud and dead."""

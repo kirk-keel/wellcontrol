@@ -45,8 +45,21 @@ class TestFormationStrength:
 
 class TestMaasp:
     def test_maasp(self):
-        """(12.846 - 9.6) x 0.052 x 7000 = 3.246 x 364 = 1181.6 psi"""
-        assert maasp(12.8462, 9.6, 7000.0) == pytest.approx(1181.6, abs=0.5)
+        """(12.846 - 9.6) x 0.052 x 7000 = 1181.6, reported as 1181.
+
+        MAASP is a limit, so it rounds DOWN to a whole psi. Rounding up would
+        claim margin the well does not have.
+        """
+        assert maasp(12.8462, 9.6, 7000.0) == 1181
+
+    def test_maasp_returns_a_whole_number(self):
+        assert isinstance(maasp(12.8462, 9.6, 7000.0), int)
+
+    def test_max_allowable_mud_weight_rounds_down(self):
+        """12.8462 gives an MAMW of 12.8, not 12.9."""
+        from wellcontrol.tolerance import max_allowable_mud_weight
+
+        assert max_allowable_mud_weight(12.8462) == pytest.approx(12.8)
 
     def test_maasp_falls_as_mud_weight_rises(self):
         """Weighting up to kill the well eats the margin needed to kill it."""

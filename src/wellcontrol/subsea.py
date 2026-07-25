@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import rounding
 from .hydrostatics import hydrostatic_pressure
 from .rheology import BinghamPlastic, PowerLaw
 from .units import PSI_PER_PPG_FT, SEAWATER_PPG
@@ -199,8 +200,10 @@ def subsea_maasp(
     frac_gradient_ppg: float,
     mud_weight_ppg: float,
     shoe_tvd_ft: float,
-) -> float:
+) -> int:
     """MAASP for a subsea well, psi, read at the rig floor gauge.
+
+    **Rounded down to a whole psi**, because it is a limit.
 
     Identical in form to the surface case as long as every depth is a true
     vertical depth below the rotary table and the annulus above the shoe is
@@ -213,7 +216,9 @@ def subsea_maasp(
     differs from the gauge reading by the hydrostatic of everything in between.
     Use :func:`pressure_at_wellhead` for the stack pressure.
     """
-    return PSI_PER_PPG_FT * (frac_gradient_ppg - mud_weight_ppg) * shoe_tvd_ft
+    return rounding.pressure_limit(
+        PSI_PER_PPG_FT * (frac_gradient_ppg - mud_weight_ppg) * shoe_tvd_ft
+    )
 
 
 def pressure_at_wellhead(

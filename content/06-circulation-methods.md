@@ -101,7 +101,7 @@ plan_kill(well, "drillers").peak_casing_pressure_psi        # 1100
 plan_kill(well, "wait_and_weight").peak_casing_pressure_psi #  996
 ```
 
-The casing-pressure advantage is real (1,100 → 996 psi). The shoe advantage is
+The casing-pressure advantage is real (1,100 → 989 psi). The shoe advantage is
 not, on this well.
 
 ### Careful which shoe number you compare

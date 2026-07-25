@@ -54,8 +54,13 @@ MAASP = (FG − MW) × 0.052 × TVD_shoe
 from wellcontrol.tolerance import maasp
 
 maasp(frac_gradient_ppg=12.8462, current_mud_weight_ppg=9.6, shoe_tvd_ft=7000)
-# 1182 psi
+# 1181 psi
 ```
+
+**MAASP rounds down.** 1,181.6 is written as 1,181 — it is a limit, and
+rounding up would claim margin the well does not have. The related figure
+**MAMW**, the maximum allowable mud weight, rounds down to a tenth for the same
+reason: a 12.85 ppg fracture gradient gives an MAMW of 12.8.
 
 Two things about MAASP catch people out.
 
@@ -63,11 +68,11 @@ Two things about MAASP catch people out.
 very margin needed to kill it:
 
 ```python
-maasp(12.8462, 9.6, 7000)     # 1182 psi with original mud
-maasp(12.8462, 10.37, 7000)   # 901 psi with kill mud
+maasp(12.8462, 9.6, 7000)     # 1181 psi with original mud
+maasp(12.8462, 10.4, 7000)    #  890 psi with kill mud
 ```
 
-281 psi of margin gone, purely from the weight-up. Any MAASP figure written on a
+291 psi of margin gone, purely from the weight-up. Any MAASP figure written on a
 kill sheet must state which mud weight it applies to, and the one that matters
 during the kill is the **kill** mud weight.
 
@@ -102,7 +107,7 @@ for key, value in kt.summary(formation_pressure_psi=5392).items():
 Mud weight (ppg).......................... 9.6
 Fracture gradient (ppg)................... 12.85
 Fracture pressure at shoe (psi)........... 4676.0
-MAASP (psi)............................... 1182.0
+MAASP (psi)............................... 1181
 Kick intensity tolerance (ppg)............ 2.27
 Max formation pressure (psi).............. 6174.0
 Max influx height at shoe (ft)............ 1957.9

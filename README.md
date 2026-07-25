@@ -80,19 +80,26 @@ Abridged output:
 
 ```
 Original mud weight (ppg)............... 9.6
-Kill mud weight (ppg)................... 10.37
-Formation pressure (psi)................ 5392.0
-ICP (psi)............................... 1000.0
-FCP (psi)............................... 648.0
-Strokes to bit.......................... 1466.0
-Total strokes........................... 5482.0
+Kill mud weight, calculated (ppg)....... 10.369
+Kill mud weight, as mixed (ppg)......... 10.4
+Formation pressure (psi)................ 5392
+ICP (psi)............................... 1000
+FCP (psi)............................... 650
+Pressure per step, 10 steps (psi)....... 35
+Strokes to bit.......................... 1466
+Total strokes........................... 5483
 ```
+
+Rounding in well control is **directional** — every rule goes the way that adds
+margin. Kill mud weight rounds up, limits like MAASP round down, strokes round
+up. See [the rounding rules](content/05-kill-sheet.md#rounding-is-directional).
 
 ## What is covered
 
 | Module | Covers |
 | --- | --- |
 | `units` | Oilfield unit constants and conversions |
+| `rounding` | Directional rounding rules — up for targets, down for limits |
 | `survey` | MD/TVD conversion, build-and-hold trajectories |
 | `geometry` | Capacities, annular volumes, drill strings, pump output |
 | `hydrostatics` | Hydrostatic pressure, ECD, tripping, slugs |
