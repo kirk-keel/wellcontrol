@@ -67,6 +67,8 @@ class StrippingToBottom(KillMethod):
     )
     circulates = False
     requires_migration = False
+    chapter = "13-stripping.md"
+    chapter_depth = "in depth"
 
     def _operation(self, well: WellState) -> StrippingOperation:
         gas_top = well.influx_top_md_ft

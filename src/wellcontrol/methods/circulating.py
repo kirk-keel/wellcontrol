@@ -323,6 +323,8 @@ class DrillersMethod(KillMethod):
         "up and circulate again to displace to kill mud."
     )
     circulates = True
+    chapter = "06-circulation-methods.md"
+    chapter_depth = "in depth"
 
     def plan(self, well: WellState) -> KillPlan:
         sheet = well.kill_sheet
@@ -474,6 +476,8 @@ class WaitAndWeight(KillMethod):
         "circulation. Also called the Engineer's Method."
     )
     circulates = True
+    chapter = "06-circulation-methods.md"
+    chapter_depth = "in depth"
 
     def applicability(self, well: WellState) -> Applicability:
         result = super().applicability(well)

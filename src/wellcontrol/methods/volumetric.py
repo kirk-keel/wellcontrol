@@ -48,6 +48,8 @@ class VolumetricMethod(KillMethod):
     )
     circulates = False
     requires_migration = True
+    chapter = "06-circulation-methods.md"
+    chapter_depth = "in context"
 
     #: Overbalance built in before any bleeding starts, psi.
     safety_margin_psi: float = 100.0

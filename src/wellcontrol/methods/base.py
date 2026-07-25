@@ -475,6 +475,14 @@ class KillMethod(ABC):
     #: Whether the method requires the influx to have reached surface.
     requires_gas_at_surface: bool = False
 
+    #: Filename in ``content/`` of the chapter that explains this method.
+    #: Lets the app point a reader from a plan to the theory behind it.
+    chapter: str = "12-choosing-a-kill-method.md"
+    #: How the chapter covers this method: "in depth" when the chapter is
+    #: devoted to it, "in context" when it appears as part of a wider
+    #: comparison. Keeps the link from over-promising.
+    chapter_depth: str = "in context"
+
     def applicability(self, well: WellState) -> Applicability:
         """Checks that apply to every method on every well."""
         result = Applicability()

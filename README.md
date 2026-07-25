@@ -31,10 +31,19 @@ pytest
 streamlit run app/streamlit_app.py
 ```
 
-Select one of four well configurations and one of six kill methods. The app
-builds the geometry, plans the kill, and shows the step-by-step procedure with
-four diagnostic plots — circulating pressures, pressure at the casing shoe
-against the fracture limit, influx volume, and influx position.
+Or double-click **`Launch Kill Planner.bat`**, which builds the environment on
+first run and binds to localhost only.
+
+Two pages:
+
+- **Kill Planner** — select one of four well configurations and one of seven
+  kill methods. The app builds the geometry, plans the kill, and shows the
+  step-by-step procedure with diagnostic plots: circulating pressures, pressure
+  at the casing shoe against the fracture limit, influx volume, influx position,
+  and bit depth while stripping. Each plan links through to the chapter
+  explaining its method.
+- **Learn** — the `content/` chapters rendered in the app, with a contents list
+  and prev/next navigation.
 
 Combinations that cannot work say so. Volumetric and Lube-and-Bleed both depend
 on gas migrating upward, and gas in a horizontal lateral does not migrate, so
@@ -96,6 +105,7 @@ Total strokes........................... 5482.0
 | `mpd` | Surface backpressure, drilling windows, connection schedules |
 | `wellconfig` | Well configurations: BOP location × trajectory |
 | `stripping` | Stripping and snubbing: bleed volumes, balance point, surge |
+| `content` | Reads the teaching chapters for rendering in an app |
 | `methods` | Seven kill methods with per-configuration applicability |
 | `plotting` | Diagnostic kill plots (matplotlib) |
 
