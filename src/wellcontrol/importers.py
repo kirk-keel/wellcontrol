@@ -395,7 +395,7 @@ def import_tally(
     ):
         if required not in columns:
             raise ValueError(
-                f"Could not find a {description} column. Found: "
+                f"Could not find the {description} column. Found: "
                 f"{', '.join(rows[0].keys())}"
             )
 
