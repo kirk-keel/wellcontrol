@@ -23,7 +23,7 @@ from shared import (  # noqa: E402
     chapter_title,
     detect_theme,
 )
-from wellcontrol.methods import METHODS, get_method  # noqa: E402
+from wellcontrol.methods import METHODS, get_method, strip_then_kill  # noqa: E402
 from wellcontrol.plotting import plot_kill, trace_table  # noqa: E402
 from wellcontrol.wellconfig import WellConfiguration  # noqa: E402
 
@@ -284,6 +284,56 @@ with st.expander("Plot data as a table", expanded=False):
     st.dataframe(trace_table(plan, every=3), width="stretch", hide_index=True)
 
 # --------------------------------------------------------------------------
+# Schedule by section
+# --------------------------------------------------------------------------
+
+if method.key in ("drillers", "wait_and_weight"):
+    st.subheader("Drill pipe pressure schedule, by section")
+    segments = well.kill_sheet.schedule_segments()
+
+    if len(segments) == 1:
+        st.caption(
+            "One section — a uniform string in a vertical hole, so the classic "
+            "single straight line from ICP to FCP is correct here."
+        )
+    else:
+        st.caption(
+            f"{len(segments)} sections. The schedule is only a straight line "
+            "within a section; it changes slope wherever the TVD gained per "
+            "foot changes (the build) or the volume per foot changes (a pipe "
+            "size change)."
+        )
+
+    st.dataframe(
+        as_text_rows([
+            {
+                "Section": s.name,
+                "Break": s.reason,
+                "From (ft MD)": round(s.top_md),
+                "To (ft MD)": round(s.bottom_md),
+                "Strokes": round(s.strokes),
+                "DP psi": f"{s.start_pressure_psi:,.0f} → {s.end_pressure_psi:,.0f}",
+                "psi / 100 stk": f"{s.slope_psi_per_100_strokes:+.1f}",
+                "Direction": "TAKE UP" if s.pressure_rises else "take down",
+            }
+            for s in segments
+        ]),
+        width="stretch", hide_index=True,
+    )
+
+    rising = [s for s in segments if s.pressure_rises]
+    if rising:
+        names = ", ".join(sorted({s.name for s in rising}))
+        st.warning(
+            f"**Drill pipe pressure has to be taken UP through the {names} "
+            "section, not down.** The kill mud front gains no true vertical "
+            "depth there, so hydrostatic stops increasing while friction keeps "
+            "climbing toward FCP. A single straight line from ICP to FCP would "
+            "have the driller bleeding pressure off exactly where he should be "
+            "adding it."
+        )
+
+# --------------------------------------------------------------------------
 # Procedure
 # --------------------------------------------------------------------------
 
@@ -304,6 +354,75 @@ if plan.notes:
     with st.expander("Notes on this method and well type", expanded=False):
         for note in plan.notes:
             st.markdown(f"- {note}")
+
+# --------------------------------------------------------------------------
+# Stripping is half an operation -- plan the kill that follows it
+# --------------------------------------------------------------------------
+
+if method.key == "stripping" and plan.applicability.usable:
+    st.divider()
+    st.subheader("Then kill the well")
+    st.caption(
+        "Stripping restores the circulation path; it does not kill the well. "
+        "This plans the circulating kill that follows, with the bit back on "
+        "bottom, and totals both phases."
+    )
+
+    follow_on = st.radio(
+        "Kill method once on bottom",
+        ["drillers", "wait_and_weight"],
+        format_func=lambda k: get_method(k).name,
+        horizontal=True,
+        key="follow_on_method",
+    )
+
+    try:
+        sequence = strip_then_kill(well, follow_on)
+    except Exception as exc:
+        st.error(f"**Could not plan the follow-on kill:** {exc}")
+    else:
+        totals = st.columns(3)
+        totals[0].metric("Total time, both phases",
+                         f"{sequence.total_hours:.1f} hr")
+        peak = sequence.peak_shoe_pressure_psi
+        if peak is not None:
+            totals[1].metric("Peak shoe, whole operation", f"{peak:,.0f} psi")
+            totals[2].metric("Worst phase", sequence.worst_phase)
+
+        if sequence.worst_phase == "stripping":
+            st.info(
+                "**The stripping phase, not the kill, puts the most pressure "
+                "on the shoe here.** Planning the kill in isolation would miss "
+                "that."
+            )
+
+        if sequence.blockers:
+            st.error("\n\n".join(f"- {b}" for b in sequence.blockers))
+
+        st.dataframe(
+            as_text_rows([{"Quantity": k, "Value": v}
+                          for k, v in sequence.summary().items()]),
+            width="stretch", hide_index=True,
+        )
+
+        with st.expander(
+            f"Diagnostics for the {sequence.kill.method_name} phase",
+            expanded=False,
+        ):
+            try:
+                st.pyplot(plot_kill(sequence.kill, theme=theme))
+            except ValueError as exc:
+                st.info(str(exc))
+
+        with st.expander(
+            f"Procedure for the {sequence.kill.method_name} phase",
+            expanded=False,
+        ):
+            for stage in sequence.kill.stages:
+                st.markdown(f"**{stage.name}**")
+                st.markdown(f"*{stage.description}*")
+                for action in stage.actions:
+                    st.markdown(f"- {action}")
 
 st.divider()
 st.caption(

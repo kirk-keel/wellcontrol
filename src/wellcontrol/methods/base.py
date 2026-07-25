@@ -350,6 +350,23 @@ class WellState:
         remaining = self.annulus.volume_bbl - max(0.0, volume_bbl)
         return self.annulus_md_at_volume_from_bottom(remaining)
 
+    def with_bit_at(self, bit_md_ft: float) -> "WellState":
+        """A copy of this well with the bit moved and the string rebuilt.
+
+        The BHA is unchanged; the drill pipe is lengthened or shortened to
+        suit. Used to plan what happens after stripping to bottom, where the
+        same well has to be evaluated with the bit in a different place.
+        """
+        from dataclasses import replace
+
+        from ..geometry import Annulus, DrillString
+
+        components = self.annulus.string.components
+        string = DrillString.from_bha(
+            list(components[:-1]), components[-1], bit_md_ft
+        )
+        return replace(self, annulus=Annulus(self.annulus.wellbore, string))
+
     def string_md_at_volume_from_bit(self, volume_bbl: float) -> float:
         """MD of a point in the string, measured as a volume up from the bit.
 
@@ -440,7 +457,35 @@ class KillPlan:
 
     @property
     def peak_shoe_pressure_psi(self) -> float | None:
+        """Highest shoe pressure at any point, including before pumping."""
         values = [p.shoe_psi for p in self.trace if p.shoe_psi is not None]
+        return max(values) if values else None
+
+    @property
+    def shut_in_shoe_pressure_psi(self) -> float | None:
+        """Shoe pressure before the operation starts, psi.
+
+        **The same for every method**, because it is a property of the well as
+        shut in, not of what you then do about it. It is often the highest
+        value in the whole trace -- when the influx is deep and compact it
+        displaces mud from the interval between the shoe and total depth,
+        which is exactly where hydrostatic supports the shoe.
+        """
+        for point in self.trace:
+            if point.shoe_psi is not None:
+                return point.shoe_psi
+        return None
+
+    @property
+    def peak_circulating_shoe_pressure_psi(self) -> float | None:
+        """Highest shoe pressure once the operation is under way, psi.
+
+        This is the number that discriminates between methods. Comparing peak
+        values that include the shut-in condition can show two methods as
+        identical when their circulating behaviour differs, because the shared
+        starting point dominates.
+        """
+        values = [p.shoe_psi for p in self.trace[1:] if p.shoe_psi is not None]
         return max(values) if values else None
 
     @property

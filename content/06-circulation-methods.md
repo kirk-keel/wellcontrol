@@ -62,23 +62,30 @@ hydrostatic before the gas reaches surface.
 
 ### The shoe-pressure advantage is conditional — check it
 
-Wait and Weight is widely said to put less pressure on the casing shoe. That is
-only true **if the kill mud reaches the annulus before the influx reaches the
-shoe**, and it often does not.
+Wait and Weight is widely said to put less pressure on the casing shoe. The test
+is one comparison:
 
-Kill mud enters the annulus after one *string volume* has been pumped. The
-influx reaches the shoe after roughly the *annular volume between the shoe and
-total depth* has been pumped. Compare them:
+> **Open hole annular volume vs drill string volume.**
+> Larger open hole → Wait and Weight genuinely lowers the pressure at the shoe.
+> Smaller → no advantage at all.
+
+The reasoning: kill mud only starts helping at the shoe once it has come round
+the bit and into the annulus, which takes one *string volume* of pumping. The
+influx reaches the shoe after roughly the *open hole annular volume* has been
+pumped. The heavy mud gets there first only when the open hole holds more than
+the string does.
 
 ```python
-string_volume = sheet.annulus.string.internal_volume_bbl        # 171.6 bbl
-shoe_to_td    = sheet.annulus.volume_between(7000, 10000)       # 127.6 bbl
+open_hole = sheet.annulus.volume_between(7000, 10000)        # 127.6 bbl
+string    = sheet.annulus.string.internal_volume_bbl         # 171.6 bbl
 ```
 
-On the reference well the influx passes the shoe after about 108 bbl, but kill
-mud does not enter the annulus until 172 bbl. **The influx gets there first, so
-there is no shoe-pressure advantage at all** — the simulation gives an identical
-peak shoe pressure of 4,154 psi for both methods.
+On the reference well the open hole is **smaller**, so there is no advantage —
+the simulation gives an identical peak shoe pressure of 4,154 psi for both
+methods. Pull the bit up to 6,000 ft and the open hole (210.6 bbl) exceeds the
+string (100.5 bbl), and Wait and Weight comes out 26 psi lower.
+
+The `wait_and_weight` plan computes which case applies and says so in its notes.
 
 ```python
 from wellcontrol.methods import plan_kill
@@ -95,9 +102,31 @@ plan_kill(well, "wait_and_weight").peak_casing_pressure_psi #  996
 ```
 
 The casing-pressure advantage is real (1,100 → 996 psi). The shoe advantage is
-not, on this well. A deep string in a shallow-shoe well loses it; a short string
-below a deep shoe keeps it. The `wait_and_weight` plan computes which case
-applies and says so in its notes.
+not, on this well.
+
+### Careful which shoe number you compare
+
+Peak shoe pressure over the whole operation is often set **at shut-in, before
+any pumping** — and shut-in is a property of the well, identical whichever
+method you pick. Comparing peaks that include it can show two methods as
+identical when their circulating behaviour differs:
+
+```python
+plan = plan_kill(well, "wait_and_weight")
+
+plan.shut_in_shoe_pressure_psi              # 4154 — same for every method
+plan.peak_circulating_shoe_pressure_psi     # 4115 — the discriminator
+plan.peak_shoe_pressure_psi                 # 4154 — dominated by shut-in
+```
+
+Against Driller's, the circulating peaks are 4,115 vs 4,120 psi. Small here, but
+real — and the overall peak hides it entirely.
+
+Why is shut-in the worst moment? As the gas rises out of the tight collar
+annulus (0.0836 bbl/ft) into the wider casing annulus (0.1203 bbl/ft) it gets
+**shorter** despite expanding — the annulus widens ~44% while the gas expands
+~33%. More hydrostatic below the shoe means less pressure on it. The textbook
+"worst moment is gas at the shoe" assumes a uniform annulus.
 
 **Why it costs:** the well sits shut in while the mud is weighted up. If gas is
 migrating, that wait is not free — surface pressure climbs the whole time. It

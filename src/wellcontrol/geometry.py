@@ -233,6 +233,39 @@ class DrillString:
         """Total volume inside the string, surface to bit, bbl."""
         return sum(c.volume_bbl for c in self.components)
 
+    def internal_volume_to(self, md: float) -> float:
+        """Volume inside the string from surface down to a measured depth, bbl.
+
+        The inverse of finding a depth from a pumped volume. Used to convert a
+        depth of interest -- a casing shoe, a change of pipe size, the end of
+        the build -- into the stroke count at which the kill mud front reaches
+        it.
+        """
+        total = 0.0
+        for top, bottom, comp in self.intervals():
+            if md <= top:
+                break
+            covered = min(md, bottom) - top
+            total += comp.capacity_bbl_per_ft * covered
+        return total
+
+    def size_change_depths(self) -> list[float]:
+        """Measured depths where the string's bore or outside diameter changes.
+
+        Each is a break in the kill schedule: above and below it, a stroke of
+        the pump moves the kill mud front a different distance.
+        """
+        depths: list[float] = []
+        for (_, bottom, upper), (_, _, lower) in zip(
+            self.intervals(), self.intervals()[1:]
+        ):
+            if (
+                abs(upper.id_in - lower.id_in) > 1e-9
+                or abs(upper.od_in - lower.od_in) > 1e-9
+            ):
+                depths.append(bottom)
+        return depths
+
     def pipe_od_at(self, md: float) -> float:
         """Outside diameter of the string at a measured depth."""
         for top, bottom, comp in self.intervals():

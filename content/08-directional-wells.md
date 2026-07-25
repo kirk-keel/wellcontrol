@@ -159,25 +159,57 @@ The library takes a `Survey` and does the conversion internally, so the two
 never get mixed up. Working by hand, the discipline is to write MD and TVD in
 separate columns and never let a number cross over.
 
-## The depth-accurate schedule earns its keep here
+## One schedule is not enough
 
-On a vertical well the straight-line pressure schedule is a good approximation.
-On a deviated well it is less good, because equal stroke increments no longer buy
-equal *vertical* depth — most of the TVD is gained in the vertical and build
-sections, and none at all in the lateral.
+On a vertical well with a uniform string, the straight line from ICP to FCP is
+correct. On a directional well it is not — and not merely imprecise. **The
+schedule needs a separate segment for each section, and in the lateral it
+reverses.**
 
 ```python
-linear = sheet.schedule_linear(steps=10)
-exact  = sheet.schedule_by_depth(steps=10)
-
-for a, b in zip(linear, exact):
-    print(f"{a.strokes:7.0f}  {a.drill_pipe_pressure_psi:6.0f}  "
-          f"{b.drill_pipe_pressure_psi:6.0f}  "
-          f"{a.drill_pipe_pressure_psi - b.drill_pipe_pressure_psi:+5.0f}")
+print(sheet.format_segments())
 ```
 
-Both agree at ICP and FCP. In between, the straight line calls for pressure
-reductions the well has not actually earned yet.
+```
+Section       From MD    To MD   Strokes          DP psi  psi/100 stk
+------------------------------------------------------------------------
+Vertical            0     4000       370    1100 -> 892      56.3 down
+Build            4000     7000       278     892 -> 800      33.0 down
+Lateral          7000    11600       426     800 -> 832      -7.7 UP
+Lateral         11600    12000        17     832 -> 834      -7.7 UP
+```
+
+Three regimes, and note the sign in the lateral. **Drill pipe pressure has to be
+taken UP through the lateral, after coming down for the whole build.**
+
+The reason: drill pipe pressure is `Pf − hydrostatic + friction`. Once the kill
+mud front is in the lateral it gains no TVD, so the hydrostatic term stops
+increasing — but friction keeps climbing toward FCP as more kill mud fills the
+string. Net effect: pressure rises.
+
+A driller following a single straight line from ICP to FCP would be **bleeding
+pressure off through the lateral at exactly the point he should be adding it.**
+
+### The schedule also breaks at every pipe size change
+
+Look at the split at 11,600 ft — that is the top of the drill collars, not a
+trajectory change. A stroke of the pump moves the kill mud front a different
+distance above and below it, so the strokes-to-depth relationship changes.
+
+Even the vertical reference well needs two segments for this reason:
+
+```
+Vertical            0     9400      1427    1000 -> 671      23.1 down
+Vertical         9400    10000        39     671 -> 648      57.6 down
+```
+
+The last 600 ft of collars takes 39 strokes and needs pressure coming down more
+than twice as fast. On a tapered string there is a break at every size change.
+
+```python
+sheet.schedule_segments()          # the breakdown
+sheet.drill_pipe_pressure_at(md)   # pressure with the front at any depth
+```
 
 ## Building a survey
 

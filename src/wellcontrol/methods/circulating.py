@@ -285,12 +285,27 @@ def _common_summary(well: WellState) -> dict[str, object]:
 
 
 def _shoe_verdict(well: WellState, plan: KillPlan) -> None:
-    """Compare peak shoe pressure with the fracture limit and record it."""
+    """Compare shoe pressure with the fracture limit and record it.
+
+    Reports the shut-in and circulating peaks separately. The shut-in value is
+    a property of the well and is identical whichever method is chosen; only
+    the circulating peak says anything about the method.
+    """
     peak = plan.peak_shoe_pressure_psi
     limit = well.frac_pressure_psi
     if peak is None:
         return
     plan.summary["Peak shoe pressure (psi)"] = round(peak)
+    shut_in = plan.shut_in_shoe_pressure_psi
+    circulating = plan.peak_circulating_shoe_pressure_psi
+    if shut_in is not None:
+        plan.summary["Shoe at shut-in (psi)"] = round(shut_in)
+    if circulating is not None:
+        plan.summary["Peak shoe while circulating (psi)"] = round(circulating)
+    if shut_in is not None and circulating is not None and shut_in > circulating:
+        plan.summary["Worst moment"] = "shut-in, before pumping"
+    elif circulating is not None:
+        plan.summary["Worst moment"] = "while circulating"
     if limit is None:
         return
     plan.summary["Shoe fracture pressure (psi)"] = round(limit)
@@ -597,16 +612,19 @@ class WaitAndWeight(KillMethod):
 
     @staticmethod
     def _shoe_advantage_note(well: WellState) -> str:
-        """Whether this well actually gets the textbook shoe-pressure benefit.
+        """Whether this well gets the shoe-pressure benefit.
 
-        Wait and Weight is usually said to put less pressure on the shoe,
-        because kill mud reaches the annulus and adds hydrostatic before the
-        influx gets there. That is only true if the kill mud arrives first, and
-        it does not always.
+        The test is **open hole annular volume against drill string volume**.
 
-        Kill mud enters the annulus after one string volume has been pumped.
-        The influx reaches the shoe after roughly the annular volume between
-        the shoe and total depth has been pumped. Compare the two.
+        Kill mud only starts helping at the shoe once it has come round the
+        bit and into the annulus, which takes one string volume of pumping.
+        The influx reaches the shoe after roughly the open hole annular volume
+        has been pumped. So the heavy mud gets there first only when the open
+        hole holds more than the string does.
+
+        Where it holds, Wait and Weight lowers the pressure the shoe sees.
+        Where it does not, the influx passes the shoe through original-weight
+        mud either way and the two methods are identical at the shoe.
         """
         shoe = well.shoe_md
         if shoe is None:
@@ -616,22 +634,22 @@ class WaitAndWeight(KillMethod):
             )
 
         string_volume = well.annulus.string.internal_volume_bbl
-        shoe_to_td = well.annulus.volume_between(shoe, well.hole_md_ft)
-        influx_at_shoe = max(0.0, shoe_to_td - well.pit_gain_bbl)
+        open_hole_volume = well.annulus.volume_between(shoe, well.hole_md_ft)
 
-        if string_volume < influx_at_shoe:
+        if open_hole_volume > string_volume:
             return (
-                f"Kill mud reaches the annulus after {string_volume:.0f} bbl, and "
-                f"the influx reaches the shoe after about {influx_at_shoe:.0f} bbl. "
-                "The heavier mud gets there first, so this method does lower the "
-                "peak pressure at the shoe compared with the Driller's Method."
+                f"Open hole annular volume ({open_hole_volume:.0f} bbl) is larger "
+                f"than the drill string volume ({string_volume:.0f} bbl), so kill "
+                "mud reaches the annulus before the influx reaches the shoe. This "
+                "is the case where Wait and Weight genuinely lowers the pressure "
+                "at the shoe, and it is the main reason to choose it."
             )
         return (
-            f"On this well the influx reaches the shoe after about "
-            f"{influx_at_shoe:.0f} bbl, but kill mud does not enter the annulus "
-            f"until {string_volume:.0f} bbl have been pumped. The influx passes "
-            "the shoe before any heavy mud gets there, so Wait and Weight gives "
-            "NO shoe-pressure advantage here -- the peak at the shoe matches the "
-            "Driller's Method. It still lowers peak CASING pressure, and it is "
-            "still one circulation instead of two."
+            f"Open hole annular volume ({open_hole_volume:.0f} bbl) is SMALLER "
+            f"than the drill string volume ({string_volume:.0f} bbl). The influx "
+            "reaches the shoe before any kill mud gets into the annulus, so Wait "
+            "and Weight gives no shoe-pressure advantage on this well -- the "
+            "shoe sees the same as it would under the Driller's Method. It is "
+            "still one circulation instead of two, and still lowers peak casing "
+            "pressure."
         )

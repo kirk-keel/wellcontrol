@@ -188,6 +188,36 @@ A rough estimate, and deliberately so — it answers "is this fast enough to
 matter?" On a well with little margin at the shoe, surge sets the stripping
 speed.
 
+## Stripping and the kill are one operation
+
+Planning them separately hides what matters: the total time the well is open,
+and which of the two phases actually puts the most pressure on the shoe.
+
+```python
+from wellcontrol.methods import strip_then_kill
+
+sequence = strip_then_kill(well, "drillers")
+
+sequence.total_hours              # 7.0  (1.7 stripping + 5.3 kill)
+sequence.peak_shoe_pressure_psi   # highest across BOTH phases
+sequence.worst_phase              # which one produced it
+```
+
+On the horizontal reference well the answer is **stripping, not the kill** —
+the gas migrating up while the pipe goes back to bottom does more to the shoe
+than the circulation that follows. Planning the kill in isolation would miss
+that entirely.
+
+Choosing the follow-on method changes the totals substantially:
+
+| Follow-on | Stripping | Kill | Total |
+| --- | ---: | ---: | ---: |
+| Driller's Method | 1.7 hr | 5.3 hr | **7.0 hr** |
+| Wait and Weight | 1.7 hr | 3.0 hr | **4.7 hr** |
+
+Both reach the same 10.37 ppg kill mud weight and the same peak shoe pressure;
+the difference is entirely in exposure time.
+
 ## Running it
 
 ```python

@@ -426,14 +426,14 @@ class TestWaitAndWeight:
         assert wait.peak_casing_pressure_psi < drillers.peak_casing_pressure_psi
 
     def test_shoe_advantage_is_reported_as_conditional(self):
-        """On the reference well the influx passes the shoe before kill mud
-        reaches the annulus, so there is no shoe-pressure advantage. The plan
-        must say so rather than repeating the textbook claim.
+        """The advantage holds only when the open hole annular volume exceeds
+        the drill string volume. On the reference well it does not, and the
+        plan must say so rather than repeating the textbook claim.
         """
         well = examples.well_state(SURFACE_VERTICAL)
-        plan = plan_kill(well, "wait_and_weight")
-        note = " ".join(plan.notes)
-        assert "NO shoe-pressure advantage" in note
+        note = " ".join(plan_kill(well, "wait_and_weight").notes)
+        assert "no shoe-pressure advantage" in note
+        assert "Open hole annular volume" in note
 
     def test_no_shoe_advantage_when_the_string_is_long(self):
         well = examples.well_state(SURFACE_VERTICAL)

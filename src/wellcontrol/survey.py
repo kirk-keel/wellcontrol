@@ -227,6 +227,56 @@ class Survey:
         frac = (md - md0) / (md1 - md0)
         return inc0 + frac * (inc1 - inc0)
 
+    def trajectory_sections(
+        self, tolerance_deg: float = 1.0, lateral_threshold_deg: float = 85.0
+    ) -> list[tuple[float, float, str]]:
+        """Split the well into vertical, build, drop and tangent sections.
+
+        Returns ``(top_md, bottom_md, name)`` per section.
+
+        A kill schedule behaves differently in each of these, because the TVD
+        gained per foot of hole is different. In the vertical section every
+        foot of kill mud buys a foot of hydrostatic; through the build it buys
+        progressively less; in a lateral it buys none at all. A single
+        straight-line schedule cannot represent all three.
+        """
+        if len(self.stations) < 2:
+            return [(0.0, self.total_md, "Vertical")]
+
+        def classify(start, end) -> str:
+            change = end.inclination_deg - start.inclination_deg
+            if abs(change) > tolerance_deg:
+                return "Build" if change > 0 else "Drop"
+            if end.inclination_deg >= lateral_threshold_deg:
+                return "Lateral"
+            if end.inclination_deg >= tolerance_deg:
+                return "Tangent"
+            return "Vertical"
+
+        sections: list[list] = []
+        for start, end in zip(self.stations, self.stations[1:]):
+            name = classify(start, end)
+            if sections and sections[-1][2] == name:
+                sections[-1][1] = end.md
+            else:
+                sections.append([start.md, end.md, name])
+
+        # Merge away slivers left by a single noisy station.
+        merged: list[list] = []
+        for section in sections:
+            if merged and section[1] - section[0] < 1e-6:
+                merged[-1][1] = section[1]
+            else:
+                merged.append(section)
+        return [(top, bottom, name) for top, bottom, name in merged]
+
+    def section_at(self, md: float, **kwargs) -> str:
+        """Name of the trajectory section containing a measured depth."""
+        for top, bottom, name in self.trajectory_sections(**kwargs):
+            if top - 1e-9 <= md <= bottom + 1e-9:
+                return name
+        return "Unknown"
+
     def vertical_height_of(self, top_md: float, bottom_md: float) -> float:
         """TVD height spanned by a measured-depth interval.
 

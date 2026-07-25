@@ -95,10 +95,16 @@ Subclass `KillMethod` in `methods/`, set the class attributes (`key`, `name`, `s
 
 `content/` is teaching material where every worked example runs and **every quoted number has been checked against actual output**. When changing a calculation, re-run the affected examples and update the prose — several numbers in the content are load-bearing claims, not illustrations.
 
-Two findings in the content contradict the textbook and are deliberate:
+Four findings in the content contradict the textbook and are deliberate:
 
-- **Wait-and-Weight's shoe-pressure advantage is conditional.** It only holds when kill mud reaches the annulus before the influx reaches the shoe, i.e. string volume < annular volume from shoe to TD. On the reference well it does not hold, and both methods give an identical peak. `WaitAndWeight._shoe_advantage_note()` computes which case applies.
+- **The drill pipe schedule reverses in a lateral.** Pressure has to be taken *up*, not down: the kill mud front gains no TVD so hydrostatic stops rising, while friction keeps climbing toward FCP. A single ICP-to-FCP straight line would have the driller bleeding pressure off where he should be adding it. `KillSheet.schedule_segments()` breaks the schedule at trajectory boundaries *and* at every pipe size change; `ScheduleSegment.pressure_rises` flags the reversal.
+- **Wait-and-Weight's shoe-pressure advantage is conditional** on open hole annular volume exceeding drill string volume. On the reference well it does not, and both methods give an identical peak. `WaitAndWeight._shoe_advantage_note()` computes which case applies.
+- **Peak shoe pressure is often set at shut-in, not while circulating.** Shut-in is a property of the well and identical for every method, so comparing overall peaks can show two methods as identical when they differ. Use `peak_circulating_shoe_pressure_psi` to discriminate. The cause is that gas rising from the collar annulus into the wider casing annulus gets *shorter* despite expanding — the textbook "worst moment is gas at the shoe" assumes a uniform annulus.
 - **The migration allowance usually dominates stripping bleed volumes** — 7.02 bbl against 2.26 bbl of pipe displacement at 1,000 ft/hr.
+
+## Stripping is half an operation
+
+A kick with the bit off bottom needs stripping *then* a circulating kill. `strip_then_kill(well, "drillers" | "wait_and_weight")` returns a `KillSequence` pairing both phases, using `WellState.with_bit_at()` to rebuild the string with the bit on bottom for the second. It reports combined time and which phase peaks at the shoe — on the horizontal reference well that is the *stripping*, which planning the kill alone would miss.
 
 ## Plots
 

@@ -141,6 +141,72 @@ def test_clicking_the_link_selects_that_chapter(method_name, expected_chapter):
     assert app.session_state["learn_chapter"] == expected_chapter
 
 
+class TestScheduleSection:
+    def test_segment_table_shown_for_circulating_methods(self):
+        app = _run(method="Wait and Weight")
+        headers = " ".join(str(s.value) for s in app.subheader)
+        assert "by section" in headers
+
+    def test_lateral_reversal_is_warned_about(self):
+        """On a horizontal well the schedule reverses in the lateral; the app
+        must say so rather than leaving it in a table to be noticed."""
+        app = _run(config="Surface BOP - Horizontal", method="Wait and Weight")
+        warnings = " ".join(str(w.value) for w in app.warning)
+        assert "TAKE UP" in warnings or "taken UP" in warnings
+
+    def test_no_reversal_warning_on_a_vertical_well(self):
+        app = _run(config="Surface BOP - Vertical", method="Wait and Weight")
+        warnings = " ".join(str(w.value) for w in app.warning)
+        assert "taken UP" not in warnings
+
+    def test_not_shown_for_non_circulating_methods(self):
+        app = _run(method="Bullheading")
+        headers = " ".join(str(s.value) for s in app.subheader)
+        assert "by section" not in headers
+
+
+class TestStripThenKillSection:
+    def _off_bottom(self, method="Stripping to Bottom"):
+        app = AppTest.from_file(str(PLANNER), default_timeout=90)
+        app.run()
+        app.selectbox[1].set_value(method)
+        bit = next(w for w in app.number_input if "Bit depth" in w.label)
+        bit.set_value(8500.0)
+        app.run()
+        return app
+
+    def test_follow_on_section_appears_when_stripping_is_usable(self):
+        app = self._off_bottom()
+        assert not app.exception
+        headers = " ".join(str(s.value) for s in app.subheader)
+        assert "Then kill the well" in headers
+
+    def test_offers_both_circulating_methods(self):
+        app = self._off_bottom()
+        follow_on = next(
+            r for r in app.radio if "once on bottom" in r.label
+        )
+        # AppTest reports the formatted labels rather than the underlying keys.
+        assert list(follow_on.options) == ["Driller's Method", "Wait and Weight"]
+
+    def test_totals_cover_both_phases(self):
+        app = self._off_bottom()
+        labels = " ".join(str(m.label) for m in app.metric)
+        assert "Total time, both phases" in labels
+        assert "Worst phase" in labels
+
+    def test_absent_when_stripping_is_blocked(self):
+        """Bit on bottom means nothing to strip, so no follow-on either."""
+        app = _run(method="Stripping to Bottom")
+        headers = " ".join(str(s.value) for s in app.subheader)
+        assert "Then kill the well" not in headers
+
+    def test_absent_for_other_methods(self):
+        app = _run(method="Driller's Method")
+        headers = " ".join(str(s.value) for s in app.subheader)
+        assert "Then kill the well" not in headers
+
+
 # --------------------------------------------------------------------------
 # Learn page
 # --------------------------------------------------------------------------

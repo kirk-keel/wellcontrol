@@ -89,6 +89,62 @@ class ScheduleStep:
 
 
 @dataclass(frozen=True)
+class ScheduleSegment:
+    """A stretch of the kill over which the schedule behaves consistently.
+
+    The drill pipe schedule is only a straight line within a section. It
+    changes slope wherever the TVD gained per foot changes (the build), and
+    wherever the volume per foot changes (a change of pipe size). Splitting
+    the schedule at those points is the difference between a usable schedule
+    and one that is wrong in the middle.
+    """
+
+    name: str
+    reason: str
+    top_md: float
+    bottom_md: float
+    start_strokes: float
+    end_strokes: float
+    start_pressure_psi: float
+    end_pressure_psi: float
+
+    @property
+    def strokes(self) -> float:
+        return self.end_strokes - self.start_strokes
+
+    @property
+    def length_ft(self) -> float:
+        return self.bottom_md - self.top_md
+
+    @property
+    def pressure_change_psi(self) -> float:
+        """Negative when the schedule takes pressure down, as usual."""
+        return self.end_pressure_psi - self.start_pressure_psi
+
+    @property
+    def slope_psi_per_100_strokes(self) -> float:
+        """Rate of change, positive when pressure is being taken DOWN.
+
+        Quoted this way because that is how a driller reads a kill sheet: "come
+        down 56 psi every hundred strokes".
+        """
+        if self.strokes <= 0:
+            return 0.0
+        return -self.pressure_change_psi / self.strokes * 100.0
+
+    @property
+    def pressure_rises(self) -> bool:
+        """True when this segment needs pressure taken UP, not down.
+
+        Happens in a lateral: the kill mud front gains no TVD, so hydrostatic
+        stops increasing while friction keeps climbing toward FCP. A driller
+        following a single straight line would be bleeding pressure off here
+        when he should be adding it.
+        """
+        return self.pressure_change_psi > 0.5
+
+
+@dataclass(frozen=True)
 class Stage:
     """A stage of a kill operation."""
 
@@ -252,6 +308,108 @@ class KillSheet:
         return self.bit_md_ft
 
     # -- schedules -----------------------------------------------------------
+
+    def drill_pipe_pressure_at(self, front_md: float) -> float:
+        """Drill pipe pressure with the kill mud front at a given depth, psi.
+
+        The single source of truth for the schedule: both the step table and
+        the segment breakdown are built from this, so they cannot disagree.
+        """
+        string_volume = self.string_volume_bbl
+        volume = self.annulus.string.internal_volume_to(front_md)
+        fraction = min(1.0, volume / string_volume) if string_volume else 1.0
+
+        front_tvd = self.survey.tvd_at(front_md)
+        hydrostatic = hydrostatic_pressure(
+            self.kill_mud_weight_ppg, front_tvd
+        ) + hydrostatic_pressure(
+            self.mud_weight_ppg, self.bit_tvd_ft - front_tvd
+        )
+        fcp_friction = self.scr_psi * self.kill_mud_weight_ppg / self.mud_weight_ppg
+        friction = self.scr_psi + (fcp_friction - self.scr_psi) * fraction
+        return (
+            self.formation_pressure_psi
+            - hydrostatic
+            + friction
+            - self.choke_line_friction_psi
+        )
+
+    def schedule_segments(self) -> list[ScheduleSegment]:
+        """The schedule broken at every point where its slope changes.
+
+        Breaks at two kinds of boundary:
+
+        * **Trajectory** -- the end of the vertical section, the end of the
+          build. TVD gained per foot changes across each.
+        * **Pipe size** -- every change of drill pipe bore. Volume per foot,
+          and therefore feet per stroke, changes across each.
+
+        On a vertical well with a uniform string this returns a single
+        segment, which is why the classic one-line kill sheet works there.
+        """
+        bit_md = self.bit_md_ft
+        boundaries = {0.0, bit_md}
+
+        for top, bottom, _ in self.survey.trajectory_sections():
+            for depth in (top, bottom):
+                if 0.0 < depth < bit_md:
+                    boundaries.add(depth)
+
+        size_changes = set(self.annulus.string.size_change_depths())
+        for depth in size_changes:
+            if 0.0 < depth < bit_md:
+                boundaries.add(depth)
+
+        depths = sorted(boundaries)
+        segments: list[ScheduleSegment] = []
+        for top, bottom in zip(depths, depths[1:]):
+            if bottom - top < 1e-6:
+                continue
+            midpoint = (top + bottom) / 2.0
+            section = self.survey.section_at(midpoint)
+
+            reasons = []
+            if top in size_changes:
+                reasons.append("pipe size change")
+            if any(abs(top - b) < 1e-6
+                   for _, b, _ in self.survey.trajectory_sections()):
+                reasons.append("end of section")
+            reason = ", ".join(reasons) if reasons else "start"
+
+            start_volume = self.annulus.string.internal_volume_to(top)
+            end_volume = self.annulus.string.internal_volume_to(bottom)
+
+            segments.append(
+                ScheduleSegment(
+                    name=section,
+                    reason=reason,
+                    top_md=top,
+                    bottom_md=bottom,
+                    start_strokes=self.pump.strokes_for(start_volume),
+                    end_strokes=self.pump.strokes_for(end_volume),
+                    start_pressure_psi=self.drill_pipe_pressure_at(top),
+                    end_pressure_psi=self.drill_pipe_pressure_at(bottom),
+                )
+            )
+        return segments
+
+    def format_segments(self) -> str:
+        """Render the segment breakdown as a fixed-width table."""
+        lines = [
+            f"{'Section':<12}{'From MD':>9}{'To MD':>9}{'Strokes':>10}"
+            f"{'DP psi':>16}{'psi/100 stk':>13}",
+            "-" * 72,
+        ]
+        for segment in self.schedule_segments():
+            arrow = "UP" if segment.pressure_rises else "down"
+            lines.append(
+                f"{segment.name:<12}{segment.top_md:>9.0f}{segment.bottom_md:>9.0f}"
+                f"{segment.strokes:>10.0f}"
+                f"{segment.start_pressure_psi:>8.0f}"
+                f" -> {segment.end_pressure_psi:<4.0f}"
+                f"{segment.slope_psi_per_100_strokes:>9.1f} {arrow}"
+            )
+        return "\n".join(lines)
 
     def schedule_linear(self, steps: int = 10) -> list[ScheduleStep]:
         """The classic straight-line schedule, as printed on a paper kill sheet.

@@ -257,8 +257,8 @@ class StrippingToBottom(KillMethod):
         summary["Open-ended displacement, for comparison (bbl/ft)"] = round(
             operation.open_ended_displacement_bbl_per_ft, 5
         )
-        summary["Total time at "
-                f"{operation.minutes_per_stand:.0f} min/stand (hr)"] = round(
+        summary["Minutes per stand"] = round(operation.minutes_per_stand)
+        summary["Stripping time (hr)"] = round(
             operation.stands_required * operation.minutes_per_stand / 60.0, 1
         )
         peak_shoe = max((p.shoe_psi for p in trace if p.shoe_psi is not None),
