@@ -20,6 +20,7 @@ horizontal lateral will not move on its own, and neither method can start.
 from __future__ import annotations
 
 from .. import rounding
+from ..hydrostatics import expanded_gas_density
 from ..units import PSI_PER_PPG_FT, psi_to_psia
 from .base import (
     Applicability,
@@ -381,6 +382,15 @@ class LubeAndBleed(KillMethod):
         else:
             pump_in_pressure = float("inf")
 
+        # The cap at surface is what is left of the original influx after
+        # expanding all the way from formation pressure, so it is far lighter
+        # than the same gas was on bottom -- a fifth or less. Holding the
+        # shut-in density here would put hydrostatic in the annulus that is not
+        # there and under-state the shoe pressure.
+        cap_density = expanded_gas_density(
+            well.influx_density_ppg, well.pit_gain_bbl, gas_volume
+        )
+
         trace: list[TracePoint] = []
         pressure = sicp
         pumped = 0.0
@@ -388,7 +398,7 @@ class LubeAndBleed(KillMethod):
             gas_top = 0.0
             gas_bottom = well.annulus_md_at_volume_from_surface(max(gas_volume, 0.0))
             zones = [
-                Zone(gas_top, gas_bottom, well.influx_density_ppg, "gas cap"),
+                Zone(gas_top, gas_bottom, cap_density, "gas cap"),
                 Zone(gas_bottom, well.hole_md_ft, mud, "mud"),
             ]
             column = FluidColumn(zones, well.survey)

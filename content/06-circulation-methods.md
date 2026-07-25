@@ -99,7 +99,7 @@ string    = sheet.annulus.string.internal_volume_bbl         # 171.6 bbl
 On the reference well the open hole is **smaller**, so there is no advantage —
 the simulation gives an identical peak shoe pressure of 4,154 psi for both
 methods. Pull the bit up to 6,000 ft and the open hole (210.6 bbl) exceeds the
-string (100.5 bbl), and Wait and Weight comes out 26 psi lower.
+string (100.5 bbl), and Wait and Weight comes out 24 psi lower.
 
 The `wait_and_weight` plan computes which case applies and says so in its notes.
 
@@ -113,11 +113,11 @@ well = examples.well_state(
 
 plan_kill(well, "drillers").peak_shoe_pressure_psi          # 4154
 plan_kill(well, "wait_and_weight").peak_shoe_pressure_psi   # 4154
-plan_kill(well, "drillers").peak_casing_pressure_psi        # 1100
-plan_kill(well, "wait_and_weight").peak_casing_pressure_psi #  996
+plan_kill(well, "drillers").peak_casing_pressure_psi        # 1222
+plan_kill(well, "wait_and_weight").peak_casing_pressure_psi # 1114
 ```
 
-The casing-pressure advantage is real (1,100 → 989 psi). The shoe advantage is
+The casing-pressure advantage is real (1,222 → 1,114 psi). The shoe advantage is
 not, on this well.
 
 ### Careful which shoe number you compare
@@ -131,11 +131,11 @@ identical when their circulating behaviour differs:
 plan = plan_kill(well, "wait_and_weight")
 
 plan.shut_in_shoe_pressure_psi              # 4154 — same for every method
-plan.peak_circulating_shoe_pressure_psi     # 4115 — the discriminator
+plan.peak_circulating_shoe_pressure_psi     # 4145 — the discriminator
 plan.peak_shoe_pressure_psi                 # 4154 — dominated by shut-in
 ```
 
-Against Driller's, the circulating peaks are 4,115 vs 4,120 psi. Small here, but
+Against Driller's, the circulating peaks are 4,145 vs 4,148 psi. Small here, but
 real — and the overall peak hides it entirely.
 
 Why is shut-in the worst moment? As the gas rises out of the tight collar

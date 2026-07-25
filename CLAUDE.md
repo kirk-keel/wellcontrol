@@ -103,6 +103,7 @@ Keep these stated wherever they apply; they are deliberate, not oversights.
 
 - **Annular friction while circulating is neglected.** System friction is carried on the drill pipe side as the measured slow circulating rate. Standard kill sheet convention.
 - **Gas is ideal and isothermal** unless temperatures and z-factors are supplied. Slightly over-estimates expansion, which errs toward caution for kick tolerance.
+- **Gas density falls as the bubble expands** — `hydrostatics.expanded_gas_density`, density ∝ 1/volume. This is not an approximation but a correction; see below.
 - **The influx is one continuous bubble.** Real influxes disperse, and in oil-based mud dissolve entirely.
 - **HPHT density uses a linear PVT model** with representative coefficients, not lab data.
 
@@ -125,7 +126,33 @@ Every failure mode emerges from that balance rather than being scripted — extr
 
 Lineup is a directed graph in `flowpath.py`: equipment are nodes, valves are edges, and each step asks whether a path exists pump→well and well→pits. **Wrong lineups are not scored as errors; they simply do not work.** BOP elements are inverted — closing one removes a route — so they are not ordinary edges.
 
-Validated by a proportional autopilot in `tests/test_simulator.py` standing in for a driller who never errs: bottomhole pressure holds within 75 psi of formation pressure, no further influx, shoe under fracture. That is the check that the forward and inverse models describe the same well; keep it passing.
+Validated by an autopilot in `tests/test_simulator.py` standing in for a driller who never errs: bottomhole pressure holds within 75 psi of formation pressure, no further influx, shoe under fracture. That is the check that the forward and inverse models describe the same well; keep it passing.
+
+**The autopilot needs its derivative term.** The plant integrates — choke position sets a flow, and pressure is the running total of the imbalance — and the choke is rate-limited on top of that. Proportional control alone limit cycles: it held bottomhole pressure to a steady 65 psi oscillation on a 25-second period. That is a mediocre driller, not a perfect one, and validating the physics against it is validating against the wrong thing. With damping the same run holds 16 psi. If a change makes the autopilot oscillate again, suspect the controller before the engine.
+
+### Assessment (`sim/assessment.py`)
+
+Scoring is on **outcome and margin, never procedure**. Nothing checks the order of actions and nothing checks the lineup — a wrong lineup is not marked incorrect, it simply does not work, and the consequence is what shows up in the metrics.
+
+Three things worth knowing:
+
+- **The hard limit is shoe pressure against fracture pressure, not casing against MAASP.** MAASP is a surface proxy that exists because nobody can read a gauge at 7,000 ft; the simulator computes shoe pressure directly, so it uses the real thing. MAASP is still reported, because it is what the student was watching.
+- **`EventLog.set_level()` is a Schmitt trigger, and that is not decoration.** Conditions are logged on their edges, but a value sitting *on* its threshold logs every crossing — a well-flown kill produced 111 entries, mostly the same one toggling. Separate set and reset points cut it to 2. The metrics still integrate against the true band; the hysteresis is for the log alone.
+- **`Standard.require_kill` exists because a Driller's first circulation, flown perfectly, leaves the well live.** It becomes the scenario objective at stage 5.
+
+Seconds off target and barrels of extra influx are time integrals, so the engine accumulates them every timestep; sampling them off the trace would lose excursions that happen between samples. The trace is sampled on an interval — a three-hour kill at `dt=0.1 s` is over a hundred thousand steps.
+
+## The expanding gas must get lighter
+
+**A fixed mass of gas in a bigger volume is lighter.** `hydrostatics.expanded_gas_density` scales density as 1/volume, and every place that builds a fluid column containing an influx must go through it: `methods/circulating.py`, `methods/volumetric.py` (the surface gas cap, which has expanded enormously), and `sim/engine.py`.
+
+This was wrong for a long time. The influx zone was built at `well.influx_density_ppg` — the density at *shut-in* — while its volume expanded from 22 bbl to 102 bbl on the way up, which quietly multiplies the gas mass by 4.6. The over-heavy column supplies hydrostatic that is not there, so **the surface pressure needed to balance the formation comes out too low: 182 psi low at the peak on the reference deviated well.** That is the unsafe direction, at the exact moment the gas is near surface and the margin against MAASP matters most.
+
+**Nothing in a thousand internally-consistent tests caught it**, because every test built its inputs with the same assumption as the code. It was found by differencing against an independent implementation of the same well (`test_data/second_source/`). That is the argument for keeping `tests/test_second_source.py` pointed at anything that touches the fluid column.
+
+The simulator scales by mass as well as volume, because a student can take *more* gas: `_gas_pv` stands in for moles, since at fixed temperature `PV` is proportional to how much is down there.
+
+A related resolution trap: **peak casing pressure is a sharp cusp**, reached as the gas top arrives at surface and gone again within a few hundred strokes. The summary peaks are read straight off the trace, so a coarse sample grid under-states a safety number rather than merely drawing a rough plot. `simulate_circulation` defaults to 300 steps for that reason; at 60 the peak came out 64 psi low.
 
 ## A data invariant worth knowing
 
@@ -133,7 +160,7 @@ Validated by a proportional autopilot in `tests/test_simulator.py` standing in f
 
 ## Where this is up to
 
-- **Simulator**: stage 1 of 5 done (headless engine, lineup, validation). Next: assessment and event log, then the choke panel, then the remaining screens, then a scenario library. The UI stack is deliberately still undecided — decide it once the engine is driving something.
+- **Simulator**: stages 1 and 2 of 5 done (headless engine, lineup, validation, event log and assessment). Next: the choke panel, then the remaining screens, then a scenario library. **The UI stack is still undecided and stage 3 cannot start without it** — see §9.1 of the design doc; the recommendation there was to defer until the engine drives something, and it now does.
 - **Importers**: done and validated against real-shaped files in `test_data/`, with an independent answer key. See *Importing real geometry* below.
 
 ## Adding a kill method
@@ -171,6 +198,16 @@ Bad files are rejected with a message naming the row, never coerced. A well cont
 - **A real BHA has many short components.** Breaking the schedule at each gives 0-stroke segments nobody can work to, so `schedule_segments(min_strokes=5)` merges slivers.
 
 `Annulus` validates that the string physically fits the hole at construction, naming the component and section. Pairing a tally with the wrong hole section is a plausible mistake and used to fail deep inside a volume calculation.
+
+### Three tiers of evidence
+
+Worth being precise about what is actually verified, because the tiers are not equal:
+
+1. **Published.** `test_data/second_source/` reproduces a worked drill pipe pressure schedule from drillingformulas.com — its inputs and its printed table. `TestPublishedSchedule` in `tests/test_second_source.py` is the only test in the project that checks the library against the outside world. It agrees within 15 psi, and the residual is the article's own rounding (it steps by 47 psi where the exact figure is 46.57, and feeds a rounded 10.6 ppg that overshoots true BHP by 15 psi). Fed an exactly-round kill weight, the general fluid-column model reduces to the textbook straight line to 0.01 psi — which is the check that the machinery producing the *reversal* in a lateral is not inventing structure.
+2. **Independent implementation.** `circulating_profile.csv` is a second model of the reference well. Agreement is a strong cross-check, not proof — two implementations can share a misunderstanding. This is what found the gas density bug.
+3. **Internal consistency.** Everything else.
+
+Still unverified: the *shape* of the choke and shoe curves between endpoints, the influx expansion profile, and the friction treatment. Closing that needs a recorded circulating trace from a real or fully worked kick with published geometry.
 
 ### Validated against `test_data/`
 

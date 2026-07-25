@@ -46,8 +46,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ..hydrostatics import expanded_gas_density
 from ..methods.base import FluidColumn, WellState, Zone
 from ..units import PSI_PER_PPG_FT, psi_to_psia
+from .assessment import (
+    Assessment,
+    EventKind,
+    EventLog,
+    Severity,
+    Standard,
+    TraceSample,
+)
 from .equipment import AdjustableChoke, MudPump, PitSystem, TripTank
 from .flowpath import FlowPath
 
@@ -81,12 +90,38 @@ class SimState:
     kill_mud_pumped_bbl: float = 0.0
     gas_at_surface: bool = False
     well_is_dead: bool = False
-    events: list[str] = field(default_factory=list)
 
-    def log(self, message: str) -> None:
-        minutes, seconds = divmod(int(self.time_s), 60)
-        hours, minutes = divmod(minutes, 60)
-        self.events.append(f"[{hours:02d}:{minutes:02d}:{seconds:02d}] {message}")
+    # -- recorded for the debrief -------------------------------------------
+    #: Structured log. Prefer this to :attr:`events`, which is the same thing
+    #: flattened to strings.
+    event_log: EventLog = field(default_factory=EventLog)
+    trace: list[TraceSample] = field(default_factory=list)
+
+    #: Time integrals. Only the engine sees every timestep, so it accumulates
+    #: these rather than letting the assessor sample them off the trace and
+    #: miss short excursions between samples.
+    seconds_outside_band: float = 0.0
+    influx_taken_bbl: float = 0.0
+    lost_bbl: float = 0.0
+
+    #: Running extremes, for the same reason.
+    max_bhp_excursion_psi: float = 0.0
+    peak_casing_pressure_psi: float = 0.0
+    peak_shoe_pressure_psi: float = 0.0
+
+    @property
+    def events(self) -> list[str]:
+        """The log as printable lines."""
+        return self.event_log.messages
+
+    def record(self, kind: EventKind, message: str, **kwargs) -> None:
+        self.event_log.record(kind, message, time_s=self.time_s, **kwargs)
+
+    def set_condition(self, kind: EventKind, active: bool, **kwargs) -> None:
+        self.event_log.set_condition(kind, active, time_s=self.time_s, **kwargs)
+
+    def set_level(self, kind: EventKind, value: float, **kwargs) -> None:
+        self.event_log.set_level(kind, value, time_s=self.time_s, **kwargs)
 
 
 @dataclass
@@ -116,6 +151,11 @@ class Simulator:
     productivity_index: float = 0.004
     loss_index: float = 0.01
     kill_mud_weight_ppg: float | None = None
+    #: Bottomhole pressure counts as on target within this much of formation
+    #: pressure. The engine needs it because time-off-target is a time integral.
+    bhp_band_psi: float = 50.0
+    #: How often the trace is sampled, in simulated seconds.
+    trace_interval_s: float = 10.0
     state: SimState = field(default_factory=SimState)
 
     def __post_init__(self) -> None:
@@ -128,18 +168,32 @@ class Simulator:
         self.frac_pressure_psi = self.well.frac_pressure_psi
         self._reset_geometry()
 
+        # Set before the first column is built, because the density of the gas
+        # is measured against them. At shut-in the gas is at its reference
+        # state, so the fallback in _influx_density_ppg is the right answer
+        # until these are filled in below.
+        self._initial_gas_pv = 0.0
+        self._initial_gas_volume_bbl = self.well.pit_gain_bbl
+
         # Start shut in on the recorded kick, so the student begins where the
         # kill sheet begins.
         self.state.influx_volume_bbl = self.well.pit_gain_bbl
         self._place_influx()
         self.state.casing_pressure_psi = self.well.sicp_psi
         self._gas_pv = self._gas_pressure_psia() * self.well.pit_gain_bbl
+        self._initial_gas_pv = self._gas_pv
         self._update_pressures()
-        self.state.log(
+        self.state.record(
+            EventKind.SHUT_IN,
             f"Shut in. SIDPP {self.well.sidpp_psi:.0f} psi, "
             f"SICP {self.well.sicp_psi:.0f} psi, "
-            f"pit gain {self.well.pit_gain_bbl:.1f} bbl."
+            f"pit gain {self.well.pit_gain_bbl:.1f} bbl.",
+            sidpp_psi=self.well.sidpp_psi,
+            sicp_psi=self.well.sicp_psi,
+            pit_gain_bbl=self.well.pit_gain_bbl,
         )
+        self._next_sample_s = 0.0
+        self._record_sample()
 
     # -- geometry ------------------------------------------------------------
 
@@ -163,6 +217,30 @@ class Simulator:
         )
         state.gas_at_surface = volume > 0 and state.influx_top_md <= 1.0
 
+    def _influx_density_ppg(self) -> float:
+        """Density of the gas as it currently stands, ppg.
+
+        A fixed mass of gas in a bigger volume is lighter, so density falls as
+        the bubble expands on its way up. Holding the shut-in density would
+        create gas mass from nothing, and the resulting excess hydrostatic
+        under-states casing pressure -- by 182 psi at the peak on the reference
+        well, which is the wrong direction to be wrong in.
+
+        Unlike the planner's one-way circulation, the simulator can take *more*
+        gas when the student lets the well go underbalanced, so this scales by
+        mass as well as by volume. ``_gas_pv`` stands in for the mass: at fixed
+        temperature ``PV`` is proportional to how many moles are down there.
+        """
+        state = self.state
+        if state.influx_volume_bbl <= 0.0 or self._initial_gas_pv <= 0.0:
+            return self.influx_density_ppg
+        mass_ratio = self._gas_pv / self._initial_gas_pv
+        return mass_ratio * expanded_gas_density(
+            self.influx_density_ppg,
+            self._initial_gas_volume_bbl,
+            state.influx_volume_bbl,
+        )
+
     def _annulus_column(self) -> FluidColumn:
         """The annulus as it currently stands, bottom to top."""
         state = self.state
@@ -184,7 +262,7 @@ class Simulator:
         if state.influx_volume_bbl > 0 and state.influx_top_md < state.influx_bottom_md:
             zones.append(
                 Zone(state.influx_top_md, state.influx_bottom_md,
-                     self.influx_density_ppg, "influx")
+                     self._influx_density_ppg(), "influx")
             )
         if state.influx_top_md > 0:
             zones.append(
@@ -281,14 +359,17 @@ class Simulator:
         # -- flow in ---------------------------------------------------------
         flow_in = 0.0 if deadheaded else self.pump.flow_bbl_per_min
         state.flow_in_bpm = flow_in
-        if deadheaded and self.pump.running and "deadhead" not in " ".join(
-            state.events[-3:]
-        ):
-            state.log("Pump running against a closed valve — deadheaded.")
+        state.set_condition(
+            EventKind.PUMP_DEADHEADED,
+            deadheaded and self.pump.running,
+            message="Pump running against a closed valve — deadheaded.",
+            severity=Severity.WARNING,
+            cleared_message="Injection path restored — the pump is delivering.",
+        )
 
         # -- flow out --------------------------------------------------------
         returns_density = (
-            self.influx_density_ppg if state.gas_at_surface
+            self._influx_density_ppg() if state.gas_at_surface
             else self.well.mud_weight_ppg
         )
         if not route.open_to_pits:
@@ -316,15 +397,22 @@ class Simulator:
         state.influx_rate_bpm = influx_rate
 
         loss_rate = 0.0
+        over = 0.0
         if self.frac_pressure_psi is not None:
             over = state.shoe_pressure_psi - self.frac_pressure_psi
             if over > 0:
                 loss_rate = self.loss_index * over
-                if not any("break" in e for e in state.events[-5:]):
-                    state.log(
-                        f"Shoe over-pressured by {over:.0f} psi — taking losses."
-                    )
         state.loss_rate_bpm = loss_rate
+        state.set_level(
+            EventKind.LOSSES,
+            over,
+            rises_above=5.0,
+            falls_below=1.0,
+            message=f"Shoe over-pressured by {over:.0f} psi — taking losses.",
+            severity=Severity.CRITICAL,
+            cleared_message="Shoe pressure back below fracture — losses stopped.",
+            over_psi=over,
+        )
 
         # -- volume balance drives surface pressure --------------------------
         if route.open_to_pits and not route.through_choke:
@@ -347,10 +435,21 @@ class Simulator:
             self._gas_pv += psi_to_psia(state.bottomhole_pressure_psi) * (
                 influx_rate * minutes
             )
-            if not any("influx" in e for e in state.events[-4:]):
-                state.log(
-                    f"Underbalanced by {underbalance:.0f} psi — taking an influx."
-                )
+        # Logged on a meaningful underbalance rather than on any at all: a
+        # well held within a psi or two of balance drifts either side of it
+        # constantly, and "taking an influx" is the wrong thing to tell a
+        # student who is flying it correctly. The volume taken is still
+        # integrated in full, however small the rate.
+        state.set_level(
+            EventKind.INFLUX_TAKEN,
+            underbalance,
+            rises_above=10.0,
+            falls_below=2.0,
+            message=f"Underbalanced by {underbalance:.0f} psi — taking an influx.",
+            severity=Severity.CRITICAL,
+            cleared_message="Back overbalanced — the influx has stopped.",
+            underbalance_psi=underbalance,
+        )
 
         # Gas reaching surface leaves with the returns.
         if state.gas_at_surface and flow_out > 0 and route.through_choke:
@@ -365,10 +464,158 @@ class Simulator:
         # -- pits ------------------------------------------------------------
         self.pits.active_bbl += (flow_out - flow_in) * minutes
 
+        # -- what the run will be judged on ----------------------------------
+        state.influx_taken_bbl += influx_rate * minutes
+        state.lost_bbl += loss_rate * minutes
+
         state.time_s += dt
         self._update_pressures()
         self._check_dead()
+        self._accumulate(dt, route)
+        self._sample_if_due()
         return state
+
+    # -- recording -----------------------------------------------------------
+
+    def _accumulate(self, dt: float, route) -> None:
+        """Running totals and conditions, evaluated once pressures are current.
+
+        Time off target has to be integrated here rather than sampled off the
+        trace: a student can swing 300 psi and recover between two samples, and
+        that must not vanish from the debrief.
+        """
+        state = self.state
+
+        excursion = abs(
+            state.bottomhole_pressure_psi - self.formation_pressure_psi
+        )
+        if excursion > self.bhp_band_psi:
+            state.seconds_outside_band += dt
+        state.max_bhp_excursion_psi = max(state.max_bhp_excursion_psi, excursion)
+        state.peak_casing_pressure_psi = max(
+            state.peak_casing_pressure_psi, state.casing_pressure_psi
+        )
+        state.peak_shoe_pressure_psi = max(
+            state.peak_shoe_pressure_psi, state.shoe_pressure_psi
+        )
+
+        state.set_level(
+            EventKind.BHP_EXCURSION,
+            excursion,
+            rises_above=self.bhp_band_psi,
+            falls_below=0.6 * self.bhp_band_psi,
+            message=(
+                f"Bottomhole pressure {excursion:.0f} psi off formation "
+                f"pressure."
+            ),
+            severity=Severity.CAUTION,
+            cleared_message="Bottomhole pressure back on target.",
+        )
+
+        # Circulating with the stack open is the lesson students most need: the
+        # choke does nothing and the well is not under control at all.
+        state.set_condition(
+            EventKind.WELL_OPEN_TO_FLOWLINE,
+            self.pump.running and route.open_to_pits and not route.through_choke,
+            message=(
+                "Circulating with the BOP open — returns are going up the "
+                "flowline and the choke has no effect."
+            ),
+            severity=Severity.CRITICAL,
+        )
+        state.set_condition(
+            EventKind.NO_RETURNS,
+            self.pump.running and not route.open_to_pits,
+            message="Pumping into a closed system — no returns route.",
+            severity=Severity.WARNING,
+            cleared_message="Returns route open.",
+        )
+
+        maasp = self.maasp_psi
+        if maasp is not None:
+            state.set_level(
+                EventKind.MAASP_EXCEEDED,
+                state.casing_pressure_psi,
+                rises_above=maasp,
+                falls_below=maasp - 25.0,
+                message=(
+                    f"Casing pressure {state.casing_pressure_psi:.0f} psi is "
+                    f"above MAASP ({maasp:.0f} psi)."
+                ),
+                severity=Severity.WARNING,
+                cleared_message="Casing pressure back below MAASP.",
+            )
+
+        if state.gas_at_surface:
+            state.record(
+                EventKind.GAS_AT_SURFACE,
+                "Gas at surface — expect the choke to go violent.",
+                severity=Severity.CAUTION,
+                once=True,
+            )
+        if (
+            self.kill_mud_weight_ppg != self.well.mud_weight_ppg
+            and state.pumped_bbl >= self.string_volume_bbl
+        ):
+            state.record(
+                EventKind.KILL_MUD_AT_BIT,
+                "Kill mud at the bit — hold final circulating pressure from here.",
+                severity=Severity.INFO,
+                once=True,
+            )
+
+        state.set_condition(
+            EventKind.PUMP_STARTED,
+            self.pump.running,
+            message=f"Pump running at {self.pump.spm:.0f} spm.",
+            severity=Severity.INFO,
+            cleared_message="Pump stopped.",
+        )
+
+    def _record_sample(self) -> None:
+        state = self.state
+        state.trace.append(
+            TraceSample(
+                time_s=state.time_s,
+                strokes=state.strokes,
+                pumped_bbl=state.pumped_bbl,
+                bottomhole_psi=state.bottomhole_pressure_psi,
+                casing_psi=state.casing_pressure_psi,
+                standpipe_psi=state.standpipe_pressure_psi,
+                shoe_psi=state.shoe_pressure_psi,
+                influx_bbl=state.influx_volume_bbl,
+                influx_top_md=state.influx_top_md,
+                choke_percent=self.choke.position,
+                pump_spm=self.pump.spm,
+                flow_in_bpm=state.flow_in_bpm,
+                flow_out_bpm=state.flow_out_bpm,
+                pit_gain_bbl=self.pits.gain_bbl,
+            )
+        )
+
+    def _sample_if_due(self) -> None:
+        if self.state.time_s + 1e-9 >= self._next_sample_s + self.trace_interval_s:
+            self._next_sample_s = self.state.time_s
+            self._record_sample()
+
+    def assess(self, standard: Standard | None = None) -> Assessment:
+        """Grade the run so far. See :mod:`wellcontrol.sim.assessment`."""
+        from .assessment import assess
+
+        return assess(self, standard)
+
+    @property
+    def maasp_psi(self) -> float | None:
+        """Maximum allowable annular surface pressure for the mud in the hole.
+
+        Reported in the debrief because it is the number the student was
+        watching. The hard limit is the shoe pressure the engine computes
+        directly.
+        """
+        try:
+            return self.well.maasp_psi()
+        except (TypeError, ValueError):
+            return None
 
     def _gas_pressure_psia(self) -> float:
         """Pressure at the middle of the gas, absolute."""
@@ -415,7 +662,12 @@ class Simulator:
         )
         if killed and state.pumped_bbl > self.string_volume_bbl:
             state.well_is_dead = True
-            state.log("Well is dead — no influx, no surface pressure.")
+            state.record(
+                EventKind.WELL_DEAD,
+                "Well is dead — no influx, no surface pressure.",
+                severity=Severity.INFO,
+                once=True,
+            )
 
     # -- convenience ---------------------------------------------------------
 

@@ -26,22 +26,44 @@ not attempt.
 
 from __future__ import annotations
 
+from .assessment import (
+    Assessment,
+    Event,
+    EventKind,
+    EventLog,
+    Grade,
+    Metric,
+    Severity,
+    Standard,
+    TraceSample,
+    assess,
+)
 from .engine import MUD_COMPRESSIBILITY, SimState, Simulator
 from .equipment import AdjustableChoke, MudPump, PitSystem, TripTank
 from .flowpath import FlowPath, Node, ReturnRoute, Valve, ValveState, default_valves
 
 __all__ = [
     "AdjustableChoke",
+    "Assessment",
+    "Event",
+    "EventKind",
+    "EventLog",
     "FlowPath",
+    "Grade",
     "MUD_COMPRESSIBILITY",
+    "Metric",
     "MudPump",
     "Node",
     "PitSystem",
     "ReturnRoute",
+    "Severity",
     "SimState",
     "Simulator",
+    "Standard",
+    "TraceSample",
     "TripTank",
     "Valve",
     "ValveState",
+    "assess",
     "default_valves",
 ]

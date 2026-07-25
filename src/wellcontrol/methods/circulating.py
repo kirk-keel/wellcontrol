@@ -38,6 +38,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .. import rounding
+from ..hydrostatics import expanded_gas_density
 from ..units import PSI_PER_PPG_FT, psi_to_psia
 from .base import (
     Applicability,
@@ -83,7 +84,8 @@ def _solve_influx_volume(
 
     Boyle's law against the pressure the influx actually sits at, iterated
     because the volume sets the height, the height sets the average pressure,
-    and the average pressure sets the volume.
+    and the average pressure sets the volume. The gas also lightens as it
+    expands, which feeds back into the same loop.
     """
     gradient = well.influx_gradient_psi_per_ft
     annulus_volume = well.annulus.volume_bbl
@@ -99,7 +101,12 @@ def _solve_influx_volume(
 
         top_md = well.annulus_md_at_volume_from_bottom(volume_below + volume)
         vertical = well.survey.tvd_at(influx_bottom_md) - well.survey.tvd_at(top_md)
-        average_pressure = pressure_at_influx_bottom - gradient * vertical / 2.0
+        current_gradient = expanded_gas_density(
+            gradient, initial_volume_bbl, volume
+        )
+        average_pressure = (
+            pressure_at_influx_bottom - current_gradient * vertical / 2.0
+        )
         if average_pressure <= 1.0:
             break
         volume = initial_volume_bbl * reference_pressure_psia / psi_to_psia(
@@ -118,7 +125,7 @@ def simulate_circulation(
     use_kill_mud: bool,
     influx_volume_bbl: float,
     total_volume_bbl: float,
-    steps: int = 60,
+    steps: int = 300,
 ) -> list[Snapshot]:
     """Simulate one circulation at constant bottomhole pressure.
 
@@ -130,7 +137,14 @@ def simulate_circulation(
         influx_volume_bbl: Influx in the annulus at the start. Zero for the
             second circulation of Driller's, where the influx is already out.
         total_volume_bbl: How much to pump.
-        steps: Number of samples.
+        steps: Number of samples. **Peak casing pressure is a sharp cusp**,
+            reached as the top of the gas arrives at surface and lost again
+            within a few hundred strokes as it vents. The peaks reported in the
+            summary are read straight off this trace, so too coarse a sample
+            grid does not merely draw a rough plot -- it under-states a safety
+            number. At 60 samples the peak on the reference deviated well came
+            out 64 psi low against an independent profile; at 300 it is within
+            10 psi, for about 11 ms.
 
     Returns:
         One :class:`Snapshot` per step, from zero pumped to ``total_volume_bbl``.
@@ -213,8 +227,16 @@ def simulate_circulation(
                 Zone(md_influx_bottom, md_kill_top, original_mw, "mud behind influx")
             )
         if influx_volume > 0 and md_influx_top < md_influx_bottom:
+            # The bubble lightens as it expands; see expanded_gas_density.
             zones.append(
-                Zone(md_influx_top, md_influx_bottom, well.influx_density_ppg, "influx")
+                Zone(
+                    md_influx_top,
+                    md_influx_bottom,
+                    expanded_gas_density(
+                        well.influx_density_ppg, influx_volume_bbl, influx_volume
+                    ),
+                    "influx",
+                )
             )
         if md_influx_top > 0:
             zones.append(Zone(0.0, md_influx_top, original_mw, "original mud"))

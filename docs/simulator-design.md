@@ -4,7 +4,9 @@ A training simulator where a student plans a kill, lines up the rig, brings the
 pump online, and works the choke to circulate the influx out — with the well
 responding to what they actually do rather than what they intended.
 
-**Status: design agreed. Stage 1 (headless engine) in progress.**
+**Status: stages 1 and 2 done (headless engine, lineup, validation, event log
+and assessment). Stage 3 — the choke panel — is next, and needs the UI decision
+in §9.1.**
 
 Decisions taken:
 
@@ -177,6 +179,34 @@ Scoring on **outcome and margin**, not on procedure order, so a student who
 achieves constant bottomhole pressure by a slightly unusual route is not
 penalised.
 
+### As built (`sim/assessment.py`)
+
+Three things the design did not anticipate:
+
+**The shoe is the limit, not MAASP.** MAASP is a surface proxy that exists
+because nobody can read a gauge at 7,000 ft. The simulator computes shoe
+pressure directly from the fluid column, so the hard limit is shoe against
+fracture pressure; peak casing against MAASP is reported because it is what the
+student was watching, but it is informational.
+
+**Conditions need hysteresis or the log is unreadable.** Losses, influx and
+off-target are conditions true for thousands of timesteps, so the log records
+their edges — but a value sitting *on* its threshold then logs every crossing. A
+well-flown kill produced 111 entries, mostly "bottomhole pressure 50 psi off
+target" toggling. `EventLog.set_level()` is a Schmitt trigger: it needs a
+separate set point and reset point. The same run now logs 2. The *metrics* still
+integrate against the true band — the hysteresis is for the log alone.
+
+**Not every exercise ends with a dead well.** A Driller's *first* circulation,
+flown perfectly, leaves the well live and shut in. `Standard.require_kill`
+carries that; it becomes the scenario's objective at stage 5.
+
+Two quantities are time integrals — seconds off target, and barrels of extra
+influx — so the engine accumulates them at every timestep rather than letting
+the assessor sample them off the trace, where a short excursion between two
+samples would vanish. The trace itself is sampled on an interval: a three-hour
+kill at `dt=0.1 s` is over a hundred thousand steps and no debrief needs that.
+
 ---
 
 ## 6. Time
@@ -212,12 +242,16 @@ the rest of the library. The UI is a client of the engine, not part of it.
 
 Each stage is useful on its own and de-risks the next.
 
-1. **Engine, headless.** Flow path, pump, choke, volume balance, influx and
-   loss response. Driven by a script. Tested against the invariants: a
-   perfectly-executed kill must reproduce the existing quasi-static solver's
+1. ~~**Engine, headless.**~~ **Done.** Flow path, pump, choke, volume balance,
+   influx and loss response. Driven by a script. Tested against the invariants:
+   a perfectly-executed kill must reproduce the existing quasi-static solver's
    answer to within a few psi.
-2. **Assessment and event log.** Still headless. A scripted "good kill" and a
-   scripted "bad kill" produce sensibly different verdicts.
+2. ~~**Assessment and event log.**~~ **Done.** Still headless. A scripted "good
+   kill" and a scripted "bad kill" produce sensibly different verdicts — the
+   well-flown kill grades *excellent*; a choke left at a fixed position fails on
+   shoe pressure and losses; a choke left wide open fails on additional influx;
+   a kill attempted with the BOP open fails on influx and logs the critical
+   "the choke has no effect".
 3. **One screen — the choke panel.** The minimum needed to actually fly a kill.
 4. **The rest of the screens**, lineup schematic last since it is the most UI-heavy.
 5. **Scenario library** and instructor debrief.

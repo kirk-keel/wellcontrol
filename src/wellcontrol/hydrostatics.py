@@ -314,3 +314,47 @@ def dry_pipe_length_from_slug(
         slug_volume_bbl * (slug_weight_ppg - mud_weight_ppg)
         / (pipe_capacity_bbl_per_ft * mud_weight_ppg)
     )
+
+
+def expanded_gas_density(
+    shut_in_density: float,
+    shut_in_volume_bbl: float,
+    volume_bbl: float,
+) -> float:
+    """Density of a gas influx once it has expanded, in the units given.
+
+    **A fixed mass of gas in a bigger volume is lighter.** Density scales as
+    1/volume, so this takes a density in ppg or a gradient in psi/ft equally --
+    the two are proportional and the same ratio applies.
+
+    On the reference well the bubble goes from 22 bbl at 0.119 psi/ft on bottom
+    to roughly 102 bbl by the time it reaches surface, where it is about a fifth
+    as dense.
+
+    Holding the shut-in density constant while the bubble expands creates gas
+    mass out of nothing, and the over-heavy column then supplies hydrostatic
+    that is not there. **The error runs the unsafe way:** too much hydrostatic
+    in the annulus means the surface pressure needed to balance the formation
+    comes out too low. It under-stated peak choke pressure by 182 psi on the
+    reference well -- at exactly the moment the gas is near surface and the
+    margin against MAASP matters most. Found by differencing against an
+    independent second-source circulating profile; see ``test_data/``.
+
+    Many kill sheets ignore gas hydrostatic altogether, which is a different and
+    more conservative simplification. This library does not ignore it, so it has
+    to get it right.
+
+    Args:
+        shut_in_density: Density (ppg) or gradient (psi/ft) at the reference
+            state.
+        shut_in_volume_bbl: Volume at that reference state.
+        volume_bbl: Volume now.
+
+    Returns:
+        Density in the same units as ``shut_in_density``. Falls back to the
+        reference value if either volume is non-positive, which is the right
+        answer when there is no gas to scale.
+    """
+    if volume_bbl <= 0.0 or shut_in_volume_bbl <= 0.0:
+        return shut_in_density
+    return shut_in_density * shut_in_volume_bbl / volume_bbl

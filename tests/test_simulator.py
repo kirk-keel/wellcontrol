@@ -10,7 +10,17 @@ forward model and the inverse model describe the same well.
 import pytest
 
 from wellcontrol import examples
-from wellcontrol.sim import FlowPath, Node, Simulator, ValveState
+from wellcontrol.sim import (
+    EventKind,
+    EventLog,
+    FlowPath,
+    Grade,
+    Node,
+    Severity,
+    Simulator,
+    Standard,
+    ValveState,
+)
 from wellcontrol.wellconfig import BOPLocation, Trajectory, WellConfiguration
 
 SV = WellConfiguration(BOPLocation.SURFACE, Trajectory.VERTICAL)
@@ -264,18 +274,30 @@ class TestGasInventory:
 # --------------------------------------------------------------------------
 
 def autopilot_kill(sim: Simulator, seconds: float, dt: float = 0.1,
-                   gain: float = 0.02) -> list[float]:
+                   gain: float = 0.02, damping: float = 0.2) -> list[float]:
     """Fly the kill perfectly, holding bottomhole pressure on the formation.
 
-    A proportional controller on the choke, standing in for a driller who never
-    makes a mistake. Used to check the forward model against the inverse one:
-    if the well is flown exactly right, the two must agree.
+    A proportional-derivative controller on the choke, standing in for a driller
+    who never makes a mistake. Used to check the forward model against the
+    inverse one: if the well is flown exactly right, the two must agree.
+
+    **The damping term is not optional.** The plant integrates -- choke position
+    sets a flow, and pressure is the running total of the imbalance -- and the
+    choke is rate-limited on top of that. Proportional control alone limit
+    cycles: it held bottomhole pressure to a steady 65 psi oscillation on a
+    25-second period, which is a mediocre driller rather than a perfect one, and
+    is not the thing the physics should be validated against.
     """
     target = sim.formation_pressure_psi
+    previous_error = target - sim.state.bottomhole_pressure_psi
     trace: list[float] = []
     for _ in range(int(seconds / dt)):
         error = target - sim.state.bottomhole_pressure_psi
-        sim.choke.command(sim.choke.commanded_position - gain * error)
+        rate = (error - previous_error) / dt
+        previous_error = error
+        sim.choke.command(
+            sim.choke.commanded_position - gain * error - damping * rate
+        )
         sim.step(dt)
         trace.append(sim.state.bottomhole_pressure_psi)
     return trace
@@ -316,6 +338,236 @@ class TestAgreesWithTheQuasiStaticSolver:
         sim.run(30, dt=0.1)
         autopilot_kill(sim, seconds=900)
         assert sim.state.shoe_pressure_psi < sim.frac_pressure_psi
+
+
+# --------------------------------------------------------------------------
+# Event log
+# --------------------------------------------------------------------------
+
+class TestEventLog:
+    """Conditions are logged on their edges, not on every timestep."""
+
+    def test_condition_logs_once_while_it_stays_true(self):
+        log = EventLog()
+        for time_s in range(10):
+            log.set_condition(
+                EventKind.LOSSES, True, time_s=float(time_s), message="losing"
+            )
+        assert len(log.of_kind(EventKind.LOSSES)) == 1
+
+    def test_condition_logs_again_after_it_clears(self):
+        log = EventLog()
+        log.set_condition(EventKind.LOSSES, True, time_s=0.0, message="losing")
+        log.set_condition(EventKind.LOSSES, False, time_s=1.0)
+        log.set_condition(EventKind.LOSSES, True, time_s=2.0, message="losing")
+        assert len(log.of_kind(EventKind.LOSSES)) == 2
+
+    def test_clearing_can_log_its_own_entry(self):
+        log = EventLog()
+        log.set_condition(EventKind.LOSSES, True, time_s=0.0, message="on")
+        log.set_condition(
+            EventKind.LOSSES, False, time_s=1.0, cleared_message="off"
+        )
+        assert [e.message for e in log] == ["on", "off"]
+
+    def test_once_suppresses_repeats(self):
+        log = EventLog()
+        for time_s in range(5):
+            log.record(
+                EventKind.WELL_DEAD, "dead", time_s=float(time_s), once=True
+            )
+        assert len(log) == 1
+
+    def test_hysteresis_stops_a_condition_chattering_on_its_threshold(self):
+        """A value sitting on the limit must not log on every crossing."""
+        log = EventLog()
+        for step, value in enumerate([49.0, 51.0] * 20):
+            log.set_level(
+                EventKind.BHP_EXCURSION, value, rises_above=50.0,
+                falls_below=30.0, time_s=float(step), message="off target",
+            )
+        assert len(log.of_kind(EventKind.BHP_EXCURSION)) == 1
+
+    def test_hysteresis_still_clears_on_a_real_recovery(self):
+        log = EventLog()
+        log.set_level(EventKind.BHP_EXCURSION, 90.0, rises_above=50.0,
+                      falls_below=30.0, time_s=0.0, message="off")
+        log.set_level(EventKind.BHP_EXCURSION, 10.0, rises_above=50.0,
+                      falls_below=30.0, time_s=1.0, cleared_message="back")
+        assert not log.is_active(EventKind.BHP_EXCURSION)
+
+    def test_a_reset_point_above_the_set_point_is_rejected(self):
+        log = EventLog()
+        with pytest.raises(ValueError, match="never clear"):
+            log.set_level(EventKind.LOSSES, 1.0, rises_above=10.0,
+                          falls_below=20.0, time_s=0.0)
+
+    def test_worst_severity_is_reported(self):
+        log = EventLog()
+        log.record(EventKind.SHUT_IN, "a", time_s=0.0, severity=Severity.INFO)
+        log.record(EventKind.LOSSES, "b", time_s=1.0, severity=Severity.CRITICAL)
+        log.record(EventKind.BHP_EXCURSION, "c", time_s=2.0,
+                   severity=Severity.CAUTION)
+        assert log.worst_severity is Severity.CRITICAL
+
+    def test_events_render_with_a_clock(self):
+        log = EventLog()
+        log.record(EventKind.SHUT_IN, "shut in", time_s=3725.0)
+        assert str(log.events[0]) == "[01:02:05] shut in"
+
+
+# --------------------------------------------------------------------------
+# Trace and assessment
+# --------------------------------------------------------------------------
+
+FIRST_CIRCULATION = Standard(require_kill=False)
+
+
+def fly_well(sim: Simulator, seconds: float = 930.0) -> Simulator:
+    """A kill flown properly: the choke worked from the moment the pump starts."""
+    sim.choke.command(20.0)
+    sim.pump.command(30.0)
+    autopilot_kill(sim, seconds=seconds)
+    return sim
+
+
+class TestTrace:
+    def test_a_sample_is_recorded_at_the_start(self):
+        sim = lined_up_to_kill(make())
+        assert len(sim.state.trace) == 1
+        assert sim.state.trace[0].time_s == 0.0
+
+    def test_samples_accumulate_on_the_interval(self):
+        sim = lined_up_to_kill(make(trace_interval_s=10.0))
+        sim.run(100, dt=0.1)
+        assert len(sim.state.trace) == pytest.approx(11, abs=1)
+
+    def test_the_trace_is_not_one_sample_per_timestep(self):
+        """A three-hour kill at dt=0.1 would be a hundred thousand rows."""
+        sim = lined_up_to_kill(make())
+        sim.run(600, dt=0.1)
+        assert len(sim.state.trace) < 100
+
+    def test_a_sample_carries_what_a_debrief_plots(self):
+        sim = lined_up_to_kill(make())
+        sim.run(20, dt=0.1)
+        sample = sim.state.trace[-1]
+        assert sample.bottomhole_psi > 0
+        assert sample.casing_psi > 0
+        assert sample.influx_bbl > 0
+
+
+class TestAssessment:
+    """A good kill and a bad kill must produce sensibly different verdicts."""
+
+    def test_a_well_flown_kill_passes(self):
+        sim = fly_well(lined_up_to_kill(make()))
+        assessment = sim.assess(FIRST_CIRCULATION)
+        assert assessment.passed, assessment.format_report()
+
+    def test_a_well_flown_kill_takes_no_extra_influx_and_no_losses(self):
+        sim = fly_well(lined_up_to_kill(make()))
+        assert sim.state.influx_taken_bbl < 1.0
+        assert sim.state.lost_bbl == pytest.approx(0.0)
+
+    def test_a_well_flown_kill_keeps_bottomhole_pressure_on_target(self):
+        sim = fly_well(lined_up_to_kill(make()))
+        assert sim.state.max_bhp_excursion_psi < 75.0
+
+    def test_a_choke_left_alone_fails(self):
+        """Fixed choke: pressure runs away and the shoe goes."""
+        sim = lined_up_to_kill(make())
+        sim.choke.command(18.0)
+        sim.pump.command(30.0)
+        sim.run(930, dt=0.1)
+        assert sim.assess(FIRST_CIRCULATION).grade is Grade.FAIL
+
+    def test_a_choke_left_alone_is_failed_for_the_shoe_not_the_procedure(self):
+        sim = lined_up_to_kill(make())
+        sim.choke.command(18.0)
+        sim.pump.command(30.0)
+        sim.run(930, dt=0.1)
+        failed = {m.name for m in sim.assess(FIRST_CIRCULATION).critical_failures}
+        assert "Peak shoe pressure" in failed
+
+    def test_a_wide_open_choke_fails_for_taking_an_influx(self):
+        sim = lined_up_to_kill(make())
+        sim.choke.command(100.0)
+        sim.pump.command(30.0)
+        sim.run(600, dt=0.1)
+        assessment = sim.assess(FIRST_CIRCULATION)
+        assert assessment.grade is Grade.FAIL
+        failed = {m.name for m in assessment.critical_failures}
+        assert "Additional influx taken" in failed
+
+    def test_circulating_with_the_bop_open_is_logged_as_critical(self):
+        """The lesson students most need, and it must reach the debrief."""
+        sim = make()
+        sim.flow_path.open(
+            "pump_discharge", "standpipe_valve",
+            "choke_line_valve", "choke_line_to_manifold", "choke_1",
+        )
+        sim.choke.command(2.0)
+        sim.pump.command(30.0)
+        sim.run(120, dt=0.1)
+        assert sim.state.event_log.has(EventKind.WELL_OPEN_TO_FLOWLINE)
+        assert sim.state.event_log.worst_severity is Severity.CRITICAL
+
+    def test_the_good_kill_logs_far_less_than_the_bad_one(self):
+        """A readable log is the point of the edge detection."""
+        good = fly_well(lined_up_to_kill(make()))
+        bad = lined_up_to_kill(make())
+        bad.choke.command(100.0)
+        bad.pump.command(30.0)
+        bad.run(600, dt=0.1)
+        assert len(good.state.event_log.at_least(Severity.CAUTION)) < 5
+
+    def test_not_killing_the_well_fails_when_the_exercise_required_it(self):
+        sim = fly_well(lined_up_to_kill(make()))
+        assessment = sim.assess(Standard(require_kill=True))
+        assert assessment.grade is Grade.FAIL
+        assert "not killed" in assessment.summary
+
+    def test_a_first_circulation_is_not_failed_for_leaving_the_well_live(self):
+        """Flying the first circulation correctly still leaves a live well."""
+        sim = fly_well(lined_up_to_kill(make()))
+        assert not sim.state.well_is_dead
+        assert sim.assess(FIRST_CIRCULATION).passed
+
+    def test_the_report_names_what_went_wrong(self):
+        sim = lined_up_to_kill(make())
+        sim.choke.command(100.0)
+        sim.pump.command(30.0)
+        sim.run(600, dt=0.1)
+        report = sim.assess(FIRST_CIRCULATION).format_report()
+        assert "FAIL" in report
+        assert "influx" in report.lower()
+
+    def test_tightening_the_standard_makes_it_harder(self):
+        sim = fly_well(lined_up_to_kill(make()))
+        lenient = sim.assess(FIRST_CIRCULATION)
+        strict = sim.assess(
+            Standard(require_kill=False, bhp_band_psi=50.0,
+                     max_bhp_excursion_psi=1.0)
+        )
+        assert lenient.passed
+        assert not strict.passed
+
+    def test_time_off_target_is_integrated_not_sampled(self):
+        """A brief excursion between two trace samples must still count."""
+        sim = lined_up_to_kill(make(trace_interval_s=600.0))
+        sim.choke.command(0.0)
+        sim.pump.command(30.0)
+        sim.run(60, dt=0.1)
+        assert sim.state.seconds_outside_band > 0.0
+        assert len(sim.state.trace) == 1
+
+    def test_assessment_does_not_disturb_the_run(self):
+        sim = fly_well(lined_up_to_kill(make()))
+        before = sim.state.time_s
+        sim.assess(FIRST_CIRCULATION)
+        sim.assess(FIRST_CIRCULATION)
+        assert sim.state.time_s == before
 
 
 # --------------------------------------------------------------------------

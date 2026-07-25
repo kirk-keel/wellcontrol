@@ -130,7 +130,7 @@ Influx reaches the shoe after ........... 107.6 bbl
 ```
 
 The influx gets there first, so both methods give an identical peak shoe
-pressure of 4,154 psi. The casing-pressure advantage is real (996 vs 1,100 psi);
+pressure of 4,154 psi. The casing-pressure advantage is real (1,114 vs 1,222 psi);
 the shoe advantage is not, here.
 
 The library computes which case applies and says so:
