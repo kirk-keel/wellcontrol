@@ -167,9 +167,12 @@ them is round-to-nearest.
 | MAASP / MASP | **down** | 0 | Lower limit, more margin before breakdown |
 | Pressure per step | **down** | 0 | Smaller decrement, pressure stays higher longer |
 | Strokes | **up** | 0 | Stopping short of a target is the failure mode |
+| Volume | nearest | 1 | Measured, not a limit |
 
 Pressures carry no decimals — no gauge on a rig resolves better than a few psi.
 Strokes carry none either; there is no such thing as a fraction of a stroke.
+Volumes carry exactly one: a trip tank does not resolve more finely, so a bleed
+volume quoted as 2.26 bbl implies a precision the measurement does not have.
 
 ```python
 from wellcontrol import rounding
@@ -179,7 +182,27 @@ rounding.max_allowable_mud_weight(12.87) # 12.8
 rounding.pressure_limit(1181.6)          # 1181
 rounding.pressure_step(51.6)             # 51
 rounding.strokes(1465.1)                 # 1466
+rounding.volume(3.45)                    # 3.5
 ```
+
+### Nearest means half away from zero
+
+Where a figure rounds to nearest rather than in a safe direction, it rounds the
+way it is done on paper. **3.45 bbl is 3.5.**
+
+This is not what Python's built-in `round` does — it uses banker's rounding,
+sending halves to the nearest *even* digit:
+
+| Value | Academic | Python `round` |
+| ---: | ---: | ---: |
+| 0.25 | **0.3** | 0.2 |
+| 0.35 | **0.4** | 0.3 |
+| 2.55 | **2.6** | 2.5 |
+| 0.5 | **1** | 0 |
+| 2.5 | **3** | 2 |
+
+A figure that disagrees with the one the crew worked by hand is worse than
+useless, so every "nearest" rounding here goes half away from zero.
 
 **The rounded values are the operational ones.** The rig mixes 10.4 ppg, so FCP
 is `600 × 10.4/9.6 = 650`, not `600 × 10.369/9.6 = 648`.

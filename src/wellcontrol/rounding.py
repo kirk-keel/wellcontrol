@@ -18,7 +18,18 @@ Pressure step          **down**     0        Smaller decrement, so pressure
 Strokes                **up**       0        No such thing as a fraction of a
                                              stroke, and stopping short of a
                                              target is the failure mode
+Volume                 nearest      1        Measured, not a limit -- but see
+                                             the note on half-up below
 =====================  ===========  =======  ==============================
+
+## Nearest means half away from zero
+
+Where a quantity rounds to nearest rather than in a safe direction, it rounds
+the way it is done on paper: **3.45 bbl is 3.5**. Python's built-in ``round``
+does not do this -- it uses banker's rounding, sending halves to the nearest
+even digit, so ``round(0.5)`` is 0 and ``round(2.5)`` is 2. Nobody filling in a
+kill sheet rounds that way, and a figure that disagrees with the one the crew
+worked by hand is worse than useless.
 
 A worked pair: a computed kill mud weight of 10.37 ppg is mixed as **10.4**,
 and a computed MAASP of 1,181.6 psi is written as **1,181**. Rounding either
@@ -40,6 +51,7 @@ all. Every function here snaps to a tolerance first.
 from __future__ import annotations
 
 import math
+from decimal import ROUND_HALF_UP, Decimal
 
 #: Decimal places to snap to before applying a directional rounding, to stop
 #: binary representation error from triggering a spurious step.
@@ -48,6 +60,22 @@ _SNAP = 9
 
 def _snap(value: float) -> float:
     return round(value, _SNAP)
+
+
+def _half_up(value: float, places: int) -> float:
+    """Round half away from zero -- the way it is done on paper.
+
+    Python's built-in ``round`` uses banker's rounding, which sends halves to
+    the nearest even digit: ``round(0.5)`` is 0 and ``round(2.5)`` is 2. That
+    is not what anyone means by rounding a well control figure. 3.45 bbl is
+    3.5, not 3.4.
+
+    Going through ``Decimal`` on the string form also sidesteps binary
+    representation: ``Decimal("3.45")`` is exactly 3.45, where the float 3.45
+    is not, and rounding the float directly can fall either way.
+    """
+    quantum = Decimal(1).scaleb(-places)
+    return float(Decimal(str(_snap(value))).quantize(quantum, ROUND_HALF_UP))
 
 
 # --------------------------------------------------------------------------
@@ -98,7 +126,7 @@ def pressure_limit(psi: float) -> int:
 
 
 def pressure(psi: float) -> int:
-    """Round a pressure to a whole psi, nearest.
+    """Round a pressure to a whole psi, half away from zero.
 
     For reporting a computed pressure that is not itself a limit -- formation
     pressure, ICP, FCP. Pressures are not quoted with decimals in well control;
@@ -106,8 +134,10 @@ def pressure(psi: float) -> int:
 
     >>> pressure(1000.4)
     1000
+    >>> pressure(1000.5)
+    1001
     """
-    return int(round(_snap(psi)))
+    return int(_half_up(psi, 0))
 
 
 def pressure_step(psi: float) -> int:
@@ -154,12 +184,20 @@ def strokes(count: float) -> int:
 # Volume
 # --------------------------------------------------------------------------
 
-def volume(bbl: float, places: int = 1) -> float:
-    """Round a volume for reporting.
+def volume(bbl: float) -> float:
+    """Round a volume to **one decimal place**, half away from zero.
 
-    Volumes are measured, not computed to a limit, so they round to nearest.
-    Bleed volumes during stripping and volumetric work are quoted to two
-    decimals because a trip tank resolves that finely and the whole method
-    depends on the measurement.
+    Volumes are measured rather than computed against a limit, so they round to
+    nearest rather than in a safe direction -- but to nearest the way it is
+    done on paper, not the way Python's ``round`` does it. 3.45 bbl is 3.5.
+
+    One decimal place throughout. A trip tank does not resolve more finely than
+    that, so quoting a bleed volume as 2.26 bbl implies a precision the
+    measurement does not have.
+
+    >>> volume(3.45)
+    3.5
+    >>> volume(470.095)
+    470.1
     """
-    return round(_snap(bbl), places)
+    return _half_up(bbl, 1)

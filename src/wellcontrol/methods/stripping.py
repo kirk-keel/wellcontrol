@@ -42,6 +42,7 @@ from ..stripping import (
     StripDirection,
     StrippingOperation,
 )
+from .. import rounding
 from ..units import PSI_PER_PPG_FT, psi_to_psia
 from .base import (
     Applicability,
@@ -348,8 +349,8 @@ class StrippingToBottom(KillMethod):
                     {
                         "Stand": s.stand,
                         "Bit depth (ft)": round(s.pipe_depth_md_ft),
-                        "Bleed (bbl)": round(s.total_bleed_bbl, 2),
-                        "Cumulative (bbl)": round(s.cumulative_bleed_bbl, 1),
+                        "Bleed (bbl)": rounding.volume(s.total_bleed_bbl),
+                        "Cumulative (bbl)": rounding.volume(s.cumulative_bleed_bbl),
                         "Snub force (lbf)": (
                             round(s.snub_force_lbf) if s.needs_snubbing else "-"
                         ),

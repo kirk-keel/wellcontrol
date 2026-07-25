@@ -52,6 +52,7 @@ import math
 from dataclasses import dataclass
 from enum import Enum
 
+from . import rounding
 from .geometry import closed_end_displacement_bbl_per_ft, metal_displacement_bbl_per_ft
 from .units import PSI_PER_PPG_FT, psi_to_psia
 
@@ -455,12 +456,14 @@ class StrippingOperation:
             "Stand length (ft)": round(self.stand_length_ft, 1),
             "Stands required": self.stands_required,
             "Displacement (bbl/ft)": round(self.displacement_bbl_per_ft, 5),
-            "Volume per stand (bbl)": round(self.volume_per_stand_bbl, 2),
-            "Migration bleed per stand (bbl)": round(
-                self.migration_bleed_per_stand_bbl, 2
+            "Volume per stand (bbl)": rounding.volume(self.volume_per_stand_bbl),
+            "Migration bleed per stand (bbl)": rounding.volume(
+                self.migration_bleed_per_stand_bbl
             ),
-            "Total bleed per stand (bbl)": round(self.total_bleed_per_stand_bbl, 2),
-            "Total volume (bbl)": round(self.total_displacement_bbl, 1),
+            "Total bleed per stand (bbl)": rounding.volume(
+                self.total_bleed_per_stand_bbl
+            ),
+            "Total volume (bbl)": rounding.volume(self.total_displacement_bbl),
             "Buoyancy factor": round(self.buoyancy_factor, 3),
             "Upward force on pipe (lbf)": round(self.upward_force_lbf),
             "Balance point (ft)": round(self.balance_point_ft),

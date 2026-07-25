@@ -512,6 +512,33 @@ class WaitAndWeight(KillMethod):
                 "migrating, surface pressure will climb throughout that wait. "
                 "Check the time to weight up against the migration rate."
             )
+
+        # Usable on a horizontal well, but not the usual choice -- say why
+        # rather than either blocking it or staying silent.
+        if well.configuration.is_horizontal:
+            segments = well.kill_sheet.schedule_segments()
+            rising = [s for s in segments if s.pressure_rises]
+            message = (
+                "**The Driller's Method is generally preferred on horizontal "
+                f"wells.** Wait and Weight here needs {len(segments)} separate "
+                "drill pipe pressure schedules -- one for each trajectory "
+                "section and one at each change of pipe size -- because the "
+                "rate at which pressure comes down is different in each."
+            )
+            if rising:
+                message += (
+                    " Worse, in the lateral the schedule reverses: pressure has "
+                    "to be taken UP, not down, because the kill mud front gains "
+                    "no TVD there while friction keeps climbing."
+                )
+            message += (
+                " The Driller's first circulation is a single instruction by "
+                "comparison -- hold one number on the drill pipe gauge. Wait "
+                "and Weight is not impossible on this well, just considerably "
+                "harder to execute correctly under pressure."
+            )
+            result.warn(message)
+
         return result
 
     def plan(self, well: WellState) -> KillPlan:
@@ -607,6 +634,14 @@ class WaitAndWeight(KillMethod):
             "The wait to weight up is the cost, and it is only free if gas is "
             "not migrating.",
         ]
+        if well.configuration.is_horizontal:
+            notes.append(
+                "On a horizontal well the Driller's Method is generally "
+                "preferred. Wait and Weight needs a separate drill pipe "
+                "pressure schedule for each section and each pipe size change, "
+                "and the schedule reverses in the lateral. See the warnings "
+                "above and the schedule breakdown."
+            )
         notes.append(self._shoe_advantage_note(well))
 
         plan = self._new_plan(

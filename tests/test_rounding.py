@@ -118,6 +118,48 @@ class TestStrokes:
             assert step.strokes == int(step.strokes)
 
 
+class TestVolume:
+    def test_one_decimal_place(self):
+        assert rounding.volume(470.095) == pytest.approx(470.1)
+
+    def test_academic_rounding_not_bankers(self):
+        """3.45 is 3.5. Python's round() would not be relied on here."""
+        assert rounding.volume(3.45) == pytest.approx(3.5)
+
+    def test_half_always_goes_up(self):
+        for value, expected in [
+            (0.05, 0.1), (0.15, 0.2), (0.25, 0.3), (0.35, 0.4),
+            (2.45, 2.5), (2.55, 2.6),
+        ]:
+            assert rounding.volume(value) == pytest.approx(expected), value
+
+    def test_differs_from_builtin_round_where_it_matters(self):
+        """round(0.25, 1) is 0.2 under banker's rounding; academic is 0.3."""
+        assert round(0.25, 1) == pytest.approx(0.2)
+        assert rounding.volume(0.25) == pytest.approx(0.3)
+
+    def test_below_half_rounds_down(self):
+        assert rounding.volume(3.44) == pytest.approx(3.4)
+
+    def test_exact_tenth_unchanged(self):
+        assert rounding.volume(17.2) == pytest.approx(17.2)
+
+    def test_never_more_than_one_decimal(self):
+        for value in (2.2586, 7.0186, 0.0242859, 470.0952):
+            result = rounding.volume(value)
+            assert result == pytest.approx(round(result, 1))
+
+
+class TestPressureUsesAcademicRounding:
+    def test_half_goes_up(self):
+        assert rounding.pressure(1000.5) == 1001
+
+    def test_differs_from_builtin(self):
+        """round(0.5) is 0 and round(2.5) is 2 under banker's rounding."""
+        assert rounding.pressure(0.5) == 1
+        assert rounding.pressure(2.5) == 3
+
+
 class TestAppliedEndToEnd:
     def test_kill_sheet_reports_both_weights(self):
         summary = examples.vertical_land_well_kill_sheet().summary()
@@ -148,6 +190,22 @@ class TestAppliedEndToEnd:
         """600 x 10.4 / 9.6 = 650, not 600 x 10.3692 / 9.6 = 648."""
         sheet = examples.vertical_land_well_kill_sheet()
         assert sheet.final_circulating_pressure_psi == pytest.approx(650.0)
+
+    def test_volumes_in_summaries_have_one_decimal(self):
+        for key in ("drillers", "volumetric", "bullhead"):
+            summary = plan_kill(examples.well_state(SV), key).summary
+            for name, value in summary.items():
+                if "(bbl)" in name and isinstance(value, float):
+                    assert value == pytest.approx(round(value, 1)), (
+                        f"{key}: {name} = {value}"
+                    )
+
+    def test_stripping_bleed_volumes_have_one_decimal(self):
+        well = examples.well_state(SV, bit_off_bottom_ft=1500.0)
+        summary = plan_kill(well, "stripping").summary
+        for name, value in summary.items():
+            if "(bbl)" in name and isinstance(value, float):
+                assert value == pytest.approx(round(value, 1)), f"{name}={value}"
 
     def test_rounding_overbalance_is_real_and_positive(self):
         sheet = examples.vertical_land_well_kill_sheet()

@@ -19,6 +19,7 @@ already been ruled out.
 
 from __future__ import annotations
 
+from .. import rounding
 from ..units import PSI_PER_PPG_FT, psi_to_psia
 from .base import (
     Applicability,
@@ -191,8 +192,8 @@ class ReverseCirculation(KillMethod):
             "Original mud weight (ppg)": round(mud, 2),
             "Kill mud weight (ppg)": round(kill_mud, 2),
             "Formation pressure (psi)": round(formation_pressure),
-            "String volume (bbl)": round(string_volume, 1),
-            "Annulus volume (bbl)": round(annulus_volume, 1),
+            "String volume (bbl)": rounding.volume(string_volume),
+            "Annulus volume (bbl)": rounding.volume(annulus_volume),
             "Strokes for influx to surface (reverse)": round(
                 influx_out_strokes or strokes_to_surface
             ),
@@ -202,8 +203,8 @@ class ReverseCirculation(KillMethod):
             "Peak drill pipe choke pressure (psi)": round(
                 max(p.drill_pipe_psi or 0 for p in trace)
             ),
-            "Peak influx volume in string (bbl)": round(
-                max(p.influx_volume_bbl or 0 for p in trace), 1
+            "Peak influx volume in string (bbl)": rounding.volume(
+                max(p.influx_volume_bbl or 0 for p in trace)
             ),
         }
         peak_shoe = max((p.shoe_psi for p in trace if p.shoe_psi is not None),
@@ -410,7 +411,7 @@ class Bullhead(KillMethod):
             "Target bottomhole pressure (psi)": round(target_bhp),
             "Starting surface pressure (psi)": round(starting_pressure),
             "Final surface pressure (psi)": round(trace[-1].casing_psi or 0),
-            "Volume to pump (bbl)": round(annulus_volume, 1),
+            "Volume to pump (bbl)": rounding.volume(annulus_volume),
             "Strokes to pump": round(well.pump.strokes_for(annulus_volume)),
         }
         if peak_shoe is not None:

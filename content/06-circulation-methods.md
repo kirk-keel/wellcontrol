@@ -60,6 +60,22 @@ Circulate to surface — 4017 strokes
 casing pressure, because kill mud entering the annulus behind the influx adds
 hydrostatic before the gas reaches surface.
 
+### Not the usual choice on a horizontal well
+
+The Driller's Method is generally preferred on horizontal wells, and the reason
+is execution rather than pressure. Wait and Weight on the reference horizontal
+well needs **four separate drill pipe pressure schedules** — one per trajectory
+section, plus one at each change of pipe size — and in the lateral the schedule
+**reverses**, so pressure has to be taken up rather than down.
+
+By comparison, the Driller's first circulation is a single instruction: hold one
+number on the drill pipe gauge. Over a four-hour circulation, under pressure,
+that difference matters more than a few psi of casing pressure.
+
+Wait and Weight is not impossible on a horizontal well — the app will plan it —
+just considerably harder to execute correctly. The plan says so in its warnings.
+See [Directional wells](08-directional-wells.md) for the schedule breakdown.
+
 ### The shoe-pressure advantage is conditional — check it
 
 Wait and Weight is widely said to put less pressure on the casing shoe. The test

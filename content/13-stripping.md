@@ -70,18 +70,18 @@ operation = StrippingOperation(
     migration_rate_ft_per_hr=1000.0, minutes_per_stand=6.0,
 )
 
-operation.volume_per_stand_bbl              # 2.26 bbl  (pipe displacement)
-operation.migration_bleed_per_stand_bbl     # 7.02 bbl  (gas migrating)
-operation.total_bleed_per_stand_bbl         # 9.28 bbl
+operation.volume_per_stand_bbl              # 2.3 bbl  (pipe displacement)
+operation.migration_bleed_per_stand_bbl     # 7.0 bbl  (gas migrating)
+operation.total_bleed_per_stand_bbl         # 9.3 bbl
 operation.stands_required                   # 17
 operation.total_displacement_bbl            # 36.4 bbl
 ```
 
 ### The migration allowance usually dominates
 
-Look at those two numbers again. The pipe displaces **2.26 bbl** per stand. Gas
+Look at those two numbers again. The pipe displaces **2.3 bbl** per stand. Gas
 migrating at 1,000 ft/hr during the six minutes a stand takes requires
-**7.02 bbl** — three times as much.
+**7.0 bbl** — three times as much.
 
 The derivation is neat: gas rising a distance `d` raises surface pressure by
 `0.052 × MW × d`. Removing that means bleeding a mud column of the same height,
@@ -89,8 +89,12 @@ which is `d × annular capacity` of volume. **The mud weight cancels** — the
 answer is just the volume the gas swept:
 
 ```
-100 ft × 0.070186 bbl/ft = 7.02 bbl
+100 ft × 0.070186 bbl/ft = 7.0 bbl
 ```
+
+Volumes are reported to **one decimal place** — a trip tank does not resolve
+more finely, so quoting 7.02 would imply a precision the measurement does not
+have.
 
 Bleeding only the pipe displacement, on a well where gas is migrating, means the
 well gains pressure steadily and the shoe is doing the paying.
@@ -140,15 +144,15 @@ would be pushed out of the hole.
 from wellcontrol.stripping import pressure_rise_if_not_bled
 
 pressure_rise_if_not_bled(
-    volume_displaced_bbl=2.26, gas_volume_bbl=20.0, surface_pressure_psi=400.0
+    volume_displaced_bbl=2.3, gas_volume_bbl=20.0, surface_pressure_psi=400.0
 )   # 453 psi
 ```
 
-One missed stand takes surface pressure from 400 to 453 psi, because the 2.26 bbl
+One missed stand takes surface pressure from 400 to 453 psi, because the 2.3 bbl
 has nowhere to go but into compressing the gas:
 
 ```
-P2 = 414.7 × 20 / (20 − 2.26) − 14.7 = 453 psi
+P2 = 414.7 × 20 / (20 − 2.3) − 14.7 = 453 psi
 ```
 
 And the less gas there is to compress, the worse it gets. With no gas at all the

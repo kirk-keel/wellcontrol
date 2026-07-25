@@ -19,6 +19,7 @@ horizontal lateral will not move on its own, and neither method can start.
 
 from __future__ import annotations
 
+from .. import rounding
 from ..units import PSI_PER_PPG_FT, psi_to_psia
 from .base import (
     Applicability,
@@ -164,11 +165,13 @@ class VolumetricMethod(KillMethod):
             "Target bottomhole pressure (psi)": round(target_bhp),
             "Initial SICP (psi)": round(well.sicp_psi),
             "Annular capacity at surface (bbl/ft)": round(surface_capacity, 5),
-            "Bleed volume per cycle (bbl)": round(bleed_per_cycle, 2),
-            "Total mud to bleed (bbl)": round(total_bleed, 1),
+            "Bleed volume per cycle (bbl)": rounding.volume(bleed_per_cycle),
+            "Total mud to bleed (bbl)": rounding.volume(total_bleed),
             "Approximate cycles to surface": cycles,
             "Peak casing pressure (psi)": round(peak_casing),
-            "Gas volume at surface (bbl)": round(trace[-1].influx_volume_bbl or 0.0, 1),
+            "Gas volume at surface (bbl)": rounding.volume(
+                trace[-1].influx_volume_bbl or 0.0
+            ),
         }
         maasp = well.maasp_psi()
         if maasp is not None:
@@ -223,8 +226,10 @@ class VolumetricMethod(KillMethod):
                 table=[
                     {
                         "Cycle": n,
-                        "Bleed this cycle (bbl)": round(bleed_per_cycle, 2),
-                        "Cumulative bled (bbl)": round(bleed_per_cycle * n, 1),
+                        "Bleed this cycle (bbl)": rounding.volume(bleed_per_cycle),
+                        "Cumulative bled (bbl)": rounding.volume(
+                            bleed_per_cycle * n
+                        ),
                     }
                     for n in range(1, min(cycles, 15) + 1)
                 ],
@@ -412,19 +417,20 @@ class LubeAndBleed(KillMethod):
         summary: dict[str, object] = {
             "Mud weight for lubrication (ppg)": round(kill_mud, 2),
             "Starting surface pressure (psi)": round(sicp),
-            "Estimated gas volume at surface (bbl)": round(
+            "Estimated gas volume at surface (bbl)": rounding.volume(
                 well.pit_gain_bbl
                 * psi_to_psia(formation_pressure)
-                / psi_to_psia(sicp),
-                1,
+                / psi_to_psia(sicp)
             ),
-            "Lube volume per cycle (bbl)": round(self.lube_volume_bbl, 1),
+            "Lube volume per cycle (bbl)": rounding.volume(self.lube_volume_bbl),
             "Pressure drop per cycle (psi)": round(pressure_drop_per_cycle),
             "Pressure rise on pumping in (psi)": (
                 round(pump_in_pressure) if pump_in_pressure != float("inf") else "n/a"
             ),
             "Cycles to zero surface pressure": cycles,
-            "Total mud to lubricate (bbl)": round(cycles * self.lube_volume_bbl, 1),
+            "Total mud to lubricate (bbl)": rounding.volume(
+                cycles * self.lube_volume_bbl
+            ),
         }
         maasp = well.maasp_psi()
         if maasp is not None:
@@ -495,8 +501,10 @@ class LubeAndBleed(KillMethod):
                 table=[
                     {
                         "Cycle": n,
-                        "Mud in (bbl)": round(self.lube_volume_bbl, 1),
-                        "Cumulative (bbl)": round(self.lube_volume_bbl * n, 1),
+                        "Mud in (bbl)": rounding.volume(self.lube_volume_bbl),
+                        "Cumulative (bbl)": rounding.volume(
+                            self.lube_volume_bbl * n
+                        ),
                         "Pressure after (psi)": max(
                             0, round(sicp - pressure_drop_per_cycle * n)
                         ),

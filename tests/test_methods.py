@@ -551,6 +551,56 @@ class TestBullhead:
 # Horizontal-well behaviour
 # --------------------------------------------------------------------------
 
+class TestWaitAndWeightOnHorizontalWells:
+    """Usable, but not the usual choice -- and the plan must say why."""
+
+    @pytest.mark.parametrize(
+        "config", [SURFACE_HORIZONTAL, SUBSEA_HORIZONTAL],
+        ids=["surface_horizontal", "subsea_horizontal"],
+    )
+    def test_is_allowed_not_blocked(self, config):
+        plan = plan_kill(examples.well_state(config), "wait_and_weight")
+        assert plan.applicability.usable
+        assert not plan.applicability.blockers
+
+    @pytest.mark.parametrize(
+        "config", [SURFACE_HORIZONTAL, SUBSEA_HORIZONTAL],
+        ids=["surface_horizontal", "subsea_horizontal"],
+    )
+    def test_warns_that_drillers_is_preferred(self, config):
+        plan = plan_kill(examples.well_state(config), "wait_and_weight")
+        warnings = " ".join(plan.applicability.warnings)
+        assert "Driller's Method is generally preferred" in warnings
+
+    def test_warning_gives_the_schedule_count_as_the_reason(self):
+        well = examples.well_state(SURFACE_HORIZONTAL)
+        plan = plan_kill(well, "wait_and_weight")
+        warnings = " ".join(plan.applicability.warnings)
+        expected = len(well.kill_sheet.schedule_segments())
+        assert f"{expected} separate" in warnings
+        assert "drill pipe pressure schedules" in warnings
+
+    def test_warning_mentions_the_lateral_reversal(self):
+        plan = plan_kill(examples.well_state(SURFACE_HORIZONTAL), "wait_and_weight")
+        warnings = " ".join(plan.applicability.warnings)
+        assert "taken UP" in warnings
+
+    def test_no_such_warning_on_a_vertical_well(self):
+        plan = plan_kill(examples.well_state(SURFACE_VERTICAL), "wait_and_weight")
+        warnings = " ".join(plan.applicability.warnings)
+        assert "generally preferred" not in warnings
+
+    def test_drillers_carries_no_such_warning(self):
+        plan = plan_kill(examples.well_state(SURFACE_HORIZONTAL), "drillers")
+        warnings = " ".join(plan.applicability.warnings)
+        assert "generally preferred" not in warnings
+
+    def test_note_repeats_it_for_the_record(self):
+        plan = plan_kill(examples.well_state(SURFACE_HORIZONTAL), "wait_and_weight")
+        assert any("Driller's Method is generally preferred" in n
+                   for n in plan.notes)
+
+
 class TestHorizontalWells:
     def test_kill_mud_weight_far_exceeds_the_md_based_answer(self):
         well = examples.well_state(SURFACE_HORIZONTAL)

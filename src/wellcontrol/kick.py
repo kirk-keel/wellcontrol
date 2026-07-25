@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import rounding
 from .geometry import Annulus
 from .hydrostatics import hydrostatic_pressure, pressure_gradient
 from .survey import Survey
@@ -246,7 +247,7 @@ class ShutInAnalysis:
         out: dict[str, float | str] = {
             "SIDPP (psi)": round(self.sidpp_psi, 1),
             "SICP (psi)": round(self.sicp_psi, 1),
-            "Pit gain (bbl)": round(self.pit_gain_bbl, 2),
+            "Pit gain (bbl)": rounding.volume(self.pit_gain_bbl),
             "Mud weight (ppg)": round(self.mud_weight_ppg, 2),
             "Bit TVD (ft)": round(self.bit_tvd_ft, 1),
             "Formation pressure (psi)": round(self.formation_pressure_psi, 1),
