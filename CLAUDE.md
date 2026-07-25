@@ -106,6 +106,36 @@ Keep these stated wherever they apply; they are deliberate, not oversights.
 - **The influx is one continuous bubble.** Real influxes disperse, and in oil-based mud dissolve entirely.
 - **HPHT density uses a linear PVT model** with representative coefficients, not lab data.
 
+## The simulator (`wellcontrol/sim/`)
+
+A training simulator where a student lines the rig up, brings the pump on and works the choke. Design and staged plan in `docs/simulator-design.md`.
+
+**It solves the opposite direction to the rest of the library, and that is the whole point.** `simulate_circulation` asks "what pressure must the driller hold?" and assumes success. `sim.Simulator` asks "the student set the choke to 35% — what does the well do?" and must represent failure as faithfully as success. Do not try to merge them.
+
+Everything turns on one equation in `engine.py`:
+
+```
+dP/dt = (Q_in + q_influx − Q_out − q_loss) / capacitance
+capacitance = V_mud × c_mud + V_gas / P_gas_absolute
+```
+
+Mud contributes almost nothing, so with little gas the system is **stiff** and a small choke movement swings casing pressure hundreds of psi; as gas rises and expands the capacitance grows by an order of magnitude and it goes **soft**. On the reference well: 0.0056 bbl/psi with gas deep, 0.038 shallow. That contrast is what makes a choke teachable, so **do not damp it out** to make the sim easier to fly.
+
+Every failure mode emerges from that balance rather than being scripted — extra influx, shoe breakdown, deadhead, pressure spike, and the BOP-left-open case where returns take the flowline and the choke does nothing at all. If a future change makes any of those need special-casing, the model has drifted.
+
+Lineup is a directed graph in `flowpath.py`: equipment are nodes, valves are edges, and each step asks whether a path exists pump→well and well→pits. **Wrong lineups are not scored as errors; they simply do not work.** BOP elements are inverted — closing one removes a route — so they are not ordinary edges.
+
+Validated by a proportional autopilot in `tests/test_simulator.py` standing in for a driller who never errs: bottomhole pressure holds within 75 psi of formation pressure, no further influx, shoe under fracture. That is the check that the forward and inverse models describe the same well; keep it passing.
+
+## A data invariant worth knowing
+
+**With an influx that has no vertical height, SICP equals SIDPP.** A lateral influx displaces no hydrostatic, so both gauges read through the same mud to the same TVD. The same holds for an influx entirely below an off-bottom bit. The horizontal examples originally violated this and nothing caught it for a long time, because nothing except the simulator computes bottomhole pressure from the annulus column at shut-in — every other path starts from SIDPP and never cross-checks the annulus side. Any new example data should be checked against it.
+
+## Where this is up to
+
+- **Simulator**: stage 1 of 5 done (headless engine, lineup, validation). Next: assessment and event log, then the choke panel, then the remaining screens, then a scenario library. The UI stack is deliberately still undecided — decide it once the engine is driving something.
+- **Importers**: built and verified in the browser against synthetic samples. **Not yet tried against a real well's survey and tally** — that is the next thing to do, and expect it to find parser gaps.
+
 ## Adding a kill method
 
 Subclass `KillMethod` in `methods/`, set the class attributes (`key`, `name`, `summary`, `circulates`, `requires_migration`, and `chapter` / `chapter_depth` pointing at the content that explains it), implement `plan()`, and register it in the `METHODS` tuple in `methods/__init__.py`. The Streamlit app iterates that tuple, so it appears automatically — but check whether the app needs new sidebar inputs, and add the method name to `METHOD_LABELS` in `tests/test_streamlit_app.py` so it stays in the rendered matrix.
