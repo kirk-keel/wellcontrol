@@ -45,6 +45,15 @@ if not exist ".venv\Scripts\python.exe" (
     echo.
 )
 
+REM -- Skip Streamlit's first-run "Email:" prompt -----------------------
+REM  Without this, the very first launch stops and waits for input with
+REM  no explanation, and the app never starts.
+if not exist "%USERPROFILE%\.streamlit\credentials.toml" (
+    if not exist "%USERPROFILE%\.streamlit" mkdir "%USERPROFILE%\.streamlit"
+    > "%USERPROFILE%\.streamlit\credentials.toml" echo [general]
+    >> "%USERPROFILE%\.streamlit\credentials.toml" echo email = ""
+)
+
 echo   Starting... your browser will open at http://localhost:8501
 echo   Close this window to stop the app.
 echo.
