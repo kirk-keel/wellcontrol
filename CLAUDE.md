@@ -153,6 +153,22 @@ Two calibration points worth keeping:
 
 `state.bled_bbl` counts what leaves through the choke with the pump off. Volumetric is executed by bleeding *measured* increments, so it is the instrument the method is worked to, not a diagnostic.
 
+### Reverse circulation: the influx goes up the pipe
+
+Down the annulus, back up the drill pipe. The influx travels up the **inside of the string**, so it never passes the casing shoe — which is the whole attraction, and the string holds a fraction of the annulus volume so the job is over in a third of the strokes.
+
+**Which surface gauge is the independent one changes hands.** Forward, the choke is on the annulus and casing pressure is what the volume balance drives; reverse, the choke is on the drill pipe and the pump is on the annulus, so standpipe pressure becomes the controlled variable and casing is derived. Both gauges go on meaning what they say, which matters for the panel: "casing" is the annulus whichever way the mud is going.
+
+Three things this needed, each of which was a bug first:
+
+- **`_reconcile_controlled_gauge`.** When the equations change hands, the arithmetic linking the two gauges changes even though the well has done nothing sudden. Left alone that was a 4,500 psi step in bottomhole pressure the instant the influx entered the string, which took 7 bbl of fresh influx — an artefact of switching equations. On those transitions only, the controlled gauge is recomputed from the bottomhole pressure already there.
+- **String positions are computed unconditionally in `_place_influx`.** The gas pressure is read from them, and on the step the influx first enters the string a stale pair read the pressure at *surface* instead of at the bit — putting a 20 bbl bubble at 240 bbl.
+- **Friction follows the returns.** Reverse puts it on the string, because that is the way the mud is coming back. Get that wrong and the shoe reads 600 psi high, which would have hidden the method's entire advantage.
+
+On the reference well the shoe sits at **3,984 psi while reverse circulating, below its own 4,154 psi shut-in value** — the planner's 3,894 plus the small annular friction term the planner neglects. Every method that brings the influx up the annulus makes the shoe worse on the way past; this one never does.
+
+`float_valve` is why the method is usually unavailable: most strings run a non-return valve, it passes nothing back up the pipe, and with it shut there is no return route at all.
+
 ### Lube and Bleed: the pump at the other end of the well
 
 Every other method pumps **down the string**, where mud comes round the bit and pushes the annulus up from below. Lubricating puts mud into the annulus from the **top**, through the kill line, and lets it fall through the gas to sit beneath it. Same pump, same barrels, opposite ends — and the engine has to know which, because they do completely different things to the fluid column.

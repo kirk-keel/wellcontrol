@@ -96,12 +96,23 @@ def default_valves() -> list[Valve]:
     """
     return [
         Valve("pump_discharge", "Mud pump discharge", Node.PUMP, Node.STANDPIPE),
-        Valve("standpipe_valve", "Standpipe valve", Node.STANDPIPE, Node.STRING),
+        Valve("standpipe_valve", "Standpipe valve", Node.STANDPIPE, Node.STRING,
+              bidirectional=True),
+        # Deliberately one-way. Making this bidirectional would hand reverse
+        # flow a route back into the string that bypasses the float, which is
+        # the one thing actually standing in the way.
         Valve("kelly_cock", "Kelly cock", Node.STRING, Node.BIT,
               state=ValveState.OPEN),
         # The bit is always open to the annulus unless the nozzles plug.
         Valve("bit_nozzles", "Bit nozzles", Node.BIT, Node.ANNULUS,
-              state=ValveState.OPEN),
+              state=ValveState.OPEN, bidirectional=True),
+
+        # A non-return valve in the string. Shut is the normal state -- most
+        # strings run one -- and it passes mud down and nothing back up, which
+        # is precisely what makes reverse circulation impossible until it is
+        # pulled or ported. Modelled as the only route from the bit back into
+        # the string, so opening it is what a ported float buys you.
+        Valve("float_valve", "String float valve", Node.BIT, Node.STRING),
 
         # BOP elements. Closed means the annulus is sealed, so the sense is
         # inverted relative to every other valve.
@@ -145,6 +156,12 @@ def default_valves() -> list[Valve]:
         # during any circulating kill, where mud goes down the string.
         Valve("pump_to_kill_line", "Pump to kill line", Node.PUMP,
               Node.KILL_LINE),
+
+        # Reverse circulation takes returns up the drill pipe, so they leave
+        # through the standpipe rather than the annulus and have to be routed
+        # to the choke manifold to be controlled at all.
+        Valve("standpipe_to_manifold", "Standpipe to choke manifold",
+              Node.STANDPIPE, Node.CHOKE_MANIFOLD),
     ]
 
 
@@ -294,15 +311,38 @@ class FlowPath:
                 return ReturnRoute(True, False, path)
 
         # Stack closed: the flowline is sealed off, so only routes through the
-        # choke or kill line count.
-        for entry in (Node.CHOKE_LINE, Node.KILL_LINE):
-            if entry not in edges.get(Node.ANNULUS, ()):
+        # choke or kill line count -- or, reverse circulating, back through the
+        # bit and up the inside of the string.
+        #
+        # Whatever the pump is coming in through is an inlet, not an outlet.
+        # Without that exclusion a line that runs both ways gets picked as the
+        # return route it is currently feeding, and the reported path doubles
+        # back on itself.
+        inlet = self.injection_path() or ()
+        for entry in (Node.CHOKE_LINE, Node.KILL_LINE, Node.BIT):
+            if entry not in edges.get(Node.ANNULUS, ()) or entry in inlet:
                 continue
             path = self._reachable(edges, entry, Node.PITS)
             if path is not None:
                 return ReturnRoute(True, True, (Node.ANNULUS,) + path)
 
         return ReturnRoute(False, False, ())
+
+    @property
+    def is_reverse_circulating(self) -> bool:
+        """Pumping down the annulus and taking returns up the drill pipe.
+
+        The influx then travels up the *inside of the string*, which is the
+        whole attraction: it never passes the casing shoe, and the string holds
+        a fraction of the annulus volume so it is out in far fewer strokes.
+
+        Both halves have to be true. Pumping into the annulus with returns
+        still coming up the annulus is lubricating, not reverse circulating.
+        """
+        if not self.injecting_into_the_annulus:
+            return False
+        route = self.return_route()
+        return route.open_to_pits and Node.STRING in route.route
 
     @property
     def is_closed_in(self) -> bool:

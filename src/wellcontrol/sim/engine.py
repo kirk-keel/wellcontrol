@@ -149,6 +149,19 @@ class SimState:
     #: Lube and Bleed is executed in measured slugs of this, so it is the
     #: instrument the method is worked to.
     lubricated_bbl: float = 0.0
+    #: Reverse circulating pushes the annulus contents back *down*, so this
+    #: cancels the volume beneath the influx until there is none left and the
+    #: influx is at the bit.
+    reverse_displaced_bbl: float = 0.0
+    #: Volume that has followed the influx into the string once it reached the
+    #: bit. Positions the influx on its way up the inside of the pipe.
+    reverse_pumped_bbl: float = 0.0
+    #: True once the influx has been pushed out of the annulus and into the
+    #: string, where reverse circulation carries it to surface.
+    influx_in_string: bool = False
+    #: Where it has got to inside the pipe, once it is in there.
+    influx_string_top_md: float = 0.0
+    influx_string_bottom_md: float = 0.0
     strokes: float = 0.0
     influx_volume_bbl: float = 0.0
     influx_bottom_md: float = 0.0
@@ -280,6 +293,9 @@ class Simulator:
         self.kick_pressure_psi = self.well.formation_pressure_psi
         self.kick_taken = self.start is StartState.SHUT_IN
         self._circulating_s = 0.0
+        #: (reverse circulating, influx in the string). A change means the
+        #: relationship between the two surface gauges has changed hands.
+        self._mode = (False, False)
 
         if self.start is StartState.SHUT_IN:
             self._begin_shut_in()
@@ -387,19 +403,48 @@ class Simulator:
         below = min(
             max(
                 0.0,
-                state.pumped_bbl - state.injected_bbl,
-            )
-            + state.migrated_bbl
-            + state.lubricated_bbl,
+                max(0.0, state.pumped_bbl - state.injected_bbl)
+                + state.migrated_bbl
+                + state.lubricated_bbl
+                - state.reverse_displaced_bbl,
+            ),
             self.annulus_volume_bbl,
         )
         state.influx_bottom_md = self.well.annulus_md_at_volume_from_bottom(below)
         capacity_above = self.annulus_volume_bbl - below
-        volume = max(0.0, min(state.influx_volume_bbl, capacity_above))
+        # Once the influx has been pushed into the string it occupies no
+        # annulus, so the annular zones close up around where it was rather
+        # than leaving a hole in the column.
+        volume = (
+            0.0 if state.influx_in_string
+            else max(0.0, min(state.influx_volume_bbl, capacity_above))
+        )
         state.influx_top_md = self.well.annulus_md_at_volume_from_bottom(
             below + volume
         )
         state.gas_at_surface = volume > 0 and state.influx_top_md <= 1.0
+
+        # Where the influx would be inside the pipe. Computed unconditionally,
+        # not only once it is in there: the gas pressure is read from these,
+        # and on the step the influx first enters the string a stale pair reads
+        # the pressure at surface instead of at the bit. That put the bubble at
+        # 240 bbl and spiked the well by 4,500 psi -- entirely an artefact of
+        # an uninitialised position. With nothing pumped they both sit at the
+        # bit, which is where the influx is.
+        in_string = min(state.reverse_pumped_bbl, self.string_volume_bbl)
+        string_volume = min(
+            state.influx_volume_bbl, self.string_volume_bbl - in_string
+        )
+        state.influx_string_bottom_md = self.well.string_md_at_volume_from_bit(
+            in_string
+        )
+        state.influx_string_top_md = self.well.string_md_at_volume_from_bit(
+            in_string + string_volume
+        )
+        if state.influx_in_string:
+            state.gas_at_surface = (
+                string_volume > 0 and state.influx_string_top_md <= 1.0
+            )
 
     def _influx_density_ppg(self) -> float:
         """Density of the gas as it currently stands, ppg.
@@ -513,6 +558,121 @@ class Simulator:
             return 0.0
         return self._gas_pv / after_psia - self._gas_pv / before_psia
 
+    def _reconcile_controlled_gauge(self, bottomhole_psi: float) -> None:
+        """Re-reference the controlled gauge so bottomhole pressure is continuous.
+
+        The volume balance drives one surface gauge and the other is read from
+        it -- casing when circulating forward, drill pipe when reverse. When
+        that changes hands, or when the influx moves from the annulus into the
+        string, the *arithmetic* linking the two changes even though the well
+        has not physically done anything sudden.
+
+        Left alone that shows up as a step change in bottomhole pressure. It
+        was a 4,900 psi spike the instant the influx entered the string, which
+        promptly took 7 bbl of fresh influx -- an artefact of switching
+        equations, not something the student did. So on those transitions the
+        controlled gauge is recomputed from the bottomhole pressure that was
+        already there, and the physics carries on from where it was.
+        """
+        friction = self._annular_friction_psi()
+        if self.flow_path.is_reverse_circulating:
+            self.state.standpipe_pressure_psi = max(
+                0.0,
+                bottomhole_psi - self._string_column().total_hydrostatic - friction,
+            )
+        else:
+            self.state.casing_pressure_psi = max(
+                0.0,
+                bottomhole_psi - self._annulus_column().total_hydrostatic - friction,
+            )
+
+    def _advance_reverse(self, volume_bbl: float) -> None:
+        """Move the well on by a volume pumped *down the annulus*.
+
+        Two stages, in order. Anything under the influx has to come back out
+        from under it first -- reverse circulating pushes the annulus contents
+        down, so an influx that has climbed is driven back toward the bit. Only
+        once it is at the bit does further pumping carry it into the string,
+        and from there up the inside of the pipe.
+
+        A student who has let the influx migrate a long way up therefore spends
+        a lot of pumping getting it back down before reverse circulation starts
+        achieving anything, which is a fair account of why the method wants an
+        influx still on bottom.
+        """
+        if volume_bbl <= 0.0:
+            return
+        state = self.state
+
+        still_below = max(
+            0.0,
+            max(0.0, state.pumped_bbl - state.injected_bbl)
+            + state.migrated_bbl
+            + state.lubricated_bbl
+            - state.reverse_displaced_bbl,
+        )
+        pushed_down = min(volume_bbl, still_below)
+        state.reverse_displaced_bbl += pushed_down
+        remaining = volume_bbl - pushed_down
+
+        if remaining <= 0.0:
+            return
+        state.influx_in_string = True
+        state.reverse_pumped_bbl += remaining
+
+    def _string_column(self) -> FluidColumn:
+        """The inside of the drill pipe, bottom to top.
+
+        Only interesting while reverse circulating, when the influx is in here
+        rather than in the annulus. Positions are measured as volumes up from
+        the bit, because that is the end the returns start from.
+        """
+        state = self.state
+        kill_mw = self.kill_mud_weight_ppg
+        original = self.well.mud_weight_ppg
+
+        if not state.influx_in_string or state.influx_volume_bbl <= 0.0:
+            # Ordinary case: whatever kill mud has been pumped, original mud
+            # above it. This is the same column the forward model reads.
+            front_md = self.well.kill_sheet.kill_mud_depth_at_volume(
+                min(state.pumped_bbl, self.string_volume_bbl)
+            )
+            zones = []
+            if front_md > 0:
+                zones.append(Zone(0.0, front_md, kill_mw, "kill mud"))
+            if front_md < self.well.bit_md_ft:
+                zones.append(
+                    Zone(front_md, self.well.bit_md_ft, original, "mud")
+                )
+            return FluidColumn(zones, self.well.survey)
+
+        below = min(state.reverse_pumped_bbl, self.string_volume_bbl)
+        volume = min(state.influx_volume_bbl, self.string_volume_bbl - below)
+        influx_bottom = self.well.string_md_at_volume_from_bit(below)
+        influx_top = self.well.string_md_at_volume_from_bit(below + volume)
+
+        zones: list[Zone] = []
+        if influx_bottom < self.well.bit_md_ft:
+            zones.append(
+                Zone(influx_bottom, self.well.bit_md_ft, original,
+                     "mud behind influx")
+            )
+        if influx_top < influx_bottom:
+            zones.append(
+                Zone(
+                    influx_top, influx_bottom,
+                    expanded_gas_density(
+                        self.influx_density_ppg,
+                        self._initial_gas_volume_bbl or self.well.pit_gain_bbl,
+                        state.influx_volume_bbl,
+                    ),
+                    "influx",
+                )
+            )
+        if influx_top > 0:
+            zones.append(Zone(0.0, influx_top, original, "original mud"))
+        return FluidColumn(zones, self.well.survey)
+
     def _annulus_column(self) -> FluidColumn:
         """The annulus as it currently stands, bottom to top."""
         state = self.state
@@ -562,35 +722,63 @@ class Simulator:
         return 0.15 * self.well.slow_circulating_rate.pressure_psi * ratio
 
     def _update_pressures(self) -> None:
+        """Resolve the two surface gauges and bottomhole pressure.
+
+        **Which gauge is the independent one depends on which way round the
+        well is being circulated.** Forward, the choke is on the annulus, so
+        casing pressure is what the volume balance sets and everything else is
+        read from it. Reverse, the choke is on the drill pipe and the pump is
+        on the annulus, so the roles swap: standpipe pressure is the controlled
+        variable and casing pressure is derived.
+
+        Both gauges keep meaning what they say in either case, which matters
+        for the panel -- a student reading "casing" should be reading the
+        annulus whichever way the mud is going.
+        """
         state = self.state
-        column = self._annulus_column()
+        annulus = self._annulus_column()
 
-        state.bottomhole_pressure_psi = (
-            state.casing_pressure_psi
-            + column.total_hydrostatic
-            + self._annular_friction_psi()
-        )
-        state.shoe_pressure_psi = (
-            column.pressure_at(self.shoe_md, state.casing_pressure_psi)
-            if self.shoe_md is not None else 0.0
-        )
-
-        # Standpipe pressure reads back down the string from the bit.
-        kill_in_string = min(state.pumped_bbl, self.string_volume_bbl)
-        front_md = self.well.kill_sheet.kill_mud_depth_at_volume(kill_in_string)
-        front_tvd = self.well.survey.tvd_at(front_md)
-        string_hydrostatic = (
-            PSI_PER_PPG_FT * self.kill_mud_weight_ppg * front_tvd
-            + PSI_PER_PPG_FT * self.well.mud_weight_ppg
-            * (self.well.bit_tvd_ft - front_tvd)
-        )
         friction = 0.0
         if self.pump.running:
             ratio = (self.pump.spm / self._kill_rate_spm) ** 2
             friction = self.well.slow_circulating_rate.pressure_psi * ratio
-        state.standpipe_pressure_psi = max(
-            0.0,
-            state.bottomhole_pressure_psi - string_hydrostatic + friction,
+
+        if self.flow_path.is_reverse_circulating:
+            # Returns come up the *string*, so that is the side carrying the
+            # system friction -- the mirror of the forward case, where it sits
+            # on the drill pipe because that is where the mud goes down.
+            string = self._string_column()
+            state.bottomhole_pressure_psi = (
+                state.standpipe_pressure_psi
+                + string.total_hydrostatic
+                + friction
+            )
+            # Down the annulus now, so annular friction is a loss on the way
+            # in and the pump reads higher by it, rather than lower. Small
+            # either way -- the library carries system friction on the returns
+            # side and treats the annulus as nearly frictionless.
+            state.casing_pressure_psi = max(
+                0.0,
+                state.bottomhole_pressure_psi
+                - annulus.total_hydrostatic
+                + self._annular_friction_psi(),
+            )
+        else:
+            state.bottomhole_pressure_psi = (
+                state.casing_pressure_psi
+                + annulus.total_hydrostatic
+                + self._annular_friction_psi()
+            )
+            # Standpipe pressure reads back down the string from the bit.
+            string_hydrostatic = self._string_column().total_hydrostatic
+            state.standpipe_pressure_psi = max(
+                0.0,
+                state.bottomhole_pressure_psi - string_hydrostatic + friction,
+            )
+
+        state.shoe_pressure_psi = (
+            annulus.pressure_at(self.shoe_md, state.casing_pressure_psi)
+            if self.shoe_md is not None else 0.0
         )
 
     # -- capacitance ---------------------------------------------------------
@@ -627,7 +815,11 @@ class Simulator:
 
         route = self.flow_path.return_route()
         deadheaded = self.flow_path.pump_is_deadheaded
-        lubricating = self.flow_path.injecting_into_the_annulus
+        reverse = self.flow_path.is_reverse_circulating
+        # Lubricating and reverse circulating both put mud into the annulus.
+        # The difference is where the returns go, and it changes everything
+        # about what the pumped volume does.
+        lubricating = self.flow_path.injecting_into_the_annulus and not reverse
 
         # Drilling only makes hole while the pump is actually turning, so the
         # kick arrives after a stretch of circulating rather than after a
@@ -720,10 +912,17 @@ class Simulator:
                 ) * minutes
                 + migration_bbl
             )
-            state.casing_pressure_psi = max(
-                0.0,
-                state.casing_pressure_psi + net / self._capacitance_bbl_per_psi(),
-            )
+            change = net / self._capacitance_bbl_per_psi()
+            if reverse:
+                # The choke is on the drill pipe, so that is the gauge the
+                # balance moves; casing follows from it in _update_pressures.
+                state.standpipe_pressure_psi = max(
+                    0.0, state.standpipe_pressure_psi + change
+                )
+            else:
+                state.casing_pressure_psi = max(
+                    0.0, state.casing_pressure_psi + change
+                )
 
         # -- advance the well ------------------------------------------------
         # Which end the mud goes in decides what it does. Down the string it
@@ -731,7 +930,9 @@ class Simulator:
         # kill line it arrives on top of the gas and falls through it, ending
         # up beneath the cap either way -- so it adds to the volume under the
         # influx without displacing anything round the bit.
-        if lubricating:
+        if reverse:
+            self._advance_reverse(flow_in * minutes)
+        elif lubricating:
             state.lubricated_bbl += flow_in * minutes
         else:
             state.pumped_bbl += flow_in * minutes
@@ -810,6 +1011,14 @@ class Simulator:
             state.bled_bbl += flow_out * minutes
 
         state.time_s += dt
+
+        # Only when the equations change hands, not every step -- doing it
+        # every step would override the volume balance with its own answer.
+        mode = (reverse, state.influx_in_string)
+        if mode != self._mode:
+            self._mode = mode
+            self._reconcile_controlled_gauge(state.bottomhole_pressure_psi)
+
         self._update_pressures()
         self._check_dead()
         self._accumulate(dt, route)
@@ -1050,16 +1259,24 @@ class Simulator:
             return None
 
     def _gas_pressure_psia(self) -> float:
-        """Pressure at the middle of the gas, absolute."""
+        """Pressure at the middle of the gas, absolute.
+
+        Read from whichever side of the well the gas is actually in. Reverse
+        circulating puts it inside the string, where the surface pressure above
+        it is the drill pipe gauge rather than the casing gauge.
+        """
         state = self.state
-        column = self._annulus_column()
-        midpoint = (state.influx_top_md + state.influx_bottom_md) / 2.0
-        return max(
-            psi_to_psia(
-                column.pressure_at(midpoint, state.casing_pressure_psi)
-            ),
-            20.0,
-        )
+        if state.influx_in_string:
+            column = self._string_column()
+            midpoint = (
+                state.influx_string_top_md + state.influx_string_bottom_md
+            ) / 2.0
+            surface = state.standpipe_pressure_psi
+        else:
+            column = self._annulus_column()
+            midpoint = (state.influx_top_md + state.influx_bottom_md) / 2.0
+            surface = state.casing_pressure_psi
+        return max(psi_to_psia(column.pressure_at(midpoint, surface)), 20.0)
 
     def _settle_gas(self) -> None:
         """Resolve gas volume and position together.
