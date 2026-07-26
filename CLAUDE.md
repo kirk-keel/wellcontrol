@@ -153,13 +153,25 @@ Two calibration points worth keeping:
 
 `state.bled_bbl` counts what leaves through the choke with the pump off. Volumetric is executed by bleeding *measured* increments, so it is the instrument the method is worked to, not a diagnostic.
 
+### Lube and Bleed: the pump at the other end of the well
+
+Every other method pumps **down the string**, where mud comes round the bit and pushes the annulus up from below. Lubricating puts mud into the annulus from the **top**, through the kill line, and lets it fall through the gas to sit beneath it. Same pump, same barrels, opposite ends — and the engine has to know which, because they do completely different things to the fluid column.
+
+`Valve.bidirectional` exists for this. A gate valve does not care which way flow goes: the kill line takes returns during a kill and takes mud *into* the annulus when lubricating, and it is the same valve doing both. `FlowPath.injecting_into_the_annulus` is how the engine tells them apart — the injection path reaching the annulus without passing through `Node.STRING`.
+
+Lubricated volume adds to the mud beneath the influx, exactly as migration does, because that is where it ends up. `state.lubricated_bbl` is the instrument the method is worked to.
+
+**Lube and Bleed only starts once the gas is at surface**, and getting it there is Volumetric's job. Letting it migrate up unbled for hours instead leaves the well grossly over-pressured — a different exercise, and one that squeezes the zone.
+
 ### Bullheading: the formation takes fluid both ways
 
 Underbalanced, the zone gives up gas through `productivity_index`. Pushed hard enough it takes fluid back, and that is the whole of bullheading — the one method that never brings the influx to surface.
 
 **`INJECTION_THRESHOLD_PSI` is the load-bearing part.** A zone does not start accepting mud the moment it is overbalanced: filter cake, near-wellbore skin and relative permeability have to be pushed through first. Without the threshold, every kill flown a few tens of psi above pore pressure would quietly bleed into the formation for hours, and bullheading would need no pressure worth speaking of. `INJECTION_INDEX` is well below the productivity index in the other direction, because a gas sand gives up gas far more readily than it accepts mud.
 
-Gas is what goes back first, since it sits against the zone it came from. That is the assumption bullheading rests on, and it is also why the method gets unreliable once the influx has migrated away from the zone.
+Gas is what goes back first, since it sits against the zone it came from — but **only while it is still there**, which `GAS_AT_ZONE_TOLERANCE_FT` enforces. Push on a well whose gas has risen to surface and you squeeze mud into the formation and leave the gas exactly where it was. Bullheading late is why the method has a reputation for not working.
+
+**Mud that went into the formation never displaced anything**, so `_place_influx` subtracts `injected_bbl`. Without that, bullheading pushed the influx *up* the hole while claiming to squeeze it down: the pump advanced the annulus at the full rate even though every barrel was disappearing into the zone.
 
 On the reference well, bullheading **breaks the shoe** — peak 4,714 psi against a 4,677 psi fracture — and nothing scripts that. The surface pressure needed simply exceeds what the casing seat will hold. Pumped gently enough the same well keeps its shoe, which is the trade the method is about.
 

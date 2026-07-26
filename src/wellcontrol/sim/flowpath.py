@@ -67,6 +67,10 @@ class Valve:
             the opposite sense to every other valve here.
         throttling: True for an adjustable choke, whose opening is a position
             rather than a state.
+        bidirectional: True where the line genuinely runs both ways. A gate
+            valve does not care which way the flow goes; the kill line takes
+            returns during a kill and takes mud *into* the annulus when
+            lubricating, and it is the same valve doing both.
     """
 
     name: str
@@ -76,6 +80,7 @@ class Valve:
     state: ValveState = ValveState.CLOSED
     is_bop: bool = False
     throttling: bool = False
+    bidirectional: bool = False
 
     @property
     def is_open(self) -> bool:
@@ -115,9 +120,9 @@ def default_valves() -> list[Valve]:
 
         # Returns with the stack closed.
         Valve("choke_line_valve", "Choke line valve", Node.ANNULUS,
-              Node.CHOKE_LINE),
+              Node.CHOKE_LINE, bidirectional=True),
         Valve("kill_line_valve", "Kill line valve", Node.ANNULUS,
-              Node.KILL_LINE),
+              Node.KILL_LINE, bidirectional=True),
         Valve("choke_line_to_manifold", "Choke line to manifold",
               Node.CHOKE_LINE, Node.CHOKE_MANIFOLD),
         Valve("kill_line_to_manifold", "Kill line to manifold",
@@ -134,6 +139,12 @@ def default_valves() -> list[Valve]:
 
         Valve("trip_tank_valve", "Trip tank to annulus", Node.TRIP_TANK,
               Node.ANNULUS),
+
+        # Lubricating: the pump lined up to the kill line rather than the
+        # standpipe, to put mud into the annulus on top of a gas cap. Shut
+        # during any circulating kill, where mud goes down the string.
+        Valve("pump_to_kill_line", "Pump to kill line", Node.PUMP,
+              Node.KILL_LINE),
     ]
 
 
@@ -216,6 +227,8 @@ class FlowPath:
             if valve.is_bop or not valve.is_open:
                 continue
             edges.setdefault(valve.frm, []).append(valve.to)
+            if valve.bidirectional:
+                edges.setdefault(valve.to, []).append(valve.frm)
 
         if not self.bop_is_closed:
             edges.setdefault(Node.ANNULUS, []).append(Node.BOP)
@@ -250,6 +263,21 @@ class FlowPath:
     @property
     def pump_is_deadheaded(self) -> bool:
         return self.injection_path() is None
+
+    @property
+    def injecting_into_the_annulus(self) -> bool:
+        """True when the pump reaches the annulus without going down the pipe.
+
+        The difference matters to the engine rather than to the graph. Mud
+        pumped down the string comes round the bit and pushes the annulus
+        contents *up* from the bottom. Mud pumped into the kill line arrives at
+        the *top* and falls through whatever gas is up there to sit beneath it.
+        Same pump, same barrels, opposite ends of the well.
+        """
+        path = self.injection_path()
+        if path is None:
+            return False
+        return Node.STRING not in path
 
     def return_route(self) -> ReturnRoute:
         """How returns leave the well, given the lineup and the BOP.

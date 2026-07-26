@@ -92,6 +92,10 @@ INJECTION_THRESHOLD_PSI: float = 300.0
 #: sand gives up gas far more easily than it accepts mud.
 INJECTION_INDEX: float = 0.004
 
+#: How close the influx has to stay to the zone, ft, for bullheading to push it
+#: back rather than merely squeezing mud past it.
+GAS_AT_ZONE_TOLERANCE_FT: float = 200.0
+
 #: Representative gas migration rate, ft/hr, where nobody has measured one.
 #: Field figures run from a few hundred to a couple of thousand; 1,000 is the
 #: number the teaching content works to.
@@ -141,6 +145,10 @@ class SimState:
     #: Annular volume the influx has climbed past under its own buoyancy,
     #: as distinct from what the pump has displaced beneath it.
     migrated_bbl: float = 0.0
+    #: Mud put into the annulus from the top and left to fall through the gas.
+    #: Lube and Bleed is executed in measured slugs of this, so it is the
+    #: instrument the method is worked to.
+    lubricated_bbl: float = 0.0
     strokes: float = 0.0
     influx_volume_bbl: float = 0.0
     influx_bottom_md: float = 0.0
@@ -364,12 +372,26 @@ class Simulator:
     def _place_influx(self) -> None:
         """Put the influx where the mud beneath it says it is.
 
-        Two things put mud under the influx: what the pump has displaced round
-        the bit, and what the gas has climbed past under its own buoyancy.
+        Three things put mud under the influx: what the pump displaced round
+        the bit, what the gas climbed past under its own buoyancy, and what was
+        lubricated in on top and fell through it.
+
+        One thing takes it away again. **Mud that went into the formation never
+        displaced anything.** It leaves at the bit, where it was pumped to, so
+        it does not push the annulus up. Without that subtraction, bullheading
+        pushed the influx *up* the hole while claiming to be squeezing it back
+        down -- the pump advanced the annulus at the full rate even though
+        every barrel was disappearing into the zone.
         """
         state = self.state
         below = min(
-            state.pumped_bbl + state.migrated_bbl, self.annulus_volume_bbl
+            max(
+                0.0,
+                state.pumped_bbl - state.injected_bbl,
+            )
+            + state.migrated_bbl
+            + state.lubricated_bbl,
+            self.annulus_volume_bbl,
         )
         state.influx_bottom_md = self.well.annulus_md_at_volume_from_bottom(below)
         capacity_above = self.annulus_volume_bbl - below
@@ -605,6 +627,7 @@ class Simulator:
 
         route = self.flow_path.return_route()
         deadheaded = self.flow_path.pump_is_deadheaded
+        lubricating = self.flow_path.injecting_into_the_annulus
 
         # Drilling only makes hole while the pump is actually turning, so the
         # kick arrives after a stretch of circulating rather than after a
@@ -703,7 +726,15 @@ class Simulator:
             )
 
         # -- advance the well ------------------------------------------------
-        state.pumped_bbl += flow_in * minutes
+        # Which end the mud goes in decides what it does. Down the string it
+        # comes round the bit and pushes the annulus up from below. Into the
+        # kill line it arrives on top of the gas and falls through it, ending
+        # up beneath the cap either way -- so it adds to the volume under the
+        # influx without displacing anything round the bit.
+        if lubricating:
+            state.lubricated_bbl += flow_in * minutes
+        else:
+            state.pumped_bbl += flow_in * minutes
         state.strokes += self.pump.strokes_in(dt)
         if self.kill_mud_weight_ppg != self.well.mud_weight_ppg:
             state.kill_mud_pumped_bbl = min(state.pumped_bbl, self.string_volume_bbl)
@@ -739,15 +770,20 @@ class Simulator:
             underbalance_psi=underbalance,
         )
 
-        # Fluid squeezed back into the zone takes the influx with it. The gas
-        # sits against the formation it came from, so it is what goes back
-        # first -- which is the assumption bullheading is built on, and the
-        # reason the method is unreliable once the influx has risen away from
-        # the zone.
+        # Fluid squeezed back into the zone takes the influx with it -- but
+        # only while the influx is still *against* that zone. That is the
+        # assumption bullheading is built on, and it stops being true the
+        # moment the gas has risen away: pushing on a well whose gas is at
+        # surface squeezes mud into the formation and leaves the gas exactly
+        # where it was. Bullheading late is why the method has a reputation for
+        # not working.
         if injection_rate > 0:
             pushed_back = injection_rate * minutes
             state.injected_bbl += pushed_back
-            if state.influx_volume_bbl > 1e-9:
+            at_the_zone = (
+                state.influx_bottom_md >= self.hole_md - GAS_AT_ZONE_TOLERANCE_FT
+            )
+            if at_the_zone and state.influx_volume_bbl > 1e-9:
                 fraction = min(1.0, pushed_back / state.influx_volume_bbl)
                 self._gas_pv *= 1.0 - fraction
 
