@@ -220,9 +220,29 @@ class Session:
             self.simulator.pump.command(float(spm))
 
     def set_valve(self, name: str, state: str) -> None:
-        """Open or close a valve. Raises KeyError naming the valve if unknown."""
+        """Open or close a valve, or operate a BOP element.
+
+        BOP elements cost accumulator pressure to shift, and below the minimum
+        there is not enough to shift one at all. The element simply does not
+        move -- consistent with the rest of the lineup model, where a thing that
+        cannot work does not work rather than raising an error at the student.
+
+        Raises:
+            KeyError: if there is no such valve.
+        """
         self.advance()
-        self.simulator.flow_path.set_valve(name, ValveState(state))
+        path = self.simulator.flow_path
+        valve = path.valve(name)
+        target = ValveState(state)
+        if valve.is_bop and valve.state is not target:
+            if not self.simulator.accumulator.operate(is_annular="annular" in name):
+                return
+        path.set_valve(name, target)
+
+    def strip(self, feet_per_min: float) -> None:
+        """Run pipe in or out through the stripping element."""
+        self.advance()
+        self.simulator.strip(feet_per_min)
 
     # -- readouts ------------------------------------------------------------
 
@@ -260,6 +280,20 @@ class Session:
             "returns": route.description,
             "well_is_dead": state.well_is_dead,
             "speed": self.speed,
+
+            # Driller's console and BOP panel.
+            "hookload_klbf": round(self.simulator.hookload_lbf / 1000.0, 1),
+            "trip_tank_bbl": round(self.simulator.trip_tank.change_bbl, 1),
+            "accumulator_psi": round(self.simulator.accumulator.pressure_psi),
+            "accumulator_fraction": round(self.simulator.accumulator.fraction, 3),
+            "accumulator_ok": self.simulator.accumulator.can_operate,
+            "bop_closed": self.simulator.flow_path.bop_is_closed,
+            "strip_rate_ft_per_min": self.simulator.strip_rate_ft_per_min,
+            "bit_md_ft": round(state.bit_md_ft),
+            "pipe_moved_ft": round(state.pipe_moved_ft, 1),
+            "pipe_displacement_bbl": round(state.pipe_displacement_bbl, 2),
+            "lubricated_bbl": round(state.lubricated_bbl, 2),
+            "reverse_circulating": self.simulator.flow_path.is_reverse_circulating,
 
             # Downhole truth. No rig has these; see downhole_visible.
             "downhole_visible": visible,
@@ -299,6 +333,90 @@ class Session:
             }
             for valve in self.simulator.flow_path.valves
         ]
+
+    def schematic(self) -> dict:
+        """Everything the well cross-section draws.
+
+        Depths and the fluids currently occupying them. Withheld along with the
+        rest of the downhole picture while a kick is still being detected --
+        a cross-section showing exactly where the influx is would answer the
+        question the student is meant to be working out.
+        """
+        sim = self.simulator
+        state = sim.state
+        picture = {
+            "hole_md_ft": round(sim.hole_md),
+            "bit_md_ft": round(state.bit_md_ft),
+            "shoe_md_ft": None if sim.shoe_md is None else round(sim.shoe_md),
+            "casing_id_in": sim.well.annulus.wellbore.sections[0].id_in,
+            "hole_id_in": sim.well.annulus.wellbore.sections[-1].id_in,
+            "visible": self.downhole_visible,
+        }
+        if not self.downhole_visible:
+            return picture
+
+        zones = [
+            {
+                "top_md_ft": round(zone.top_md),
+                "bottom_md_ft": round(zone.bottom_md),
+                "density_ppg": round(zone.density_ppg, 2),
+                "label": zone.label,
+            }
+            for zone in sim._annulus_column().zones
+        ]
+        picture.update({
+            "annulus_zones": zones,
+            "influx_in_string": state.influx_in_string,
+            "influx_top_md_ft": round(
+                state.influx_string_top_md if state.influx_in_string
+                else state.influx_top_md
+            ),
+            "influx_bottom_md_ft": round(
+                state.influx_string_bottom_md if state.influx_in_string
+                else state.influx_bottom_md
+            ),
+            "influx_bbl": round(state.influx_volume_bbl, 1),
+        })
+        return picture
+
+    def kill_sheet(self) -> dict:
+        """The plan the student is working to, and how the well compares.
+
+        Straight off the library's own kill sheet, so the numbers on this
+        screen and the numbers the planner would print are the same numbers.
+        """
+        sim = self.simulator
+        state = sim.state
+        sheet = sim.well.kill_sheet
+        return {
+            "mud_weight_ppg": round(sim.well.mud_weight_ppg, 1),
+            "kill_mud_weight_ppg": sheet.kill_mud_weight_ppg,
+            "kill_mud_weight_exact_ppg": round(
+                sheet.kill_mud_weight_exact_ppg, 3
+            ),
+            "sidpp_psi": round(sim.well.sidpp_psi),
+            "sicp_psi": round(sim.well.sicp_psi),
+            "pit_gain_bbl": round(sim.well.pit_gain_bbl, 1),
+            "icp_psi": round(sheet.initial_circulating_pressure_psi),
+            "fcp_psi": round(sheet.final_circulating_pressure_psi),
+            "formation_psi": round(sim.formation_pressure_psi),
+            "maasp_psi": (
+                None if sim.maasp_psi is None else round(sim.maasp_psi)
+            ),
+            "frac_psi": (
+                None if sim.frac_pressure_psi is None
+                else round(sim.frac_pressure_psi)
+            ),
+            "strokes_to_bit": round(sheet.strokes_to_bit),
+            "strokes_bit_to_surface": round(sheet.strokes_bit_to_surface),
+            "total_strokes": round(sheet.total_strokes),
+            "scr_psi": round(sim.well.slow_circulating_rate.pressure_psi),
+            "scr_spm": round(sim.well.slow_circulating_rate.spm),
+            # Live, for comparison against the plan.
+            "actual_strokes": round(state.strokes),
+            "actual_drill_pipe_psi": round(state.standpipe_pressure_psi),
+            "actual_casing_psi": round(state.casing_pressure_psi),
+        }
 
     def events_since(self, index: int = 0) -> dict:
         """Event log entries from ``index`` on, so the client can append.
@@ -360,6 +478,8 @@ class Session:
             "gauges": self.gauges(),
             "events": self.events_since(since_event),
             "trace": self.trace(trace_limit),
+            "lineup": self.lineup(),
+            "schematic": self.schematic(),
         }
 
     def assess(self, require_kill: bool = False) -> Assessment:

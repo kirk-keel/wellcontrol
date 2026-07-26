@@ -246,6 +246,26 @@ Run it with `Launch Simulator.bat`, or:
 
 **The panel is two charts, not one.** Surface pressure runs in hundreds of psi and downhole in thousands; on a shared axis the drill pipe and casing traces flatten onto the baseline, which is exactly the gauge the student is working to. Thresholds are labelled on the line rather than in the legend, because two identical dashes do not tell you which one the shoe is about to cross.
 
+#### The six screens
+
+One page, six tabs, one poll loop; only the visible screen redraws. Everything is served from `static/choke_panel.html`, still self-contained — a rig has no internet and a test pins that.
+
+| Screen | What it is for |
+| --- | --- |
+| **Driller** | Standpipe, pump, pit gain, flow differential, hookload, trip tank. Pump and **stripping** controls. |
+| **Choke** | The instrument scan, the choke, both pressure charts, the event log. |
+| **BOP & Lineup** | Clickable P&ID, the BOP stack, the accumulator. |
+| **Well** | Cross-section with live fluid zones, plus the column as a table. |
+| **Kill sheet** | The library's own kill sheet, and the plan against actual. |
+| **Debrief** | Verdict, measures against their limits, and what happened. |
+
+Two engine additions exist because a screen would otherwise be decoration:
+
+- **`Accumulator`.** Every BOP element costs pressure to shift and the pumps put it back slowly. A student who cycles the stack because they are unsure can find they have nothing left to close with. Below the minimum the element simply does not move — consistent with the rest of the lineup model, where a thing that cannot work does not work rather than raising an error at the student.
+- **`hookload_lbf`.** String weight less buoyancy, less the upward push of well pressure on the closed end of the pipe. That last term is why it belongs on the stripping screen: as surface pressure climbs the well tries to push the string out, and when hookload reaches zero the pipe has to be snubbed rather than stripped. Watching pressure gauges alone never shows it coming.
+
+Three drawing details that were bugs first: **valves sharing a node pair are fanned along the line** (the three BOP elements all join annulus to stack, so only one was visible or clickable); **both schematics are sized by height**, since their viewBoxes are taller than wide and scaling on width alone made them a thousand pixels tall; and **depth labels are nudged apart with a leader line back to the true depth**, because the bit sits exactly on TD whenever it is on bottom.
+
 ### Assessment (`sim/assessment.py`)
 
 Scoring is on **outcome and margin, never procedure**. Nothing checks the order of actions and nothing checks the lineup — a wrong lineup is not marked incorrect, it simply does not work, and the consequence is what shows up in the metrics.
@@ -276,7 +296,8 @@ A related resolution trap: **peak casing pressure is a sharp cusp**, reached as 
 
 ## Where this is up to
 
-- **Simulator**: stages 1–3 of 5 done (headless engine, lineup, validation, event log and assessment, and the choke panel). Next: the remaining screens, then a scenario library. **UI decided: FastAPI + browser** — Streamlit has no game loop and reruns the whole script per interaction, which would make gauges into widgets and the choke laggy. The planner stays on Streamlit; the two apps share the library and nothing else.
+- **Simulator**: stages 1–4 of 5 done — headless engine, lineup, validation, event log and assessment, all six screens, the full drilling → kick → detection → shut-in sequence, and **every kill method operable rather than merely planned** (Driller's, Wait and Weight, Volumetric, Bullheading, Lube and Bleed, Reverse Circulation, Stripping). Next: the scenario library and instructor fault injection. **UI decided: FastAPI + browser** — Streamlit has no game loop and reruns the whole script per interaction, which would make gauges into widgets and the choke laggy. The planner stays on Streamlit; the two apps share the library and nothing else.
+- **Open question**: the stripping migration allowance, where the planner and the simulator disagree by about 4×. Written up under *Stripping* below; nothing has been changed on the strength of it.
 - **Importers**: done and validated against real-shaped files in `test_data/`, with an independent answer key. See *Importing real geometry* below.
 
 ## Adding a kill method

@@ -151,6 +151,75 @@ class TestControls:
         assert 0.0 in client.get("/api/speeds").json()["speeds"]
 
 
+class TestTheRigScreenEndpoints:
+    def test_pipe_can_be_stripped(self, client, session_id):
+        body = client.post(
+            f"/api/sessions/{session_id}/strip", json={"feet_per_min": 30.0}
+        ).json()
+        assert body["gauges"]["strip_rate_ft_per_min"] == pytest.approx(30.0)
+
+    def test_an_absurd_pipe_speed_is_rejected(self, client, session_id):
+        response = client.post(
+            f"/api/sessions/{session_id}/strip", json={"feet_per_min": 5000.0}
+        )
+        assert response.status_code == 422
+
+    def test_the_schematic_describes_the_hole(self, client, session_id):
+        body = client.get(f"/api/sessions/{session_id}/schematic").json()
+        assert body["hole_md_ft"] > 0
+        assert body["visible"] is True
+        assert any(z["label"] == "influx" for z in body["annulus_zones"])
+
+    def test_the_schematic_is_withheld_while_detecting(self, client):
+        created = client.post("/api/sessions", json={"start": "drilling"}).json()
+        body = client.get(
+            f"/api/sessions/{created['session_id']}/schematic"
+        ).json()
+        assert body["visible"] is False
+        assert "annulus_zones" not in body
+
+    def test_the_kill_sheet_is_the_librarys_own(self, client, session_id):
+        body = client.get(f"/api/sessions/{session_id}/killsheet").json()
+        for key in ("kill_mud_weight_ppg", "icp_psi", "fcp_psi",
+                    "total_strokes", "maasp_psi"):
+            assert body[key] is not None
+        assert body["icp_psi"] > body["fcp_psi"]
+
+    def test_the_snapshot_carries_the_lineup_and_schematic(self, client, session_id):
+        body = client.get(f"/api/sessions/{session_id}").json()
+        assert body["lineup"] and body["schematic"]
+
+
+class TestAccumulator:
+    def test_it_starts_full(self, client, session_id):
+        gauges = client.get(f"/api/sessions/{session_id}").json()["gauges"]
+        assert gauges["accumulator_ok"] is True
+        assert gauges["accumulator_fraction"] == pytest.approx(1.0)
+
+    def test_operating_the_stack_costs_pressure(self, client, session_id):
+        before = client.get(
+            f"/api/sessions/{session_id}"
+        ).json()["gauges"]["accumulator_psi"]
+        body = client.post(
+            f"/api/sessions/{session_id}/valve",
+            json={"name": "annular", "state": "open"},
+        ).json()
+        assert body["gauges"]["accumulator_psi"] < before
+
+    def test_an_empty_accumulator_will_not_shift_an_element(self, client, session_id):
+        """It simply does not move, in keeping with the rest of the lineup."""
+        from wellcontrol.sim import api as api_module
+
+        session = api_module.store.get(session_id)
+        session.simulator.accumulator.pressure_psi = 0.0
+        was_closed = session.simulator.flow_path.bop_is_closed
+        client.post(
+            f"/api/sessions/{session_id}/valve",
+            json={"name": "annular", "state": "open"},
+        )
+        assert session.simulator.flow_path.bop_is_closed == was_closed
+
+
 class TestDebrief:
     def test_debrief_is_available_immediately(self, client, session_id):
         body = client.get(f"/api/sessions/{session_id}/debrief").json()
@@ -171,11 +240,41 @@ class TestDebrief:
         assert "Peak shoe pressure" in named
 
 
-class TestPanel:
+class TestScreens:
+    """Every screen in the design doc is present and reachable."""
+
     def test_the_panel_is_served(self, client):
         response = client.get("/")
         assert response.status_code == 200
-        assert "Choke Panel" in response.text
+        assert "Well Control Simulator" in response.text
+
+    def test_all_six_screens_exist(self, client):
+        text = client.get("/").text
+        for screen in ("driller", "choke", "bop", "well", "sheet", "debrief"):
+            assert f'data-screen="{screen}"' in text
+            assert f'id="s-{screen}"' in text
+
+    def test_the_drillers_console_carries_its_instruments(self, client):
+        text = client.get("/").text
+        for element in ("d-spp", "d-spm", "d-pit", "d-flow", "d-hook", "d-tt"):
+            assert element in text
+
+    def test_stripping_is_operable(self, client):
+        """The engine has supported it for a while; the panel now reaches it."""
+        text = client.get("/").text
+        assert 'id="strip"' in text
+        assert 'data-strip="30"' in text
+
+    def test_the_schematics_are_drawn(self, client):
+        text = client.get("/").text
+        assert 'id="pid"' in text
+        assert 'id="schematic"' in text
+
+    def test_the_accumulator_is_shown(self, client):
+        assert "acc-psi" in client.get("/").text
+
+
+class TestPanel:
 
     def test_the_panel_is_self_contained(self, client):
         """No CDN: the rig has no internet and neither should this."""

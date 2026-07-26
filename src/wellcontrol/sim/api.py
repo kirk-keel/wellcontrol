@@ -83,6 +83,13 @@ class SpeedCommand(BaseModel):
     speed: float = Field(ge=0.0, le=240.0, description=SESSION_SPEEDS_DOC)
 
 
+class StripCommand(BaseModel):
+    feet_per_min: float = Field(
+        ge=-120.0, le=120.0,
+        description="Pipe speed through the stripping element. Positive runs in.",
+    )
+
+
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------
@@ -174,6 +181,23 @@ def set_speed(session_id: str, body: SpeedCommand) -> dict:
     session = _session(session_id)
     session.set_speed(body.speed)
     return {"gauges": session.gauges()}
+
+
+@app.post("/api/sessions/{session_id}/strip")
+def strip(session_id: str, body: StripCommand) -> dict:
+    session = _session(session_id)
+    session.strip(body.feet_per_min)
+    return {"gauges": session.gauges()}
+
+
+@app.get("/api/sessions/{session_id}/schematic")
+def schematic(session_id: str) -> dict:
+    return _session(session_id).schematic()
+
+
+@app.get("/api/sessions/{session_id}/killsheet")
+def kill_sheet(session_id: str) -> dict:
+    return _session(session_id).kill_sheet()
 
 
 @app.get("/api/sessions/{session_id}/debrief")

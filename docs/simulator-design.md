@@ -4,10 +4,10 @@ A training simulator where a student plans a kill, lines up the rig, brings the
 pump online, and works the choke to circulate the influx out — with the well
 responding to what they actually do rather than what they intended.
 
-**Status: stages 1–3 done — headless engine, lineup, validation, event log and
-assessment, and the choke panel running on FastAPI. The full drilling → kick →
-detection → shut-in sequence is in. Remaining: the other screens, the other kill
-methods as things you operate rather than plan, and the scenario library.**
+**Status: stages 1–4 done — headless engine, lineup, validation, event log and
+assessment, all six screens on FastAPI, the full drilling → kick → detection →
+shut-in sequence, and every kill method operable rather than merely planned.
+Remaining: the scenario library and instructor fault injection (stage 5).**
 
 **Scope agreed: a true simulator, not a choke trainer.** The student drills
 ahead, takes a kick they have to *notice*, shuts in on their own initiative, and
@@ -291,7 +291,10 @@ Each stage is useful on its own and de-risks the next.
    wall-clock-to-simulated-time mapping, `sim/api.py` is the HTTP transport, and
    `sim/static/choke_panel.html` is the panel. Launch it with
    *Launch Simulator.bat*.
-4. **The rest of the screens**, lineup schematic last since it is the most UI-heavy.
+4. ~~**The rest of the screens.**~~ **Done.** All six from §4 are in, including
+   the clickable P&ID and the live well cross-section. The accumulator and
+   hookload were added to the engine so the BOP and stripping screens show real
+   instruments rather than indicator lights.
 5. **Scenario library** and instructor debrief.
 
 Stage 1 is where the real risk is. If the engine is right, everything else is

@@ -3,270 +3,499 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Choke Panel — Well Control Simulator</title>
+<title>Well Control Simulator</title>
 <style>
   :root {
-    --bg: #11161c;
-    --panel: #1a222b;
-    --edge: #2b3742;
-    --ink: #e8eef4;
-    --dim: #8ea0b0;
+    --bg: #0e1319;
+    --panel: #171f28;
+    --sunk: #0b1016;
+    --edge: #28323d;
+    --edge-soft: #1f2832;
+    --ink: #e9eff5;
+    --dim: #8398ab;
+    --faint: #5b6c7c;
     --good: #4a9d5f;
     --caution: #c99a3a;
     --warning: #c2703c;
-    --critical: #c2504a;
+    --critical: #cc4f49;
     --dp: #5b8ff9;
     --csg: #d4a13c;
-    --bhp: #61b58a;
+    --bhp: #5cb98d;
     --shoe: #9b7bd4;
+    --gas: #c2703c;
+    --killmud: #3f7a5a;
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
     font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
+  .mono { font-family: Consolas, ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+  /* ---- chrome ---- */
   header {
-    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
-    padding: 10px 16px; border-bottom: 1px solid var(--edge); background: var(--panel);
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 9px 16px; background: var(--panel);
+    border-bottom: 1px solid var(--edge);
   }
-  header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .02em; }
-  .grow { flex: 1; }
-  .wrap { padding: 16px; display: grid; gap: 16px; grid-template-columns: 1fr 320px; }
-  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
-  .card {
-    background: var(--panel); border: 1px solid var(--edge);
-    border-radius: 8px; padding: 14px;
+  header h1 {
+    font-size: 14px; margin: 0; font-weight: 600; letter-spacing: .04em;
+    text-transform: uppercase; color: var(--dim);
   }
-  .card h2 {
-    font-size: 11px; text-transform: uppercase; letter-spacing: .09em;
-    color: var(--dim); margin: 0 0 10px; font-weight: 600;
-  }
-
-  /* The instrument scan: four gauges the student must read together. */
-  .scan { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-  @media (max-width: 720px) { .scan { grid-template-columns: repeat(2, 1fr); } }
-  .gauge {
-    background: #0d1319; border: 1px solid var(--edge);
-    border-radius: 6px; padding: 12px 10px; text-align: center;
-  }
-  .gauge .label {
-    font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
-    color: var(--dim);
-  }
-  .gauge .value {
-    font: 700 34px/1.1 "Consolas", ui-monospace, monospace;
-    margin-top: 4px; font-variant-numeric: tabular-nums;
-  }
-  .gauge .unit { font-size: 11px; color: var(--dim); }
-  .gauge.dp .value { color: var(--dp); }
-  .gauge.csg .value { color: var(--csg); }
-  .gauge.warn-gauge { border-color: var(--critical); }
-  .gauge.warn-gauge .value { color: var(--critical); }
-
-  .secondary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
-  @media (max-width: 720px) { .secondary { grid-template-columns: repeat(2, 1fr); } }
-  .stat {
-    background: #0d1319; border: 1px solid var(--edge); border-radius: 6px;
-    padding: 8px 10px;
-  }
-  .stat .label { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
-  .stat .value { font: 600 17px/1.2 "Consolas", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-  .stat.alarm { border-color: var(--critical); }
-  .stat.alarm .value { color: var(--critical); }
-
-  label.ctl { display: block; font-size: 11px; color: var(--dim); margin-bottom: 6px; }
-  input[type=range] { width: 100%; accent-color: var(--csg); }
-  .row { display: flex; align-items: center; gap: 10px; }
-  .readback { font: 700 22px/1 "Consolas", ui-monospace, monospace; min-width: 74px; text-align: right; }
-  button, select {
-    background: #232f3a; color: var(--ink); border: 1px solid var(--edge);
-    border-radius: 5px; padding: 6px 11px; font-size: 13px; cursor: pointer;
-  }
-  button:hover, select:hover { background: #2c3b48; }
-  button.on { background: var(--good); border-color: var(--good); color: #fff; }
-  button.danger { background: var(--critical); border-color: var(--critical); color: #fff; }
+  .grow { flex: 1 1 auto; }
   .pill {
-    font-size: 11px; padding: 3px 9px; border-radius: 999px;
-    border: 1px solid var(--edge); color: var(--dim);
+    font-size: 11px; padding: 3px 10px; border-radius: 999px;
+    border: 1px solid var(--edge); color: var(--dim); white-space: nowrap;
   }
   .pill.warn { border-color: var(--warning); color: var(--warning); }
   .pill.bad { border-color: var(--critical); color: var(--critical); }
   .pill.ok { border-color: var(--good); color: var(--good); }
-
-  canvas.strip { width: 100%; height: 170px; display: block; }
-  .legend { display: flex; gap: 14px; font-size: 11px; color: var(--dim); margin-top: 6px; }
-  .key { display: inline-block; width: 10px; height: 2px; vertical-align: middle; margin-right: 5px; }
-  /* Dashing is reserved for threshold lines, so the key matches. */
-  .key.dash {
-    height: 0; border-top: 2px dashed var(--dim); background: none;
+  select, button {
+    background: #212c37; color: var(--ink); border: 1px solid var(--edge);
+    border-radius: 5px; padding: 6px 11px; font-size: 13px; cursor: pointer;
+    font-family: inherit;
   }
+  select:hover, button:hover { background: #2a3743; }
+  button.on { background: var(--good); border-color: var(--good); color: #fff; }
+  button.danger { background: var(--critical); border-color: var(--critical); color: #fff; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  label.lbl { font-size: 11px; color: var(--dim); }
 
-  #log { max-height: 260px; overflow-y: auto; font-size: 12px; }
-  #log div { padding: 4px 0; border-bottom: 1px solid #222c35; }
-  #log .t { color: var(--dim); font-family: "Consolas", ui-monospace, monospace; margin-right: 6px; }
+  nav {
+    display: flex; gap: 2px; padding: 0 12px; background: var(--panel);
+    border-bottom: 1px solid var(--edge); overflow-x: auto;
+  }
+  nav button {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    border-radius: 0; padding: 9px 14px; color: var(--dim); font-size: 13px;
+    white-space: nowrap;
+  }
+  nav button:hover { color: var(--ink); background: none; }
+  nav button.active { color: var(--ink); border-bottom-color: var(--dp); }
+
+  main { padding: 16px; }
+  .screen { display: none; }
+  .screen.active { display: block; }
+  .cols { display: grid; gap: 16px; grid-template-columns: 1fr 330px; align-items: start; }
+  @media (max-width: 980px) { .cols { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 8px; padding: 14px; margin-bottom: 16px;
+  }
+  .card:last-child { margin-bottom: 0; }
+  .card h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
+    color: var(--dim); margin: 0 0 12px; font-weight: 600;
+  }
+  .note { font-size: 11px; color: var(--faint); margin-top: 10px; line-height: 1.5; }
+
+  /* ---- gauges ---- */
+  .gauges { display: grid; gap: 10px; grid-template-columns: repeat(4, 1fr); }
+  .gauges.six { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 760px) { .gauges, .gauges.six { grid-template-columns: repeat(2, 1fr); } }
+  .g {
+    background: var(--sunk); border: 1px solid var(--edge);
+    border-radius: 6px; padding: 11px 10px; text-align: center;
+  }
+  .g .k {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .09em;
+    color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .g .v {
+    font: 700 clamp(22px, 3.1vw, 34px)/1.15 Consolas, ui-monospace, monospace;
+    margin-top: 3px; font-variant-numeric: tabular-nums;
+  }
+  .g .u { font-size: 10px; color: var(--faint); }
+  .g.dp .v { color: var(--dp); }
+  .g.csg .v { color: var(--csg); }
+  .g.alarm { border-color: var(--critical); box-shadow: inset 0 0 0 1px rgba(204,79,73,.35); }
+  .g.alarm .v { color: var(--critical); }
+
+  .stats { display: grid; gap: 8px; grid-template-columns: repeat(4, 1fr); margin-top: 12px; }
+  @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .s { background: var(--sunk); border: 1px solid var(--edge); border-radius: 6px; padding: 8px 10px; }
+  .s .k { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+  .s .v { font: 600 16px/1.25 Consolas, ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .s.alarm { border-color: var(--critical); }
+  .s.alarm .v { color: var(--critical); }
+
+  /* ---- controls ---- */
+  .row { display: flex; align-items: center; gap: 10px; }
+  .row.wrap { flex-wrap: wrap; }
+  input[type=range] { width: 100%; accent-color: var(--csg); }
+  .readback { font: 700 21px/1 Consolas, ui-monospace, monospace; min-width: 72px; text-align: right; }
+  .btns { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+  .btns button { flex: 1 1 auto; min-width: 58px; }
+
+  /* ---- charts ---- */
+  canvas.strip { width: 100%; height: 160px; display: block; }
+  .legend { display: flex; gap: 14px; font-size: 11px; color: var(--dim); margin-top: 6px; flex-wrap: wrap; }
+  .key { display: inline-block; width: 11px; height: 2px; vertical-align: middle; margin-right: 5px; }
+  .key.dash { height: 0; border-top: 2px dashed var(--dim); background: none; }
+
+  /* ---- log ---- */
+  #log { max-height: 300px; overflow-y: auto; font-size: 12px; }
+  #log div { padding: 5px 0; border-bottom: 1px solid var(--edge-soft); }
+  #log div:last-child { border-bottom: none; }
+  #log .t { color: var(--faint); font-family: Consolas, monospace; margin-right: 7px; }
   .sev-caution { color: var(--caution); }
   .sev-warning { color: var(--warning); }
   .sev-critical { color: var(--critical); font-weight: 600; }
 
-  .valves { display: grid; gap: 5px; font-size: 12px; max-height: 300px; overflow-y: auto; }
+  /* ---- lineup list ---- */
+  .valves { display: grid; gap: 4px; font-size: 12px; }
   .valve { display: flex; align-items: center; gap: 8px; }
   .valve span { flex: 1; }
-  .valve button { padding: 2px 8px; font-size: 11px; min-width: 62px; }
+  .valve button { padding: 2px 8px; font-size: 11px; min-width: 64px; }
   .bop { color: var(--caution); }
-  .note { font-size: 11px; color: var(--dim); margin-top: 8px; }
+
+  /* ---- tables ---- */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--edge-soft); }
+  th { color: var(--dim); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  td.num { text-align: right; font-family: Consolas, monospace; font-variant-numeric: tabular-nums; }
+  tr.fail td { color: var(--critical); }
+  tr.pass td.mark { color: var(--good); }
+
+  /* Both schematics are taller than they are wide in viewBox terms, so left
+     to scale on width alone they grow to a thousand pixels and the student
+     scrolls to see the bottom of the hole. Height drives instead. */
+  svg { display: block; width: 100%; }
+  #schematic { height: min(74vh, 620px); }
+  #pid { height: min(58vh, 420px); }
+  .verdict {
+    font: 700 22px/1.2 "Segoe UI", system-ui, sans-serif; letter-spacing: .02em;
+  }
+  .verdict.excellent, .verdict.pass { color: var(--good); }
+  .verdict.marginal { color: var(--caution); }
+  .verdict.fail { color: var(--critical); }
+  .bar { height: 8px; border-radius: 4px; background: var(--sunk); border: 1px solid var(--edge); overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--good); }
+  .bar i.low { background: var(--critical); }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Choke Panel</h1>
+  <h1>Well Control Simulator</h1>
   <span class="pill" id="returns">—</span>
-  <span class="pill" id="clock">00:00:00</span>
+  <span class="pill mono" id="clock">00:00:00</span>
+  <span class="pill" id="deadpill" style="display:none">Well dead</span>
   <span class="grow"></span>
-  <label class="ctl" style="margin:0">Scenario</label>
+  <label class="lbl">Scenario</label>
   <select id="scenario">
     <option value="drilling">Drilling — find the kick</option>
     <option value="shut_in" selected>Shut in — kill it</option>
   </select>
-  <label class="ctl" style="margin:0">Speed</label>
+  <label class="lbl">Speed</label>
   <select id="speed">
     <option value="0">Paused</option>
     <option value="1">1&times;</option>
     <option value="10" selected>10&times;</option>
     <option value="60">60&times;</option>
   </select>
-  <button id="debrief">Debrief</button>
   <button id="restart">Restart</button>
 </header>
 
-<div class="wrap">
-  <div>
-    <div class="card">
-      <h2>Instrument scan</h2>
-      <div class="scan">
-        <div class="gauge dp">
-          <div class="label">Drill pipe</div>
-          <div class="value" id="g-dp">—</div>
-          <div class="unit">psi</div>
+<nav id="tabs">
+  <button data-screen="driller" class="active">Driller</button>
+  <button data-screen="choke">Choke</button>
+  <button data-screen="bop">BOP &amp; Lineup</button>
+  <button data-screen="well">Well</button>
+  <button data-screen="sheet">Kill sheet</button>
+  <button data-screen="debrief">Debrief</button>
+</nav>
+
+<main>
+
+<!-- ============================ DRILLER ============================ -->
+<section class="screen active" id="s-driller">
+  <div class="cols">
+    <div>
+      <div class="card">
+        <h2>Driller's console</h2>
+        <div class="gauges">
+          <div class="g dp"><div class="k">Standpipe</div><div class="v" id="d-spp">—</div><div class="u">psi</div></div>
+          <div class="g"><div class="k">Pump</div><div class="v" id="d-spm">—</div><div class="u">spm</div></div>
+          <div class="g" id="d-pit-wrap"><div class="k">Pit gain</div><div class="v" id="d-pit">—</div><div class="u">bbl</div></div>
+          <div class="g" id="d-flow-wrap"><div class="k">Flow out &minus; in</div><div class="v" id="d-flow">—</div><div class="u">bpm</div></div>
         </div>
-        <div class="gauge csg">
-          <div class="label">Casing</div>
-          <div class="value" id="g-csg">—</div>
-          <div class="unit">psi</div>
+        <div class="stats">
+          <div class="s"><div class="k">Strokes</div><div class="v" id="d-stk">—</div></div>
+          <div class="s"><div class="k">Flow in</div><div class="v" id="d-in">—</div></div>
+          <div class="s"><div class="k">Flow out</div><div class="v" id="d-out">—</div></div>
+          <div class="s"><div class="k">Trip tank</div><div class="v" id="d-tt">—</div></div>
+          <div class="s" id="d-hook-wrap"><div class="k">Hookload</div><div class="v" id="d-hook">—</div></div>
+          <div class="s"><div class="k">Bit depth</div><div class="v" id="d-bit">—</div></div>
+          <div class="s"><div class="k">Pipe moved</div><div class="v" id="d-moved">—</div></div>
+          <div class="s"><div class="k">Displaced</div><div class="v" id="d-disp">—</div></div>
         </div>
-        <!-- These two swap with the phase. While a kick is developing the
-             driller's scan is the pit level and the flow line; once the well
-             is shut in it is the stroke counter and the choke. -->
-        <div class="gauge">
-          <div class="label" id="g-3-label">Strokes</div>
-          <div class="value" id="g-stk">—</div>
-          <div class="unit" id="g-3-unit">since start</div>
-        </div>
-        <div class="gauge">
-          <div class="label" id="g-4-label">Choke</div>
-          <div class="value" id="g-chk">—</div>
-          <div class="unit" id="g-4-unit">% open</div>
+        <div class="note" id="d-note"></div>
+      </div>
+
+      <div class="card">
+        <h2>Pit and flow history</h2>
+        <canvas id="c-pits" class="strip"></canvas>
+        <div class="legend">
+          <span><i class="key" style="background:var(--csg)"></i>Pit gain (bbl)</span>
+          <span><i class="key" style="background:var(--bhp)"></i>Flow out (bpm &times;10)</span>
+          <span><i class="key" style="background:var(--dp)"></i>Flow in (bpm &times;10)</span>
         </div>
       </div>
-      <div class="note" id="phase-note"></div>
-
-      <div class="secondary">
-        <div class="stat"><div class="label">Pump</div><div class="value" id="s-spm">—</div></div>
-        <div class="stat"><div class="label">Flow out</div><div class="value" id="s-out">—</div></div>
-        <div class="stat"><div class="label">Pit gain</div><div class="value" id="s-pit">—</div></div>
-        <div class="stat" id="s-ob-wrap"><div class="label">Overbalance</div><div class="value" id="s-ob">—</div></div>
-        <div class="stat"><div class="label">Bottomhole</div><div class="value" id="s-bhp">—</div></div>
-        <div class="stat" id="s-shoe-wrap"><div class="label">Shoe</div><div class="value" id="s-shoe">—</div></div>
-        <div class="stat"><div class="label">Influx</div><div class="value" id="s-influx">—</div></div>
-        <div class="stat" id="s-maasp-wrap"><div class="label">MAASP</div><div class="value" id="s-maasp">—</div></div>
-      </div>
     </div>
 
-    <div class="card" style="margin-top:16px">
-      <h2>Surface pressures</h2>
-      <canvas id="chart-surface" class="strip"></canvas>
-      <div class="legend">
-        <span><i class="key" style="background:var(--dp)"></i>Drill pipe</span>
-        <span><i class="key" style="background:var(--csg)"></i>Casing</span>
-        <span><i class="key dash"></i>MAASP</span>
+    <div>
+      <div class="card">
+        <h2>Mud pump</h2>
+        <div class="row">
+          <input type="range" id="pump" min="0" max="80" step="1" value="0">
+          <div class="readback" id="pump-read">0</div>
+        </div>
+        <div class="btns">
+          <button data-pump="0">Stop</button>
+          <button data-pump="30">Kill rate</button>
+          <button data-pump="60">Drilling</button>
+        </div>
       </div>
-    </div>
 
-    <div class="card" style="margin-top:16px" id="downhole-card">
-      <h2>Downhole pressures</h2>
-      <canvas id="chart-downhole" class="strip"></canvas>
-      <div class="legend">
-        <span><i class="key" style="background:var(--bhp)"></i>Bottomhole</span>
-        <span><i class="key" style="background:var(--shoe)"></i>Shoe</span>
-        <span><i class="key dash"></i>Limits, labelled on the line</span>
-      </div>
-      <div class="note">
-        Two panels, not two scales on one: surface pressure is hundreds of psi
-        and downhole is thousands, so sharing an axis hides the surface trace
-        entirely.
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:16px">
-      <h2>Event log</h2>
-      <div id="log"></div>
-    </div>
-  </div>
-
-  <div>
-    <div class="card">
-      <h2>Choke</h2>
-      <div class="row">
-        <input type="range" id="choke" min="0" max="100" step="0.5" value="0">
-        <div class="readback" id="choke-read">0.0</div>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <button data-choke="0">Shut</button>
-        <button data-choke="-2">&minus;2</button>
-        <button data-choke="+2">+2</button>
-        <button data-choke="100">Open</button>
-      </div>
-      <div class="note">
-        The choke is stiff with gas deep and soft with gas shallow. Small
-        movements, then wait for the gauge to settle.
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:16px">
-      <h2>Pump</h2>
-      <div class="row">
-        <input type="range" id="pump" min="0" max="80" step="1" value="0">
-        <div class="readback" id="pump-read">0</div>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <button data-pump="0">Stop</button>
-        <button data-pump="30">Kill rate</button>
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:16px">
-      <h2>Lineup</h2>
-      <div class="valves" id="valves"></div>
-      <div class="note">
-        A wrong lineup is not scored. It simply does not work.
+      <div class="card">
+        <h2>Stripping</h2>
+        <div class="row">
+          <input type="range" id="strip" min="-60" max="60" step="5" value="0">
+          <div class="readback" id="strip-read">0</div>
+        </div>
+        <div class="btns">
+          <button data-strip="-30">Pull out</button>
+          <button data-strip="0">Stop</button>
+          <button data-strip="30">Run in</button>
+        </div>
+        <div class="note">
+          Steel going into a shut-in well is volume going in. Bleed the
+          displacement on the choke or bottomhole pressure climbs. Watch the
+          hookload: when it reaches zero the well is pushing the pipe out and it
+          has to be snubbed.
+        </div>
       </div>
     </div>
   </div>
-</div>
+</section>
+
+<!-- ============================= CHOKE ============================= -->
+<section class="screen" id="s-choke">
+  <div class="cols">
+    <div>
+      <div class="card">
+        <h2>Choke panel — instrument scan</h2>
+        <div class="gauges">
+          <div class="g dp"><div class="k">Drill pipe</div><div class="v" id="g-dp">—</div><div class="u">psi</div></div>
+          <div class="g csg"><div class="k">Casing</div><div class="v" id="g-csg">—</div><div class="u">psi</div></div>
+          <div class="g"><div class="k" id="g-3-label">Strokes</div><div class="v" id="g-stk">—</div><div class="u" id="g-3-unit">since start</div></div>
+          <div class="g"><div class="k" id="g-4-label">Choke</div><div class="v" id="g-chk">—</div><div class="u" id="g-4-unit">% open</div></div>
+        </div>
+        <div class="note" id="phase-note"></div>
+        <div class="stats">
+          <div class="s"><div class="k">Pump</div><div class="v" id="s-spm">—</div></div>
+          <div class="s"><div class="k">Flow out</div><div class="v" id="s-out">—</div></div>
+          <div class="s"><div class="k">Pit gain</div><div class="v" id="s-pit">—</div></div>
+          <div class="s" id="s-ob-wrap"><div class="k">Overbalance</div><div class="v" id="s-ob">—</div></div>
+          <div class="s"><div class="k">Bottomhole</div><div class="v" id="s-bhp">—</div></div>
+          <div class="s" id="s-shoe-wrap"><div class="k">Shoe</div><div class="v" id="s-shoe">—</div></div>
+          <div class="s"><div class="k">Influx</div><div class="v" id="s-influx">—</div></div>
+          <div class="s" id="s-maasp-wrap"><div class="k">MAASP</div><div class="v" id="s-maasp">—</div></div>
+          <div class="s"><div class="k">Bled</div><div class="v" id="s-bled">—</div></div>
+          <div class="s"><div class="k">Lubricated</div><div class="v" id="s-lube">—</div></div>
+          <div class="s"><div class="k">Displaced</div><div class="v" id="s-disp">—</div></div>
+          <div class="s"><div class="k">Direction</div><div class="v" id="s-dir" style="font-size:12px">—</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Surface pressures</h2>
+        <canvas id="c-surface" class="strip"></canvas>
+        <div class="legend">
+          <span><i class="key" style="background:var(--dp)"></i>Drill pipe</span>
+          <span><i class="key" style="background:var(--csg)"></i>Casing</span>
+          <span><i class="key dash"></i>MAASP</span>
+        </div>
+      </div>
+
+      <div class="card" id="downhole-card">
+        <h2>Downhole pressures</h2>
+        <canvas id="c-downhole" class="strip"></canvas>
+        <div class="legend">
+          <span><i class="key" style="background:var(--bhp)"></i>Bottomhole</span>
+          <span><i class="key" style="background:var(--shoe)"></i>Shoe</span>
+          <span><i class="key dash"></i>Limits, labelled on the line</span>
+        </div>
+        <div class="note">
+          Two panels, not two scales on one: surface pressure runs in hundreds
+          of psi and downhole in thousands, so sharing an axis flattens the
+          gauge you are actually working to.
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Choke</h2>
+        <div class="row">
+          <input type="range" id="choke" min="0" max="100" step="0.5" value="0">
+          <div class="readback" id="choke-read">0.0</div>
+        </div>
+        <div class="btns">
+          <button data-choke="0">Shut</button>
+          <button data-choke="-2">&minus;2</button>
+          <button data-choke="+2">+2</button>
+          <button data-choke="100">Open</button>
+        </div>
+        <div class="note">
+          Stiff with gas deep, soft with gas shallow, violent once it is at
+          surface. Small movements, then wait for the gauge to settle.
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Event log</h2>
+        <div id="log"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================== BOP & LINEUP ========================= -->
+<section class="screen" id="s-bop">
+  <div class="cols">
+    <div>
+      <div class="card">
+        <h2>Circulating system</h2>
+        <svg id="pid" viewBox="0 0 720 420" role="img" aria-label="Piping schematic"></svg>
+        <div class="note">
+          The highlighted path is where fluid can actually go right now. A wrong
+          lineup is not marked wrong — it simply does not work, and the well
+          tells you by doing nothing.
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h2>Accumulator</h2>
+        <div class="row" style="gap:12px">
+          <div class="v mono" id="acc-psi" style="font-size:26px;font-weight:700">—</div>
+          <div style="flex:1">
+            <div class="bar"><i id="acc-bar" style="width:100%"></i></div>
+            <div class="note" style="margin-top:5px" id="acc-note"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>BOP stack</h2>
+        <div class="valves" id="bop-list"></div>
+        <div class="note">
+          Closed is what seals the annulus, so these read the opposite way to
+          every other valve. Each operation costs accumulator pressure.
+        </div>
+      </div>
+      <div class="card">
+        <h2>Valves</h2>
+        <div class="valves" id="valve-list"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= WELL ============================== -->
+<section class="screen" id="s-well">
+  <div class="cols">
+    <div>
+      <div class="card">
+        <h2>Well schematic</h2>
+        <svg id="schematic" viewBox="0 0 620 560" role="img" aria-label="Well cross-section"></svg>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h2>Fluid column</h2>
+        <table id="zones"><tbody></tbody></table>
+        <div class="note">
+          Read bottom-up, which is the order the annulus is built in: kill mud
+          at the bottom, mud behind the influx, the influx, original mud above.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =========================== KILL SHEET ========================== -->
+<section class="screen" id="s-sheet">
+  <div class="cols">
+    <div>
+      <div class="card">
+        <h2>Kill sheet</h2>
+        <table id="sheet"><tbody></tbody></table>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h2>Plan against actual</h2>
+        <table id="sheet-live"><tbody></tbody></table>
+        <div class="note">
+          These are the library's own kill sheet numbers — the same ones the
+          planner prints for this well.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ DEBRIEF ============================ -->
+<section class="screen" id="s-debrief">
+  <div class="cols">
+    <div>
+      <div class="card">
+        <h2>Verdict</h2>
+        <div class="verdict" id="db-grade">—</div>
+        <div style="margin-top:6px" id="db-summary"></div>
+        <div class="stats" style="margin-top:14px">
+          <div class="s"><div class="k">Well killed</div><div class="v" id="db-killed">—</div></div>
+          <div class="s"><div class="k">Time taken</div><div class="v" id="db-time">—</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Measures</h2>
+        <table id="db-metrics"><tbody></tbody></table>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h2>What happened</h2>
+        <div class="row" style="margin-bottom:10px">
+          <label class="lbl"><input type="checkbox" id="db-require"> Exercise required a dead well</label>
+        </div>
+        <div id="db-events" style="max-height:420px;overflow-y:auto;font-size:12px"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
 
 <script>
 const $ = (id) => document.getElementById(id);
-let sessionId = null, nextEvent = 0, trace = [], busy = false;
+let sessionId = null, nextEvent = 0, trace = [], busy = false, screen = "driller";
 let formationPsi = null, fracPsi = null, maaspPsi = null, downholeVisible = true;
+let lineupCache = [], schematicCache = null;
 
 async function api(path, options) {
-  const response = await fetch(path, Object.assign({
-    headers: {"Content-Type": "application/json"}
-  }, options || {}));
-  if (!response.ok) throw new Error(await response.text());
-  return response.status === 204 ? null : response.json();
+  const r = await fetch(path, Object.assign(
+    {headers: {"Content-Type": "application/json"}}, options || {}));
+  if (!r.ok) throw new Error(await r.text());
+  return r.status === 204 ? null : r.json();
 }
 
+/* ------------------------------ lifecycle ------------------------------ */
 async function start() {
   const created = await api("/api/sessions", {
     method: "POST",
@@ -275,14 +504,14 @@ async function start() {
     })
   });
   sessionId = created.session_id;
-  nextEvent = 0; trace = [];
-  formationPsi = created.gauges.formation_psi;
+  nextEvent = 0; trace = []; schematicCache = null;
   $("log").innerHTML = "";
-  drawValves(created.lineup);
   await api(`/api/sessions/${sessionId}/speed`, {
     method: "POST", body: JSON.stringify({speed: Number($("speed").value)})
   });
+  drawLineup(created.lineup);
   paint(created.gauges);
+  loadSheet();
 }
 
 async function poll() {
@@ -291,51 +520,71 @@ async function poll() {
   try {
     const snap = await api(
       `/api/sessions/${sessionId}?since_event=${nextEvent}&trace_limit=240`);
-    paint(snap.gauges);
     trace = snap.trace;
     nextEvent = snap.events.next_index;
     snap.events.events.forEach(addEvent);
-    drawChart();
-  } catch (err) {
-    console.error(err);
-  } finally {
-    busy = false;
-  }
+    lineupCache = snap.lineup;
+    schematicCache = snap.schematic;
+    paint(snap.gauges);
+    redraw();
+  } catch (e) { console.error(e); }
+  finally { busy = false; }
 }
 
+function redraw() {
+  if (screen === "choke") drawCharts();
+  else if (screen === "driller") drawPits();
+  else if (screen === "bop") { drawPid(); drawLineup(lineupCache); }
+  else if (screen === "well") drawSchematic();
+}
+
+/* -------------------------------- paint -------------------------------- */
 function paint(g) {
-  const psi = v => v === null || v === undefined ? "—" : v + " psi";
+  const psi = v => v === null || v === undefined ? "—" : v.toLocaleString() + " psi";
   const seen = g.downhole_visible;
-
-  $("g-dp").textContent = g.drill_pipe_psi;
-  $("g-csg").textContent = g.casing_psi;
-
-  // Slots three and four follow the phase. Before the well is shut in the
-  // student is looking for a kick, and the stroke counter tells them nothing.
+  downholeVisible = seen;
+  formationPsi = g.formation_psi; fracPsi = g.frac_psi; maaspPsi = g.maasp_psi;
   const excess = g.flow_out_bpm - g.flow_in_bpm;
+
+  /* --- driller --- */
+  $("d-spp").textContent = g.drill_pipe_psi.toLocaleString();
+  $("d-spm").textContent = g.pump_spm.toFixed(0);
+  $("d-pit").textContent = g.pit_gain_bbl.toFixed(1);
+  $("d-flow").textContent = excess.toFixed(2);
+  $("d-stk").textContent = g.strokes.toLocaleString();
+  $("d-in").textContent = g.flow_in_bpm.toFixed(2) + " bpm";
+  $("d-out").textContent = g.flow_out_bpm.toFixed(2) + " bpm";
+  $("d-tt").textContent = g.trip_tank_bbl.toFixed(1) + " bbl";
+  $("d-hook").textContent = g.hookload_klbf.toFixed(0) + " klbf";
+  $("d-bit").textContent = g.bit_md_ft.toLocaleString() + " ft";
+  $("d-moved").textContent = g.pipe_moved_ft.toFixed(0) + " ft";
+  $("d-disp").textContent = g.pipe_displacement_bbl.toFixed(2) + " bbl";
+  $("d-pit-wrap").classList.toggle("alarm", g.pit_gain_bbl > 5);
+  $("d-flow-wrap").classList.toggle("alarm", excess > 0.4);
+  $("d-hook-wrap").classList.toggle("alarm", g.hookload_klbf <= 0);
+  $("d-note").textContent = g.hookload_klbf <= 0
+    ? "Hookload is at zero — the well is pushing the string out. This has to be snubbed, not stripped."
+    : "";
+
+  /* --- choke --- */
+  $("g-dp").textContent = g.drill_pipe_psi.toLocaleString();
+  $("g-csg").textContent = g.casing_psi.toLocaleString();
   if (seen) {
-    $("g-3-label").textContent = "Strokes";
-    $("g-3-unit").textContent = "since start";
+    $("g-3-label").textContent = "Strokes"; $("g-3-unit").textContent = "since start";
     $("g-stk").textContent = g.strokes.toLocaleString();
-    $("g-4-label").textContent = "Choke";
-    $("g-4-unit").textContent = "% open";
+    $("g-4-label").textContent = "Choke"; $("g-4-unit").textContent = "% open";
     $("g-chk").textContent = g.choke_percent.toFixed(1);
     $("phase-note").textContent = "";
   } else {
-    $("g-3-label").textContent = "Pit gain";
-    $("g-3-unit").textContent = "bbl";
+    $("g-3-label").textContent = "Pit gain"; $("g-3-unit").textContent = "bbl";
     $("g-stk").textContent = g.pit_gain_bbl.toFixed(1);
-    $("g-4-label").textContent = "Flow out − in";
-    $("g-4-unit").textContent = "bpm";
+    $("g-4-label").textContent = "Flow out − in"; $("g-4-unit").textContent = "bpm";
     $("g-chk").textContent = excess.toFixed(2);
     $("phase-note").textContent =
-      "Drilling ahead. There is no bottomhole gauge on a rig — watch the pit " +
-      "level and the flow line. Shut in when you are sure.";
+      "Drilling ahead. There is no bottomhole gauge on a rig — watch the pit level and the flow line. Shut in when you are sure.";
   }
-  $("g-stk").parentElement.classList.toggle(
-    "warn-gauge", !seen && g.pit_gain_bbl > 5);
-  $("g-chk").parentElement.classList.toggle(
-    "warn-gauge", !seen && excess > 0.4);
+  $("g-stk").parentElement.classList.toggle("alarm", !seen && g.pit_gain_bbl > 5);
+  $("g-chk").parentElement.classList.toggle("alarm", !seen && excess > 0.4);
 
   $("s-spm").textContent = g.pump_spm.toFixed(0) + " spm";
   $("s-out").textContent = g.flow_out_bpm.toFixed(2) + " bpm";
@@ -344,223 +593,435 @@ function paint(g) {
     : (g.overbalance_psi > 0 ? "+" : "") + g.overbalance_psi + " psi";
   $("s-bhp").textContent = psi(g.bottomhole_psi);
   $("s-shoe").textContent = psi(g.shoe_psi);
-  $("s-influx").textContent = g.influx_bbl === null ? "—"
-    : g.influx_bbl.toFixed(1) + " bbl";
+  $("s-influx").textContent = g.influx_bbl === null ? "—" : g.influx_bbl.toFixed(1) + " bbl";
   $("s-maasp").textContent = psi(g.maasp_psi);
-  formationPsi = g.formation_psi;
-  fracPsi = g.frac_psi;
-  maaspPsi = g.maasp_psi;
-  downholeVisible = seen;
+  $("s-bled").textContent = g.bled_bbl.toFixed(2) + " bbl";
+  $("s-lube").textContent = g.lubricated_bbl.toFixed(2) + " bbl";
+  $("s-disp").textContent = g.pipe_displacement_bbl.toFixed(2) + " bbl";
+  $("s-dir").textContent = g.reverse_circulating ? "Reverse" : "Forward";
   $("downhole-card").style.display = seen ? "" : "none";
-
-  // Alarms mark the two things that actually damage the well.
-  $("s-ob-wrap").classList.toggle("alarm",
-    g.overbalance_psi !== null && g.overbalance_psi < -50);
+  $("s-ob-wrap").classList.toggle("alarm", g.overbalance_psi !== null && g.overbalance_psi < -50);
   $("s-shoe-wrap").classList.toggle("alarm",
     g.frac_psi !== null && g.shoe_psi !== null && g.shoe_psi > g.frac_psi);
   $("s-maasp-wrap").classList.toggle("alarm",
     g.maasp_psi !== null && g.casing_psi > g.maasp_psi);
 
-  const returns = $("returns");
-  returns.textContent = g.returns;
-  returns.className = "pill " +
-    (g.returns.indexOf("no pressure control") >= 0 ? "bad"
-      : g.returns.indexOf("closed in") >= 0 ? "warn" : "ok");
+  /* --- accumulator --- */
+  $("acc-psi").textContent = g.accumulator_psi.toLocaleString();
+  const bar = $("acc-bar");
+  bar.style.width = (g.accumulator_fraction * 100).toFixed(0) + "%";
+  bar.classList.toggle("low", !g.accumulator_ok);
+  $("acc-note").textContent = g.accumulator_ok
+    ? "Enough to operate the stack."
+    : "Below the minimum — nothing on the stack will shift until it recharges.";
 
-  const total = Math.floor(g.time_s);
-  const hh = String(Math.floor(total / 3600)).padStart(2, "0");
-  const mm = String(Math.floor(total / 60) % 60).padStart(2, "0");
-  const ss = String(total % 60).padStart(2, "0");
-  $("clock").textContent = `${hh}:${mm}:${ss}`;
+  /* --- chrome --- */
+  const ret = $("returns");
+  ret.textContent = g.returns;
+  ret.className = "pill " + (g.returns.indexOf("no pressure control") >= 0 ? "bad"
+    : g.returns.indexOf("closed in") >= 0 ? "warn" : "ok");
+  $("deadpill").style.display = g.well_is_dead ? "" : "none";
+  $("deadpill").className = "pill ok";
+  const t = Math.floor(g.time_s);
+  $("clock").textContent = [Math.floor(t / 3600), Math.floor(t / 60) % 60, t % 60]
+    .map(n => String(n).padStart(2, "0")).join(":");
 
-  if (document.activeElement !== $("choke")) {
-    $("choke").value = g.choke_commanded;
-  }
+  if (document.activeElement !== $("choke")) $("choke").value = g.choke_commanded;
   $("choke-read").textContent = g.choke_percent.toFixed(1);
-  if (document.activeElement !== $("pump")) {
-    $("pump").value = g.pump_commanded;
-  }
+  if (document.activeElement !== $("pump")) $("pump").value = g.pump_commanded;
   $("pump-read").textContent = g.pump_spm.toFixed(0);
-
-  // The server drops the clock to real time by itself when the well starts
-  // flowing, so the selector has to follow rather than argue with it.
-  if (document.activeElement !== $("speed")
-      && Number($("speed").value) !== g.speed) {
+  if (document.activeElement !== $("strip")) $("strip").value = g.strip_rate_ft_per_min;
+  $("strip-read").textContent = g.strip_rate_ft_per_min.toFixed(0);
+  if (document.activeElement !== $("speed") && Number($("speed").value) !== g.speed) {
     $("speed").value = String(g.speed);
   }
 }
 
-function addEvent(event) {
+function addEvent(e) {
   const row = document.createElement("div");
-  row.innerHTML = `<span class="t">${event.clock}</span>` +
-    `<span class="sev-${event.severity}">${event.message}</span>`;
+  row.innerHTML = `<span class="t">${e.clock}</span><span class="sev-${e.severity}">${e.message}</span>`;
   $("log").prepend(row);
 }
 
-function drawValves(valves) {
-  const host = $("valves");
-  host.innerHTML = "";
-  valves.forEach(valve => {
-    if (valve.name === "choke_2") return;      // one adjustable choke is enough
-    const row = document.createElement("div");
-    row.className = "valve";
-    const open = valve.state === "open";
-    // A BOP element reads backwards: closed is what seals the annulus.
-    const verb = valve.is_bop ? (open ? "Open" : "Closed") : (open ? "Open" : "Shut");
-    row.innerHTML = `<span class="${valve.is_bop ? "bop" : ""}">${valve.label}</span>`;
-    const button = document.createElement("button");
-    button.textContent = verb;
-    button.className = open ? (valve.is_bop ? "" : "on") : (valve.is_bop ? "danger" : "");
-    button.onclick = async () => {
-      const result = await api(`/api/sessions/${sessionId}/valve`, {
-        method: "POST",
-        body: JSON.stringify({name: valve.name, state: open ? "closed" : "open"})
-      });
-      drawValves(result.lineup);
-      paint(result.gauges);
-    };
-    row.appendChild(button);
-    host.appendChild(row);
-  });
-}
+/* ------------------------------- charts -------------------------------- */
+function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
 
-function drawChart() {
-  // Two panels rather than two scales on one chart. Surface pressure runs in
-  // hundreds of psi and downhole in thousands; on a shared axis the surface
-  // traces flatten onto the baseline and the student cannot read the gauge
-  // they are actually working to.
-  drawPanel("chart-surface",
-    [{key: "drill_pipe_psi", colour: getCss("--dp")},
-     {key: "casing_psi", colour: getCss("--csg")}],
+function drawCharts() {
+  drawPanel("c-surface",
+    [{key: "drill_pipe_psi", colour: css("--dp")}, {key: "casing_psi", colour: css("--csg")}],
     [{value: maaspPsi, label: "MAASP"}]);
   if (!downholeVisible) return;
-  drawPanel("chart-downhole",
-    [{key: "bottomhole_psi", colour: getCss("--bhp")},
-     {key: "shoe_psi", colour: getCss("--shoe")}],
-    // Labelled on the line itself: two identical dashes in a legend do not
-    // tell a student which one the shoe is about to cross.
-    [{value: formationPsi, label: "formation"},
-     {value: fracPsi, label: "fracture"}]);
+  drawPanel("c-downhole",
+    [{key: "bottomhole_psi", colour: css("--bhp")}, {key: "shoe_psi", colour: css("--shoe")}],
+    [{value: formationPsi, label: "formation"}, {value: fracPsi, label: "fracture"}]);
 }
 
-function drawPanel(canvasId, series, thresholds) {
-  const canvas = $(canvasId);
+function drawPits() {
+  drawPanel("c-pits", [
+    {key: "pit_gain_bbl", colour: css("--csg")},
+    {key: "flow_out_bpm", colour: css("--bhp"), scale: 10},
+    {key: "flow_in_bpm", colour: css("--dp"), scale: 10},
+  ], []);
+}
+
+function drawPanel(id, series, thresholds) {
+  const c = $(id); if (!c) return;
   const ratio = window.devicePixelRatio || 1;
-  const width = canvas.clientWidth, height = canvas.clientHeight;
-  if (!width || !height) return;
-  canvas.width = width * ratio; canvas.height = height * ratio;
-  const ctx = canvas.getContext("2d");
-  ctx.scale(ratio, ratio);
-  ctx.clearRect(0, 0, width, height);
+  const w = c.clientWidth, h = c.clientHeight;
+  if (!w || !h) return;
+  c.width = w * ratio; c.height = h * ratio;
+  const x2 = c.getContext("2d"); x2.scale(ratio, ratio); x2.clearRect(0, 0, w, h);
   if (trace.length < 2) return;
 
-  const pad = {l: 48, r: 62, t: 8, b: 18};
-  const marks = thresholds.filter(
-    m => m && m.value !== null && m.value !== undefined
-  );
+  const pad = {l: 50, r: 62, t: 8, b: 18};
+  const marks = thresholds.filter(m => m && m.value !== null && m.value !== undefined);
+  const at = (p, s) => (p[s.key] === undefined ? null : p[s.key] * (s.scale || 1));
 
   let lo = Infinity, hi = -Infinity;
   trace.forEach(p => series.forEach(s => {
-    lo = Math.min(lo, p[s.key]); hi = Math.max(hi, p[s.key]);
+    const v = at(p, s); if (v === null) return;
+    lo = Math.min(lo, v); hi = Math.max(hi, v);
   }));
   marks.forEach(m => { lo = Math.min(lo, m.value); hi = Math.max(hi, m.value); });
   if (!isFinite(lo)) return;
-  if (hi - lo < 50) hi = lo + 50;
-  const margin = (hi - lo) * 0.08; lo -= margin; hi += margin;
+  if (hi - lo < 10) hi = lo + 10;
+  const m = (hi - lo) * 0.08; lo -= m; hi += m;
 
   const t0 = trace[0].time_s, t1 = trace[trace.length - 1].time_s || t0 + 1;
-  const x = t => pad.l + (t - t0) / Math.max(1e-9, t1 - t0) * (width - pad.l - pad.r);
-  const y = v => pad.t + (1 - (v - lo) / (hi - lo)) * (height - pad.t - pad.b);
+  const X = t => pad.l + (t - t0) / Math.max(1e-9, t1 - t0) * (w - pad.l - pad.r);
+  const Y = v => pad.t + (1 - (v - lo) / (hi - lo)) * (h - pad.t - pad.b);
 
-  // Solid hairline gridlines; dashing is reserved for threshold lines.
-  ctx.strokeStyle = "#26313b"; ctx.lineWidth = 1;
-  ctx.fillStyle = getCss("--dim"); ctx.font = "10px Consolas, monospace";
+  x2.strokeStyle = "#232e39"; x2.lineWidth = 1;
+  x2.fillStyle = css("--faint"); x2.font = "10px Consolas, monospace";
   for (let i = 0; i <= 4; i++) {
-    const value = lo + (hi - lo) * i / 4;
-    const yy = Math.round(y(value)) + 0.5;
-    ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(width - pad.r, yy); ctx.stroke();
-    ctx.fillText(Math.round(value).toLocaleString(), 4, yy + 3);
+    const v = lo + (hi - lo) * i / 4, y = Math.round(Y(v)) + 0.5;
+    x2.beginPath(); x2.moveTo(pad.l, y); x2.lineTo(w - pad.r, y); x2.stroke();
+    x2.fillText(Math.round(v).toLocaleString(), 4, y + 3);
   }
-
-  ctx.save();
-  ctx.strokeStyle = getCss("--dim"); ctx.lineWidth = 1;
-  ctx.fillStyle = getCss("--dim"); ctx.font = "10px Consolas, monospace";
-  marks.forEach(mark => {
-    const yy = y(mark.value);
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    ctx.moveTo(pad.l, yy); ctx.lineTo(width - pad.r, yy);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillText(mark.label, width - pad.r + 5, yy + 3);
+  x2.save(); x2.strokeStyle = css("--dim"); x2.fillStyle = css("--dim");
+  marks.forEach(mk => {
+    const y = Y(mk.value);
+    x2.setLineDash([4, 4]); x2.beginPath();
+    x2.moveTo(pad.l, y); x2.lineTo(w - pad.r, y); x2.stroke();
+    x2.setLineDash([]); x2.fillText(mk.label, w - pad.r + 5, y + 3);
   });
-  ctx.restore();
+  x2.restore();
 
   series.forEach(s => {
-    ctx.strokeStyle = s.colour; ctx.lineWidth = 2;
-    ctx.beginPath();
-    trace.forEach((p, i) => {
-      const px = x(p.time_s), py = y(p[s.key]);
-      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    x2.strokeStyle = s.colour; x2.lineWidth = 2; x2.beginPath();
+    let started = false;
+    trace.forEach(p => {
+      const v = at(p, s); if (v === null) return;
+      const px = X(p.time_s), py = Y(v);
+      if (!started) { x2.moveTo(px, py); started = true; } else x2.lineTo(px, py);
     });
-    ctx.stroke();
+    x2.stroke();
   });
 }
 
-function getCss(name) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+/* ------------------------------ schematic ------------------------------ */
+const FLUID_COLOUR = {
+  "influx": "var(--gas)", "gas cap": "var(--gas)",
+  "kill mud": "var(--killmud)", "mud behind influx": "#33506b",
+  "original mud": "#2a4257", "mud": "#2a4257",
+};
+
+function drawSchematic() {
+  const s = schematicCache; const svg = $("schematic");
+  if (!s) return;
+  if (!s.visible) {
+    svg.innerHTML = `<rect width="620" height="560" fill="var(--sunk)"/>
+      <text x="310" y="270" text-anchor="middle" fill="${css('--dim')}" font-size="15">
+        No downhole picture while a kick is developing.</text>
+      <text x="310" y="296" text-anchor="middle" fill="${css('--faint')}" font-size="12">
+        A rig has no cross-section of the well. Watch the pit and the flow line.</text>`;
+    return;
+  }
+  const TOP = 30, BOT = 520, LEFT = 190, RIGHT = 430;
+  const D = s.hole_md_ft || 1;
+  const y = md => TOP + (BOT - TOP) * Math.min(1, Math.max(0, md / D));
+  const bits = [];
+
+  bits.push(`<rect x="0" y="0" width="620" height="560" fill="var(--sunk)"/>`);
+  // Open hole and casing walls.
+  bits.push(`<rect x="${LEFT - 14}" y="${TOP}" width="${RIGHT - LEFT + 28}" height="${BOT - TOP}" fill="#141c24"/>`);
+  if (s.shoe_md_ft) {
+    bits.push(`<rect x="${LEFT - 14}" y="${TOP}" width="8" height="${y(s.shoe_md_ft) - TOP}" fill="#3c4a58"/>`);
+    bits.push(`<rect x="${RIGHT + 6}" y="${TOP}" width="8" height="${y(s.shoe_md_ft) - TOP}" fill="#3c4a58"/>`);
+  }
+
+  // Annular fluid zones, drawn bottom-up as the column is built.
+  (s.annulus_zones || []).forEach(z => {
+    const top = y(z.top_md_ft), bot = y(z.bottom_md_ft);
+    const colour = FLUID_COLOUR[z.label] || "#2a4257";
+    bits.push(`<rect x="${LEFT}" y="${top}" width="${RIGHT - LEFT}" height="${Math.max(1, bot - top)}"
+      fill="${colour}"><title>${z.label} — ${z.density_ppg} ppg</title></rect>`);
+  });
+
+  // Drill string down the middle.
+  const bitY = y(s.bit_md_ft);
+  bits.push(`<rect x="${(LEFT + RIGHT) / 2 - 13}" y="${TOP}" width="26" height="${bitY - TOP}"
+    fill="#1d2731" stroke="#46565f"/>`);
+  if (s.influx_in_string) {
+    const t = y(s.influx_top_md_ft), b = y(s.influx_bottom_md_ft);
+    bits.push(`<rect x="${(LEFT + RIGHT) / 2 - 10}" y="${t}" width="20" height="${Math.max(2, b - t)}"
+      fill="var(--gas)"><title>influx, in the string</title></rect>`);
+  }
+  bits.push(`<rect x="${(LEFT + RIGHT) / 2 - 17}" y="${bitY - 6}" width="34" height="10" fill="#6d7c88"/>`);
+
+  // Depth labels. The bit sits exactly on TD whenever it is on bottom, so
+  // without spacing the two texts print on top of each other and neither is
+  // readable. Collected, sorted and nudged apart, with a leader line back to
+  // the true depth so the nudge does not lie about where the thing is.
+  const marks = [];
+  if (s.shoe_md_ft) marks.push({md: s.shoe_md_ft, text: `shoe ${s.shoe_md_ft.toLocaleString()} ft`, colour: css("--shoe")});
+  marks.push({md: s.bit_md_ft, text: `bit ${s.bit_md_ft.toLocaleString()} ft`, colour: css("--dim")});
+  if (Math.abs(s.hole_md_ft - s.bit_md_ft) > 1) {
+    marks.push({md: s.hole_md_ft, text: `TD ${s.hole_md_ft.toLocaleString()} ft`, colour: css("--faint")});
+  }
+  marks.sort((a, b) => a.md - b.md);
+  let lastY = -99;
+  marks.forEach(mk => {
+    const trueY = y(mk.md);
+    const textY = Math.max(trueY, lastY + 14);
+    lastY = textY;
+    bits.push(`<path d="M ${RIGHT + 16} ${trueY} L ${RIGHT + 38} ${textY}
+      L ${RIGHT + 46} ${textY}" fill="none" stroke="${mk.colour}" stroke-width="1"/>`);
+    bits.push(`<text x="${RIGHT + 52}" y="${textY + 4}" fill="${mk.colour}"
+      font-size="11" font-family="Consolas, monospace">${mk.text}</text>`);
+  });
+  if (!s.influx_in_string && s.influx_bbl > 0) {
+    const yy = (y(s.influx_top_md_ft) + y(s.influx_bottom_md_ft)) / 2;
+    bits.push(`<line x1="${LEFT - 44}" y1="${yy}" x2="${LEFT - 16}" y2="${yy}" stroke="${css('--gas')}"/>`);
+    bits.push(`<text x="${LEFT - 50}" y="${yy + 4}" text-anchor="end" fill="${css('--gas')}"
+      font-size="11" font-family="Consolas, monospace">influx ${s.influx_bbl} bbl</text>`);
+  }
+  bits.push(`<text x="310" y="18" text-anchor="middle" fill="${css('--dim')}" font-size="11">surface</text>`);
+  svg.innerHTML = bits.join("");
+
+  const rows = (s.annulus_zones || []).slice().reverse().map(z => `<tr>
+      <td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;
+        background:${FLUID_COLOUR[z.label] || '#2a4257'};margin-right:7px"></span>${z.label}</td>
+      <td class="num">${z.top_md_ft.toLocaleString()}</td>
+      <td class="num">${z.bottom_md_ft.toLocaleString()}</td>
+      <td class="num">${z.density_ppg}</td></tr>`).join("");
+  $("zones").innerHTML =
+    `<thead><tr><th>Fluid</th><th style="text-align:right">Top ft</th>
+     <th style="text-align:right">Bottom ft</th><th style="text-align:right">ppg</th></tr></thead>
+     <tbody>${rows}</tbody>`;
 }
 
-/* ---- controls ---- */
+/* --------------------------------- P&ID -------------------------------- */
+const PID_NODES = {
+  "mud pump":          [40, 40, 92, 30],
+  "standpipe":         [190, 40, 92, 30],
+  "drill string":      [340, 40, 92, 30],
+  "bit":               [480, 40, 60, 30],
+  "annulus":           [480, 130, 92, 30],
+  "BOP stack":         [480, 210, 92, 30],
+  "flowline":          [340, 300, 92, 30],
+  "choke line":        [300, 210, 92, 30],
+  "kill line":         [140, 130, 92, 30],
+  "choke manifold":    [140, 300, 110, 30],
+  "mud gas separator": [140, 360, 110, 30],
+  "active pits":       [340, 360, 92, 30],
+  "trip tank":         [600, 130, 80, 30],
+};
+
+function drawPid() {
+  const svg = $("pid");
+  const active = new Set();
+  lineupCache.forEach(v => { if (v.state === "open" && !v.is_bop) { active.add(v.from); active.add(v.to); } });
+  const bits = [`<rect width="720" height="420" fill="var(--sunk)"/>`];
+
+  // Several valves can join the same pair of nodes -- the three BOP elements
+  // all sit between the annulus and the stack, and the kelly cock and the
+  // float share the string and the bit. Drawn on the raw midpoint they land on
+  // top of each other and only the last one is visible or clickable, so they
+  // are counted first and then fanned out along the line.
+  const groups = {};
+  lineupCache.forEach(v => {
+    const key = [v.from, v.to].sort().join("|");
+    (groups[key] = groups[key] || []).push(v);
+  });
+
+  // Edges first, so boxes sit on top.
+  Object.values(groups).forEach(group => {
+    group.forEach((v, i) => {
+      const a = PID_NODES[v.from], b = PID_NODES[v.to];
+      if (!a || !b) return;
+      const ax = a[0] + a[2] / 2, ay = a[1] + a[3] / 2;
+      const bx = b[0] + b[2] / 2, by = b[1] + b[3] / 2;
+      const open = v.state === "open";
+      // A BOP element reads backwards: closed is what seals the annulus, so
+      // closed is the state worth colouring as significant.
+      const colour = v.is_bop ? (open ? css("--faint") : css("--critical"))
+        : (open ? css("--good") : css("--faint"));
+      if (i === 0) {
+        bits.push(`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}"
+          stroke="${group.some(g => g.state === "open" && !g.is_bop)
+            ? css("--good") : css("--faint")}"
+          stroke-width="${group.some(g => g.state === "open" && !g.is_bop) ? 2.5 : 1.2}"
+          ${group.some(g => g.state === "open") ? "" : 'stroke-dasharray="4 4"'} />`);
+      }
+      // Fan the markers along the line, centred on its midpoint.
+      const spread = 19;
+      const offset = (i - (group.length - 1) / 2) * spread;
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      const mx = (ax + bx) / 2 + (bx - ax) / len * offset;
+      const my = (ay + by) / 2 + (by - ay) / len * offset;
+      bits.push(`<g class="pv" data-valve="${v.name}" style="cursor:pointer">
+        <circle cx="${mx}" cy="${my}" r="7.5" fill="${colour}"
+          stroke="#0b1016" stroke-width="1.5"/>
+        <title>${v.label} — ${v.state}${v.is_bop
+          ? " (BOP: closed seals the annulus)" : ""}</title></g>`);
+    });
+  });
+
+  Object.entries(PID_NODES).forEach(([name, [x, yy, w, h]]) => {
+    const on = active.has(name);
+    bits.push(`<rect x="${x}" y="${yy}" width="${w}" height="${h}" rx="5"
+      fill="${on ? '#1b2b36' : '#141c24'}" stroke="${on ? css('--dp') : css('--edge')}"/>`);
+    bits.push(`<text x="${x + w / 2}" y="${yy + h / 2 + 4}" text-anchor="middle"
+      fill="${on ? css('--ink') : css('--dim')}" font-size="10.5">${name}</text>`);
+  });
+  svg.innerHTML = bits.join("");
+  svg.querySelectorAll(".pv").forEach(g => {
+    g.onclick = () => toggleValve(g.dataset.valve);
+  });
+}
+
+/* -------------------------------- lineup ------------------------------- */
+function drawLineup(valves) {
+  if (!valves) return;
+  lineupCache = valves;
+  const bopHost = $("bop-list"), valveHost = $("valve-list");
+  bopHost.innerHTML = ""; valveHost.innerHTML = "";
+  valves.forEach(v => {
+    const row = document.createElement("div");
+    row.className = "valve";
+    const open = v.state === "open";
+    row.innerHTML = `<span class="${v.is_bop ? "bop" : ""}">${v.label}</span>`;
+    const b = document.createElement("button");
+    b.textContent = v.is_bop ? (open ? "Open" : "Closed") : (open ? "Open" : "Shut");
+    b.className = v.is_bop ? (open ? "" : "danger") : (open ? "on" : "");
+    b.onclick = () => toggleValve(v.name);
+    row.appendChild(b);
+    (v.is_bop ? bopHost : valveHost).appendChild(row);
+  });
+}
+
+async function toggleValve(name) {
+  const v = lineupCache.find(x => x.name === name);
+  if (!v || !sessionId) return;
+  const r = await api(`/api/sessions/${sessionId}/valve`, {
+    method: "POST",
+    body: JSON.stringify({name, state: v.state === "open" ? "closed" : "open"})
+  });
+  drawLineup(r.lineup); paint(r.gauges);
+  if (screen === "bop") drawPid();
+}
+
+/* ------------------------------ kill sheet ----------------------------- */
+async function loadSheet() {
+  if (!sessionId) return;
+  const k = await api(`/api/sessions/${sessionId}/killsheet`);
+  const row = (a, b, u) => `<tr><td>${a}</td><td class="num">${b}${u ? " " + u : ""}</td></tr>`;
+  $("sheet").innerHTML = "<tbody>" +
+    row("Mud weight", k.mud_weight_ppg, "ppg") +
+    row("Kill mud weight, as mixed", k.kill_mud_weight_ppg, "ppg") +
+    row("Kill mud weight, calculated", k.kill_mud_weight_exact_ppg, "ppg") +
+    row("SIDPP", k.sidpp_psi.toLocaleString(), "psi") +
+    row("SICP", k.sicp_psi.toLocaleString(), "psi") +
+    row("Pit gain", k.pit_gain_bbl, "bbl") +
+    row("Formation pressure", k.formation_psi.toLocaleString(), "psi") +
+    row("Slow circulating rate", k.scr_psi.toLocaleString() + " psi at " + k.scr_spm, "spm") +
+    row("ICP", k.icp_psi.toLocaleString(), "psi") +
+    row("FCP", k.fcp_psi.toLocaleString(), "psi") +
+    row("MAASP", k.maasp_psi === null ? "—" : k.maasp_psi.toLocaleString(), "psi") +
+    row("Fracture pressure at shoe", k.frac_psi === null ? "—" : k.frac_psi.toLocaleString(), "psi") +
+    row("Strokes to bit", k.strokes_to_bit.toLocaleString(), "") +
+    row("Strokes bit to surface", k.strokes_bit_to_surface.toLocaleString(), "") +
+    row("Total strokes", k.total_strokes.toLocaleString(), "") + "</tbody>";
+  $("sheet-live").innerHTML = "<tbody>" +
+    row("Strokes pumped", k.actual_strokes.toLocaleString(), "") +
+    row("Drill pipe now", k.actual_drill_pipe_psi.toLocaleString(), "psi") +
+    row("Drill pipe target: ICP", k.icp_psi.toLocaleString(), "psi") +
+    row("Drill pipe target: FCP", k.fcp_psi.toLocaleString(), "psi") +
+    row("Casing now", k.actual_casing_psi.toLocaleString(), "psi") + "</tbody>";
+}
+
+/* -------------------------------- debrief ------------------------------ */
+async function loadDebrief() {
+  if (!sessionId) return;
+  const d = await api(
+    `/api/sessions/${sessionId}/debrief?require_kill=${$("db-require").checked}`);
+  $("db-grade").textContent = d.grade.toUpperCase();
+  $("db-grade").className = "verdict " + d.grade;
+  $("db-summary").textContent = d.summary;
+  $("db-killed").textContent = d.killed ? "yes" : "no";
+  $("db-time").textContent = d.duration_min.toFixed(0) + " min";
+  $("db-metrics").innerHTML =
+    `<thead><tr><th></th><th>Measure</th><th style="text-align:right">Value</th>
+     <th style="text-align:right">Limit</th></tr></thead><tbody>` +
+    d.metrics.map(m => `<tr class="${m.passed ? "pass" : "fail"}">
+      <td class="mark">${m.passed ? "✓" : "✕"}</td>
+      <td>${m.name}<div style="color:var(--faint);font-size:11px">${m.detail || ""}</div></td>
+      <td class="num">${m.value.toLocaleString()} ${m.unit}</td>
+      <td class="num">${m.limit === null ? "—" : m.limit.toLocaleString()}</td></tr>`).join("") +
+    "</tbody>";
+  $("db-events").innerHTML = d.events.length
+    ? d.events.map(e => `<div style="padding:5px 0;border-bottom:1px solid var(--edge-soft)">
+        <span class="t mono" style="color:var(--faint);margin-right:7px">${e.clock}</span>
+        <span class="sev-${e.severity}">${e.message}</span></div>`).join("")
+    : `<div style="color:var(--faint)">Nothing worth reporting — the well was never in trouble.</div>`;
+}
+
+/* ------------------------------- controls ------------------------------ */
 let chokeTimer = null;
 $("choke").addEventListener("input", () => {
   $("choke-read").textContent = Number($("choke").value).toFixed(1);
   clearTimeout(chokeTimer);
-  chokeTimer = setTimeout(() => sendChoke(Number($("choke").value)), 60);
+  chokeTimer = setTimeout(() => send("choke", {percent: Number($("choke").value)}), 60);
 });
-async function sendChoke(percent) {
+$("pump").addEventListener("change", () => send("pump", {spm: Number($("pump").value)}));
+$("strip").addEventListener("change", () => send("strip", {feet_per_min: Number($("strip").value)}));
+
+async function send(what, body) {
   if (!sessionId) return;
-  const capped = Math.max(0, Math.min(100, percent));
-  $("choke").value = capped;
-  paint((await api(`/api/sessions/${sessionId}/choke`, {
-    method: "POST", body: JSON.stringify({percent: capped})
+  paint((await api(`/api/sessions/${sessionId}/${what}`, {
+    method: "POST", body: JSON.stringify(body)
   })).gauges);
 }
-document.querySelectorAll("[data-choke]").forEach(button => {
-  button.onclick = () => {
-    const raw = button.dataset.choke;
-    const target = raw.startsWith("+") || raw.startsWith("-")
-      ? Number($("choke").value) + Number(raw)
-      : Number(raw);
-    sendChoke(target);
-  };
+document.querySelectorAll("[data-choke]").forEach(b => b.onclick = () => {
+  const raw = b.dataset.choke;
+  const v = (raw[0] === "+" || raw[0] === "-")
+    ? Number($("choke").value) + Number(raw) : Number(raw);
+  const capped = Math.max(0, Math.min(100, v));
+  $("choke").value = capped; send("choke", {percent: capped});
 });
-
-$("pump").addEventListener("change", () => sendPump(Number($("pump").value)));
-async function sendPump(spm) {
-  if (!sessionId) return;
-  $("pump").value = spm;
-  paint((await api(`/api/sessions/${sessionId}/pump`, {
-    method: "POST", body: JSON.stringify({spm: spm})
-  })).gauges);
-}
-document.querySelectorAll("[data-pump]").forEach(button => {
-  button.onclick = () => sendPump(Number(button.dataset.pump));
+document.querySelectorAll("[data-pump]").forEach(b => b.onclick = () => {
+  $("pump").value = b.dataset.pump; send("pump", {spm: Number(b.dataset.pump)});
 });
-
-$("speed").addEventListener("change", async () => {
-  if (!sessionId) return;
-  paint((await api(`/api/sessions/${sessionId}/speed`, {
-    method: "POST", body: JSON.stringify({speed: Number($("speed").value)})
-  })).gauges);
+document.querySelectorAll("[data-strip]").forEach(b => b.onclick = () => {
+  $("strip").value = b.dataset.strip; send("strip", {feet_per_min: Number(b.dataset.strip)});
 });
-
+$("speed").addEventListener("change", () => send("speed", {speed: Number($("speed").value)}));
 $("restart").onclick = () => start();
 $("scenario").addEventListener("change", () => start());
-$("debrief").onclick = async () => {
-  const report = await api(`/api/sessions/${sessionId}/debrief`);
-  alert(report.report);
-};
+$("db-require").addEventListener("change", loadDebrief);
+
+$("tabs").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  screen = b.dataset.screen;
+  document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("active", x === b));
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  $("s-" + screen).classList.add("active");
+  if (screen === "sheet") loadSheet();
+  else if (screen === "debrief") loadDebrief();
+  redraw();
+});
+window.addEventListener("resize", redraw);
 
 start().then(() => setInterval(poll, 250));
 </script>

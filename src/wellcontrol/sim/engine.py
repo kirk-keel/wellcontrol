@@ -44,6 +44,7 @@ library makes, and they are documented rather than hidden.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -58,7 +59,7 @@ from .assessment import (
     Standard,
     TraceSample,
 )  # noqa: F401  -- Severity is used throughout the event calls below
-from .equipment import AdjustableChoke, MudPump, PitSystem, TripTank
+from .equipment import Accumulator, AdjustableChoke, MudPump, PitSystem, TripTank
 from .flowpath import FlowPath
 
 #: Compressibility of mud, 1/psi. Includes a little for casing expansion.
@@ -252,6 +253,7 @@ class Simulator:
     choke: AdjustableChoke = field(default_factory=AdjustableChoke)
     pits: PitSystem = field(default_factory=PitSystem)
     trip_tank: TripTank = field(default_factory=TripTank)
+    accumulator: Accumulator = field(default_factory=Accumulator)
     #: bbl/min per psi of underbalance. None picks a default from the start
     #: state: a drilling kick has to develop while the student watches, where a
     #: shut-in start only needs this if they lose control again.
@@ -571,6 +573,36 @@ class Simulator:
             return 0.0
         return self._gas_pv / after_psia - self._gas_pv / before_psia
 
+    # -- the driller's own instruments ---------------------------------------
+
+    @property
+    def hookload_lbf(self) -> float:
+        """What the weight indicator reads, lbf.
+
+        String weight in air, less buoyancy, less the upward push of well
+        pressure on the closed end of the pipe. That last term is why this
+        belongs on a stripping screen rather than being scenery: as surface
+        pressure climbs the well tries to push the string out of the hole, the
+        hookload falls, and when it reaches zero the pipe has to be snubbed in
+        rather than stripped. A student watching only pressure gauges never
+        sees it coming.
+        """
+        weight_in_air = sum(
+            component.length_ft * self.well.pipe_weight_lb_per_ft
+            for component in self.well.annulus.string.components
+        )
+        buoyancy = max(0.0, 1.0 - self.well.mud_weight_ppg / 65.5)
+        area_in2 = math.pi / 4.0 * self._stripping_pipe.od_in ** 2
+        upward = self.state.casing_pressure_psi * area_in2
+        return weight_in_air * buoyancy - upward
+
+    @property
+    def _stripping_pipe(self):
+        """The pipe going through the element -- the drill pipe, in practice."""
+        return max(
+            self.well.annulus.string.components, key=lambda c: c.length_ft
+        )
+
     # -- stripping -----------------------------------------------------------
 
     def strip(self, feet_per_min: float) -> None:
@@ -877,6 +909,7 @@ class Simulator:
 
         self.pump.advance(dt)
         self.choke.advance(dt)
+        self.accumulator.advance(dt)
 
         route = self.flow_path.return_route()
         deadheaded = self.flow_path.pump_is_deadheaded

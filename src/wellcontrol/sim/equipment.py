@@ -156,6 +156,56 @@ class TripTank:
 
 
 @dataclass
+class Accumulator:
+    """The BOP closing unit, and the fact that it is not free.
+
+    Every element operated takes hydraulic volume out of the bottles, and the
+    pressure falls. The pumps put it back, slowly. A student who cycles the
+    stack because they are unsure can find they have nothing left to close
+    with, which is a real way to lose a well and is invisible if the BOP panel
+    is drawn as a row of indicator lights.
+
+    Attributes:
+        pressure_psi: What the gauge on the closing unit reads.
+        minimum_psi: Below this there is not enough to shift an element. Stands
+            in for the accumulator precharge.
+        recharge_psi_per_min: How fast the pumps make it back up.
+        annular_cost_psi: Pressure given up closing or opening the annular. It
+            has the largest closing volume of the three.
+        ram_cost_psi: The same for a set of rams.
+    """
+
+    pressure_psi: float = 3000.0
+    capacity_psi: float = 3000.0
+    minimum_psi: float = 1200.0
+    recharge_psi_per_min: float = 60.0
+    annular_cost_psi: float = 250.0
+    ram_cost_psi: float = 150.0
+
+    @property
+    def can_operate(self) -> bool:
+        return self.pressure_psi > self.minimum_psi
+
+    @property
+    def fraction(self) -> float:
+        return max(0.0, min(1.0, self.pressure_psi / self.capacity_psi))
+
+    def operate(self, is_annular: bool) -> bool:
+        """Spend the volume for one element. False if there is not enough."""
+        if not self.can_operate:
+            return False
+        cost = self.annular_cost_psi if is_annular else self.ram_cost_psi
+        self.pressure_psi = max(0.0, self.pressure_psi - cost)
+        return True
+
+    def advance(self, dt: float) -> None:
+        self.pressure_psi = min(
+            self.capacity_psi,
+            self.pressure_psi + self.recharge_psi_per_min * dt / 60.0,
+        )
+
+
+@dataclass
 class PitSystem:
     """The active system, and the gain that tells you a well is flowing."""
 
