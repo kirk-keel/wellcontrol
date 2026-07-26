@@ -116,8 +116,14 @@ class TestFlowPath:
 class TestEmergentBehaviour:
     """None of these are scripted. Each falls out of the volume balance."""
 
-    def test_shut_in_well_sits_still(self):
-        sim = make()
+    def test_shut_in_well_sits_still_with_nothing_migrating(self):
+        """Closed in, nothing flowing, gas staying put: nothing should move.
+
+        The migration case is the opposite and is the whole of
+        ``test_migration.py`` -- a shut-in well with gas climbing does *not*
+        sit still, and a student who assumes it does loses the shoe.
+        """
+        sim = make(migration_rate_ft_per_hr=0.0)
         sim.flow_path.close("annular")
         before = sim.state.casing_pressure_psi
         sim.run(120)

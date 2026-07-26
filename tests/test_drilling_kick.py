@@ -149,6 +149,23 @@ class TestDetection:
 
 @pytest.fixture(scope="module")
 def shut_in_well():
+    """A kick taken while drilling, then shut in and left to settle.
+
+    **Migration is switched off here deliberately.** The shut-in identity being
+    checked below -- SIDPP equals pore pressure minus the mud hydrostatic --
+    holds while the gas is still where it entered. Once it starts climbing it
+    carries its pressure up with it and both gauges rise above the identity,
+    which is correct and is covered in ``test_migration.py``. Leaving migration
+    on here would test two things at once and pin neither.
+    """
+    sim = drilling(kick_after_s=30.0, migration_rate_ft_per_hr=0.0)
+    drill_until_kicking(sim, gain_bbl=6.0)
+    shut_in(sim)
+    return sim
+
+
+@pytest.fixture(scope="module")
+def shut_in_and_migrating():
     sim = drilling(kick_after_s=30.0)
     drill_until_kicking(sim, gain_bbl=6.0)
     shut_in(sim)
@@ -199,6 +216,21 @@ class TestShutIn:
         closed = log.first(EventKind.WELL_SHUT_IN_BY_STUDENT)
         stable = log.first(EventKind.SHUT_IN)
         assert stable.time_s >= closed.time_s
+
+    def test_a_shut_in_well_does_not_stay_where_it_was_left(
+        self, shut_in_and_migrating
+    ):
+        """The same kick with the gas free to climb.
+
+        Shutting in stops the influx; it does not stop the well. The pressures
+        keep rising as the gas migrates, which is what turns a successful
+        shut-in into a problem if nobody does anything next.
+        """
+        sim = shut_in_and_migrating
+        expected = sim.formation_pressure_psi - (
+            PSI_PER_PPG_FT * sim.well.mud_weight_ppg * sim.well.bit_tvd_ft
+        )
+        assert sim.state.standpipe_pressure_psi > expected + 10.0
 
     def test_more_influx_arrives_after_the_pump_stops(self, shut_in_well):
         """Losing ECD deepens the underbalance, so a slow shut-in costs volume.

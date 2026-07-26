@@ -136,6 +136,23 @@ Validated by an autopilot in `tests/test_simulator.py` standing in for a driller
 
 **The autopilot needs its derivative term.** The plant integrates — choke position sets a flow, and pressure is the running total of the imbalance — and the choke is rate-limited on top of that. Proportional control alone limit cycles: it held bottomhole pressure to a steady 65 psi oscillation on a 25-second period. That is a mediocre driller, not a perfect one, and validating the physics against it is validating against the wrong thing. With damping the same run holds 16 psi. If a change makes the autopilot oscillate again, suspect the controller before the engine.
 
+### Gas migration, and the Volumetric method (`_migrate_gas`)
+
+**Every other method is driven by the pump. Volumetric is not** — the well is shut in, nothing circulates, and the only thing moving is the gas. Without migration the simulator cannot represent it at all, and a shut-in well sat still forever, which is what it used to do.
+
+Gas migrating in a closed well **takes its pressure with it**: it cannot expand, so it arrives shallower still carrying the pressure it had lower down, and everything beneath gains that hydrostatic. Surface pressure climbs at the mud gradient times the climb rate.
+
+The engine is not told that. `_migrate_gas` moves the bubble and returns the expansion it *wants* at its new depth; the caller feeds that into the same volume balance as every other flow, and in a closed system the arithmetic comes out at `dP = (V·ρ·dh/P) / (V/P) = ρ·dh` — the textbook answer, for free. Adding a rule instead would have been a rule to keep in step with everything else.
+
+Two calibration points worth keeping:
+
+- **Measured at the influx top, not the bottom.** The position is parameterised by the volume beneath the bubble, and the top is the leading edge — it decides when gas reaches the shoe and then surface. Taking the capacity at the bottom made it climb at two thirds of the stated rate wherever the annulus widened. The bottom then rises faster than the top, which is right: a fixed volume moving into a wider annulus gets shorter.
+- **The rise comes out ~70% of the idealised `ρ·dh`, and that is not an error.** The textbook figure assumes the gas cannot expand at all; the engine gives the system real compliance (mud compressibility, casing expansion) which absorbs part of the wanted volume. The fraction is set by gas volume against mud volume in `_capacitance_bbl_per_psi`.
+
+**The planner and the simulator mean different things by a zero migration rate.** `WellState.gas_migration_rate_ft_per_hr` is a *measured* figure, and zero means "do not assume migration" — right for planning, since a method that depends on it should not be recommended on an assumption. A simulator cannot take that view: gas in a vertical hole rises whether or not anyone measured it. `_default_migration_rate()` uses the measured value where there is one and `DEFAULT_MIGRATION_FT_PER_HR` otherwise, and zero in a lateral, which is why Volumetric is blocked on horizontal wells.
+
+`state.bled_bbl` counts what leaves through the choke with the pump off. Volumetric is executed by bleeding *measured* increments, so it is the instrument the method is worked to, not a diagnostic.
+
 ### Drilling → kick → detection → shut-in (`StartState`)
 
 **A session can start two ways, and the difference is the difference between a trainer and a simulator.** `StartState.SHUT_IN` hands over a kick already in the hole, sized and identified, with the pressures on the gauges. `StartState.DRILLING` starts on a well that is behaving; pore pressure is `DRILLING_OVERBALANCE_PSI` below the mud column, and after a stretch of *circulating* the bit drills into a zone the mud cannot hold.

@@ -97,6 +97,7 @@ class EventKind(Enum):
     SHOE_FRACTURED = "shoe_fractured"
     MAASP_EXCEEDED = "maasp_exceeded"
     BHP_EXCURSION = "bhp_excursion"
+    GAS_MIGRATING = "gas_migrating"
     GAS_AT_SURFACE = "gas_at_surface"
     KILL_MUD_AT_BIT = "kill_mud_at_bit"
     WELL_DEAD = "well_dead"

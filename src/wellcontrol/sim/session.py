@@ -252,6 +252,8 @@ class Session:
             "pump_spm": round(self.simulator.pump.spm, 1),
             "pump_commanded": round(self.simulator.pump.commanded_spm, 1),
             "pit_gain_bbl": round(self.simulator.pits.gain_bbl, 1),
+            # The instrument the Volumetric method is worked to.
+            "bled_bbl": round(state.bled_bbl, 2),
             "flow_in_bpm": round(state.flow_in_bpm, 2),
             "flow_out_bpm": round(state.flow_out_bpm, 2),
             "time_s": round(state.time_s, 1),

@@ -77,6 +77,11 @@ DRILLING_OVERBALANCE_PSI: float = 150.0
 #: the student lets the well go underbalanced again.
 TIGHT_PRODUCTIVITY_INDEX: float = 0.004
 
+#: Representative gas migration rate, ft/hr, where nobody has measured one.
+#: Field figures run from a few hundred to a couple of thousand; 1,000 is the
+#: number the teaching content works to.
+DEFAULT_MIGRATION_FT_PER_HR: float = 1000.0
+
 #: Productivity index for a drilling start. Higher, because the kick has to
 #: **develop while the student is watching**. A tight zone bleeding in at a
 #: fraction of a barrel a minute is realistic for some wells and useless as an
@@ -118,6 +123,9 @@ class SimState:
     #: Cumulative volume pumped into the string, which is what advances the
     #: annulus contents.
     pumped_bbl: float = 0.0
+    #: Annular volume the influx has climbed past under its own buoyancy,
+    #: as distinct from what the pump has displaced beneath it.
+    migrated_bbl: float = 0.0
     strokes: float = 0.0
     influx_volume_bbl: float = 0.0
     influx_bottom_md: float = 0.0
@@ -129,6 +137,10 @@ class SimState:
     influx_rate_bpm: float = 0.0
     loss_rate_bpm: float = 0.0
     kill_mud_pumped_bbl: float = 0.0
+    #: Volume taken out through the choke with the pump off. The Volumetric
+    #: method is executed by bleeding *measured* increments, so this is the
+    #: instrument the whole method is worked to, not a diagnostic.
+    bled_bbl: float = 0.0
     gas_at_surface: bool = False
     well_is_dead: bool = False
 
@@ -195,6 +207,9 @@ class Simulator:
     productivity_index: float | None = None
     loss_index: float = 0.01
     kill_mud_weight_ppg: float | None = None
+    #: How fast gas climbs through the mud, ft/hr. None takes the well's own
+    #: figure, which is zero where migration is not reliable.
+    migration_rate_ft_per_hr: float | None = None
     #: Where the session begins. See :class:`StartState`.
     start: StartState = StartState.SHUT_IN
     #: Seconds of *circulating* before the bit drills into the kicking zone.
@@ -321,11 +336,19 @@ class Simulator:
         self.shoe_md = self.well.shoe_md
         self.influx_density_ppg = self.well.influx_density_ppg
         self.influx_gradient = self.well.influx_gradient_psi_per_ft
+        if self.migration_rate_ft_per_hr is None:
+            self.migration_rate_ft_per_hr = self._default_migration_rate()
 
     def _place_influx(self) -> None:
-        """Put the influx where the pumped volume and its own size say it is."""
+        """Put the influx where the mud beneath it says it is.
+
+        Two things put mud under the influx: what the pump has displaced round
+        the bit, and what the gas has climbed past under its own buoyancy.
+        """
         state = self.state
-        below = min(state.pumped_bbl, self.annulus_volume_bbl)
+        below = min(
+            state.pumped_bbl + state.migrated_bbl, self.annulus_volume_bbl
+        )
         state.influx_bottom_md = self.well.annulus_md_at_volume_from_bottom(below)
         capacity_above = self.annulus_volume_bbl - below
         volume = max(0.0, min(state.influx_volume_bbl, capacity_above))
@@ -357,6 +380,94 @@ class Simulator:
             self._initial_gas_volume_bbl,
             state.influx_volume_bbl,
         )
+
+    def _default_migration_rate(self) -> float:
+        """How fast gas climbs, ft/hr, when nobody has measured it.
+
+        **The planner and the simulator mean different things by zero.**
+        ``WellState.gas_migration_rate_ft_per_hr`` is a *measured* rate, and
+        zero there means "do not assume the gas is migrating" -- the right
+        conservative default when planning, because a method that depends on
+        migration should not be recommended on an assumption.
+
+        A simulator cannot take that view. The well does what it does, and gas
+        in a vertical hole rises whether or not anybody put a number on it. So
+        a measured rate wins where there is one, and otherwise the gas migrates
+        at a representative rate wherever the trajectory gives it an up to go
+        in. In a lateral it stays where it is, which is the whole reason
+        Volumetric is blocked on horizontal wells.
+        """
+        measured = self.well.gas_migration_rate_ft_per_hr
+        if measured > 0.0:
+            return measured
+        if self.well.configuration.trajectory.migration_reliable:
+            return DEFAULT_MIGRATION_FT_PER_HR
+        return 0.0
+
+    def _migrate_gas(self, dt: float) -> float:
+        """Let the influx climb, and return the expansion it wants, bbl.
+
+        **Gas migrating in a shut-in well takes its pressure with it.** It
+        cannot expand -- the well is closed and mud is nearly incompressible --
+        so a bubble that rises 1,000 ft arrives still carrying the pressure it
+        had 1,000 ft lower. The mud now beneath it adds its own hydrostatic on
+        top, and bottomhole pressure climbs. Left alone it will break the shoe;
+        bleeding it off in controlled steps is the Volumetric method, and this
+        is the physics that method exists to answer.
+
+        Rather than special-case the pressure rise, this returns the volume the
+        gas *would* take up at its new depth if it were free to expand, and the
+        caller feeds that into the same volume balance as everything else. In a
+        closed system the balance turns it into pressure, and the arithmetic
+        comes out at the textbook answer::
+
+            dP = (dV_wanted) / capacitance
+               = (V (rho dh) / P) / (V / P)
+               = rho dh
+
+        -- the mud gradient times the distance climbed, which is exactly what a
+        gauge on a shut-in well does. Getting that for free is the reason for
+        expressing it this way rather than adding a rule.
+
+        Gas that has reached surface has nowhere further to go, and gas in a
+        lateral has no "up" to go in, so both return zero.
+        """
+        state = self.state
+        if state.influx_volume_bbl <= 0.0 or self.migration_rate_ft_per_hr <= 0.0:
+            return 0.0
+        if state.influx_top_md <= 1.0:
+            return 0.0
+
+        feet = self.migration_rate_ft_per_hr * dt / 3600.0
+        if feet <= 0.0:
+            return 0.0
+
+        # A lateral has no vertical component for buoyancy to act on, and the
+        # survey is what says so.
+        climb = self.well.survey.vertical_height_of(
+            max(0.0, state.influx_top_md - feet), state.influx_top_md
+        )
+        if climb <= 1e-6:
+            return 0.0
+
+        before_psia = self._gas_pressure_psia()
+        # Measured at the influx *top*, because the position is parameterised
+        # by the volume beneath the bubble and the top is the leading edge --
+        # it is what decides when gas reaches the casing shoe and then surface.
+        # Taking it at the bottom instead made the bubble climb at two thirds
+        # of the stated rate wherever the annulus widened above it. The bottom
+        # then rises faster than the top, which is correct: a fixed volume
+        # moving into a wider annulus gets shorter.
+        capacity = self.well.annulus.capacity_at(state.influx_top_md)
+        state.migrated_bbl = min(
+            state.migrated_bbl + capacity * feet, self.annulus_volume_bbl
+        )
+        self._place_influx()
+        after_psia = self._gas_pressure_psia()
+
+        if after_psia >= before_psia:
+            return 0.0
+        return self._gas_pv / after_psia - self._gas_pv / before_psia
 
     def _annulus_column(self) -> FluidColumn:
         """The annulus as it currently stands, bottom to top."""
@@ -541,11 +652,19 @@ class Simulator:
             over_psi=over,
         )
 
+        # -- the influx climbs under its own buoyancy ------------------------
+        # Returns the expansion it wants at its new depth. Closed in, there is
+        # nowhere to put that volume and it becomes pressure instead.
+        migration_bbl = self._migrate_gas(dt)
+
         # -- volume balance drives surface pressure --------------------------
         if route.open_to_pits and not route.through_choke:
             pass  # open hole to atmosphere; casing pressure pinned at zero
         else:
-            net = (flow_in + influx_rate - flow_out - loss_rate) * minutes
+            net = (
+                (flow_in + influx_rate - flow_out - loss_rate) * minutes
+                + migration_bbl
+            )
             state.casing_pressure_psi = max(
                 0.0,
                 state.casing_pressure_psi + net / self._capacitance_bbl_per_psi(),
@@ -604,6 +723,11 @@ class Simulator:
         # -- what the run will be judged on ----------------------------------
         state.influx_taken_bbl += influx_rate * minutes
         state.lost_bbl += loss_rate * minutes
+
+        # Bleeding is what comes out with nothing going in. With the pump
+        # running this is circulating returns and means something else.
+        if not self.pump.running and route.through_choke:
+            state.bled_bbl += flow_out * minutes
 
         state.time_s += dt
         self._update_pressures()
@@ -749,6 +873,27 @@ class Simulator:
                 severity=Severity.WARNING,
                 cleared_message="Casing pressure back below MAASP.",
             )
+
+        # Shut in, not circulating, and the pressure climbing anyway: the well
+        # is telling the student the gas is migrating and that doing nothing is
+        # not an option. This is the cue the Volumetric method answers.
+        state.set_condition(
+            EventKind.GAS_MIGRATING,
+            (
+                self.flow_path.bop_is_closed
+                and not self.pump.running
+                and state.influx_volume_bbl > 0
+                and self.migration_rate_ft_per_hr > 0
+                and not state.gas_at_surface
+            ),
+            message=(
+                "Shut in and the gas is migrating — surface pressure will keep "
+                "climbing on its own. Bleed in measured steps to hold "
+                "bottomhole pressure, or the shoe takes it."
+            ),
+            severity=Severity.CAUTION,
+            cleared_message="Migration no longer driving the pressure.",
+        )
 
         if state.gas_at_surface:
             state.record(
