@@ -136,6 +136,22 @@ Validated by an autopilot in `tests/test_simulator.py` standing in for a driller
 
 **The autopilot needs its derivative term.** The plant integrates — choke position sets a flow, and pressure is the running total of the imbalance — and the choke is rate-limited on top of that. Proportional control alone limit cycles: it held bottomhole pressure to a steady 65 psi oscillation on a 25-second period. That is a mediocre driller, not a perfect one, and validating the physics against it is validating against the wrong thing. With damping the same run holds 16 psi. If a change makes the autopilot oscillate again, suspect the controller before the engine.
 
+### Drilling → kick → detection → shut-in (`StartState`)
+
+**A session can start two ways, and the difference is the difference between a trainer and a simulator.** `StartState.SHUT_IN` hands over a kick already in the hole, sized and identified, with the pressures on the gauges. `StartState.DRILLING` starts on a well that is behaving; pore pressure is `DRILLING_OVERBALANCE_PSI` below the mud column, and after a stretch of *circulating* the bit drills into a zone the mud cannot hold.
+
+Nothing about the kick is scripted. Raising pore pressure is the only thing `trigger_kick()` does — the influx arrives through the same productivity-index response as any other underbalance, so pit gain and the flow-out excess are consequences the student can watch for.
+
+**The check worth keeping.** Nothing tells the engine what SIDPP should read. The student drills in, takes an influx, shuts in, and the drill pipe gauge settles wherever the volume balance puts it. `tests/test_drilling_kick.py` asserts it equals pore pressure minus mud hydrostatic — the kill sheet identity — to within 5 psi. If the forward and inverse models ever stop describing the same well, that test says so.
+
+Three things that fell out of building it:
+
+- **The downhole truth is hidden until the well is shut in** (`Session.downhole_visible`). A rig has no bottomhole gauge and no pore pressure readout; showing them turns kick detection, which is the skill, into reading a number. The trace withholds the same fields, or a chart would leak what the gauges do not. It comes back once they have shut in, where it is a teaching aid rather than a giveaway.
+- **An undetected kick accelerates**, because gas replacing mud lightens the annulus, which deepens the underbalance. At 60× it is over between two glances. `Session._should_slow_down()` drops the clock to 1× once the flow line shows something wrong — once only, or the student could never speed back up to circulate out. This does not make the well easier; it gives back the seconds a driller at the panel would have had.
+- **The productivity index has to be higher for a drilling start** (`LIVE_PRODUCTIVITY_INDEX`). A tight zone bleeding in at a fraction of a barrel a minute is realistic and useless as an exercise — the pit gain takes an hour to become visible.
+
+Drilling ahead is deliberately overbalanced, so the bottomhole-pressure band check and `seconds_outside_band` are gated on `kick_taken`. Without that, correct practice before the kick scores as an excursion.
+
 ### The web front end (`sim/session.py`, `sim/api.py`, `sim/static/`)
 
 Run it with `Launch Simulator.bat`, or:

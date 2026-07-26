@@ -43,11 +43,11 @@ class TestSessionLifecycle:
         assert any(v["name"] == "annular" for v in body["lineup"])
 
     def test_a_new_session_starts_shut_in_and_lined_up(self, client):
-        body = client.post("/api/sessions", json={"shut_in": True}).json()
+        body = client.post("/api/sessions", json={"start": "shut_in"}).json()
         assert "choke" in body["gauges"]["returns"]
 
     def test_drilling_start_is_available(self, client):
-        body = client.post("/api/sessions", json={"shut_in": False}).json()
+        body = client.post("/api/sessions", json={"start": "drilling"}).json()
         assert "flowline" in body["gauges"]["returns"]
 
     @pytest.mark.parametrize("bop", ["surface", "subsea"])
@@ -184,7 +184,38 @@ class TestPanel:
         assert "https://" not in text
 
     def test_the_panel_shows_the_instrument_scan(self, client):
-        """Drill pipe, casing, strokes and choke in one view -- the whole point."""
+        """Four gauges in one view -- the scan a student has to build."""
         text = client.get("/").text
         for element in ("g-dp", "g-csg", "g-stk", "g-chk"):
             assert element in text
+
+    def test_the_panel_offers_both_scenarios(self, client):
+        text = client.get("/").text
+        assert 'value="drilling"' in text
+        assert 'value="shut_in"' in text
+
+
+class TestWhatTheStudentCanSee:
+    """A rig has no bottomhole gauge; nor does the panel until it is earned."""
+
+    def test_a_drilling_start_withholds_the_downhole_truth(self, client):
+        body = client.post("/api/sessions", json={"start": "drilling"}).json()
+        gauges = body["gauges"]
+        assert gauges["downhole_visible"] is False
+        assert gauges["bottomhole_psi"] is None
+        assert gauges["formation_psi"] is None
+
+    def test_a_drilling_start_still_shows_the_rig_instruments(self, client):
+        gauges = client.post(
+            "/api/sessions", json={"start": "drilling"}
+        ).json()["gauges"]
+        for key in ("drill_pipe_psi", "casing_psi", "pit_gain_bbl",
+                    "flow_out_bpm"):
+            assert gauges[key] is not None
+
+    def test_a_shut_in_start_shows_it(self, client):
+        gauges = client.post(
+            "/api/sessions", json={"start": "shut_in"}
+        ).json()["gauges"]
+        assert gauges["downhole_visible"] is True
+        assert gauges["bottomhole_psi"] is not None

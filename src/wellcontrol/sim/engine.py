@@ -45,6 +45,7 @@ library makes, and they are documented rather than hidden.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 
 from ..hydrostatics import expanded_gas_density
 from ..methods.base import FluidColumn, WellState, Zone
@@ -56,7 +57,7 @@ from .assessment import (
     Severity,
     Standard,
     TraceSample,
-)
+)  # noqa: F401  -- Severity is used throughout the event calls below
 from .equipment import AdjustableChoke, MudPump, PitSystem, TripTank
 from .flowpath import FlowPath
 
@@ -65,6 +66,46 @@ MUD_COMPRESSIBILITY: float = 3.0e-6
 
 #: Pressure downstream of the choke, psig. Atmospheric via the separator.
 DOWNSTREAM_PRESSURE: float = 0.0
+
+#: How much the mud is overbalanced on the zone being drilled, psi, before the
+#: well drills into anything it cannot hold. Enough to be comfortably stable,
+#: little enough that the kick is not absurd when it comes.
+DRILLING_OVERBALANCE_PSI: float = 150.0
+
+#: Productivity index, bbl/min per psi of underbalance, for a shut-in start.
+#: The kick is already in the hole there, so this only governs what happens if
+#: the student lets the well go underbalanced again.
+TIGHT_PRODUCTIVITY_INDEX: float = 0.004
+
+#: Productivity index for a drilling start. Higher, because the kick has to
+#: **develop while the student is watching**. A tight zone bleeding in at a
+#: fraction of a barrel a minute is realistic for some wells and useless as an
+#: exercise: the pit gain takes an hour to become visible. This is a permeable
+#: sand, which is also the case worth training for.
+LIVE_PRODUCTIVITY_INDEX: float = 0.02
+
+
+class StartState(str, Enum):
+    """Where a session begins.
+
+    ``SHUT_IN`` hands the student a kick that is already in the hole, sized and
+    identified, with the pressures on the gauges. That is an exercise in working
+    a choke.
+
+    ``DRILLING`` hands them a well that is behaving. The kick has not happened
+    yet; when it does they have to **notice it** -- pit gain, and flow out
+    exceeding flow in -- shut in on their own initiative, and read their own
+    shut-in pressures off the gauges. Everything the shut-in start gives away is
+    something they have to earn.
+
+    The second is the one that makes this a simulator rather than a trainer, and
+    it carries a check the first cannot: the shut-in pressures that emerge from
+    the volume balance have to agree with what the kill sheet says they should
+    be. Nothing tells the engine what SIDPP ought to read.
+    """
+
+    SHUT_IN = "shut_in"
+    DRILLING = "drilling"
 
 
 @dataclass
@@ -148,9 +189,18 @@ class Simulator:
     choke: AdjustableChoke = field(default_factory=AdjustableChoke)
     pits: PitSystem = field(default_factory=PitSystem)
     trip_tank: TripTank = field(default_factory=TripTank)
-    productivity_index: float = 0.004
+    #: bbl/min per psi of underbalance. None picks a default from the start
+    #: state: a drilling kick has to develop while the student watches, where a
+    #: shut-in start only needs this if they lose control again.
+    productivity_index: float | None = None
     loss_index: float = 0.01
     kill_mud_weight_ppg: float | None = None
+    #: Where the session begins. See :class:`StartState`.
+    start: StartState = StartState.SHUT_IN
+    #: Seconds of *circulating* before the bit drills into the kicking zone.
+    #: Only used from a drilling start. None leaves the kick to be triggered by
+    #: hand, which is how an instructor injects it.
+    kick_after_s: float | None = 120.0
     #: Bottomhole pressure counts as on target within this much of formation
     #: pressure. The engine needs it because time-off-target is a time integral.
     bhp_band_psi: float = 50.0
@@ -163,6 +213,11 @@ class Simulator:
             self.pump = MudPump(pump=self.well.pump)
         if self.kill_mud_weight_ppg is None:
             self.kill_mud_weight_ppg = self.well.mud_weight_ppg
+        if self.productivity_index is None:
+            self.productivity_index = (
+                LIVE_PRODUCTIVITY_INDEX if self.start is StartState.DRILLING
+                else TIGHT_PRODUCTIVITY_INDEX
+            )
 
         self.formation_pressure_psi = self.well.formation_pressure_psi
         self.frac_pressure_psi = self.well.frac_pressure_psi
@@ -175,8 +230,22 @@ class Simulator:
         self._initial_gas_pv = 0.0
         self._initial_gas_volume_bbl = self.well.pit_gain_bbl
 
-        # Start shut in on the recorded kick, so the student begins where the
-        # kill sheet begins.
+        #: Pore pressure once the kicking zone is drilled. Held aside from
+        #: ``formation_pressure_psi`` so a drilling start can raise it later.
+        self.kick_pressure_psi = self.well.formation_pressure_psi
+        self.kick_taken = self.start is StartState.SHUT_IN
+        self._circulating_s = 0.0
+
+        if self.start is StartState.SHUT_IN:
+            self._begin_shut_in()
+        else:
+            self._begin_drilling()
+
+        self._next_sample_s = 0.0
+        self._record_sample()
+
+    def _begin_shut_in(self) -> None:
+        """The kick is already in the hole and the well is closed on it."""
         self.state.influx_volume_bbl = self.well.pit_gain_bbl
         self._place_influx()
         self.state.casing_pressure_psi = self.well.sicp_psi
@@ -192,8 +261,56 @@ class Simulator:
             sicp_psi=self.well.sicp_psi,
             pit_gain_bbl=self.well.pit_gain_bbl,
         )
-        self._next_sample_s = 0.0
-        self._record_sample()
+
+    def _begin_drilling(self) -> None:
+        """A well that is behaving, on a zone the mud can hold.
+
+        Pore pressure starts below the static mud column by
+        :data:`DRILLING_OVERBALANCE_PSI`, so nothing flows until the bit reaches
+        the zone the mud weight cannot hold. Nothing is placed in the annulus
+        and no surface pressure is set: whatever the student ends up reading,
+        they made happen.
+        """
+        self.state.influx_volume_bbl = 0.0
+        self.state.casing_pressure_psi = 0.0
+        self._gas_pv = 0.0
+        self._initial_gas_pv = 0.0
+        self._initial_gas_volume_bbl = 0.0
+        self._place_influx()
+
+        hydrostatic = self._annulus_column().total_hydrostatic
+        self.formation_pressure_psi = hydrostatic - DRILLING_OVERBALANCE_PSI
+        self._update_pressures()
+
+        self.state.record(
+            EventKind.DRILLING,
+            f"Drilling ahead at {self.well.bit_md_ft:,.0f} ft. Mud "
+            f"{self.well.mud_weight_ppg:.1f} ppg, "
+            f"{DRILLING_OVERBALANCE_PSI:.0f} psi overbalanced. "
+            "Watch the pit level and the flow line.",
+            bit_md_ft=self.well.bit_md_ft,
+        )
+
+    def trigger_kick(self) -> None:
+        """Drill into the zone the mud weight cannot hold.
+
+        Pore pressure steps up to what the kill sheet was built on, which is how
+        a kick actually arrives -- the mud was adequate, and then it was not.
+        Nothing else is done to the well: the influx enters through the same
+        productivity-index response as any other underbalance, so the pit gain
+        and the flow-out excess the student is watching for are consequences,
+        not a script.
+        """
+        if self.kick_taken:
+            return
+        self.kick_taken = True
+        self.formation_pressure_psi = self.kick_pressure_psi
+        self.state.record(
+            EventKind.KICK_ZONE_DRILLED,
+            "Drilled into a higher pressure zone.",
+            severity=Severity.INFO,
+            pore_pressure_psi=self.kick_pressure_psi,
+        )
 
     # -- geometry ------------------------------------------------------------
 
@@ -356,6 +473,16 @@ class Simulator:
         route = self.flow_path.return_route()
         deadheaded = self.flow_path.pump_is_deadheaded
 
+        # Drilling only makes hole while the pump is actually turning, so the
+        # kick arrives after a stretch of circulating rather than after a
+        # stretch of wall-clock time. A student who never starts the pump never
+        # drills into anything.
+        if not self.kick_taken and self.kick_after_s is not None:
+            if self.pump.running and not deadheaded:
+                self._circulating_s += dt
+                if self._circulating_s >= self.kick_after_s:
+                    self.trigger_kick()
+
         # -- flow in ---------------------------------------------------------
         flow_in = 0.0 if deadheaded else self.pump.flow_bbl_per_min
         state.flow_in_bpm = flow_in
@@ -435,6 +562,16 @@ class Simulator:
             self._gas_pv += psi_to_psia(state.bottomhole_pressure_psi) * (
                 influx_rate * minutes
             )
+            if self._initial_gas_pv <= 0.0:
+                # First gas of a drilling start. Fix the reference state here:
+                # it came in at formation pressure, where its density is the
+                # influx density the well reports. Everything after this is
+                # measured against it, and because the ratio works out to
+                # P / P_reference it stays right however much more comes in.
+                self._initial_gas_pv = self._gas_pv
+                self._initial_gas_volume_bbl = self._gas_pv / psi_to_psia(
+                    self.formation_pressure_psi
+                )
         # Logged on a meaningful underbalance rather than on any at all: a
         # well held within a psi or two of balance drifts either side of it
         # constantly, and "taking an influx" is the wrong thing to tell a
@@ -489,7 +626,11 @@ class Simulator:
         excursion = abs(
             state.bottomhole_pressure_psi - self.formation_pressure_psi
         )
-        if excursion > self.bhp_band_psi:
+        # Only meaningful once there is a kick to hold. Drilling ahead is
+        # deliberately overbalanced, so measuring that against pore pressure
+        # would score correct practice as an excursion.
+        killing = self.kick_taken
+        if killing and excursion > self.bhp_band_psi:
             state.seconds_outside_band += dt
         state.max_bhp_excursion_psi = max(state.max_bhp_excursion_psi, excursion)
         state.peak_casing_pressure_psi = max(
@@ -501,7 +642,7 @@ class Simulator:
 
         state.set_level(
             EventKind.BHP_EXCURSION,
-            excursion,
+            excursion if killing else 0.0,
             rises_above=self.bhp_band_psi,
             falls_below=0.6 * self.bhp_band_psi,
             message=(
@@ -530,6 +671,69 @@ class Simulator:
             severity=Severity.WARNING,
             cleared_message="Returns route open.",
         )
+
+        # -- the two things a driller watches to catch a kick ----------------
+        # Flow out exceeding flow in comes first and is the more sensitive of
+        # the two; the pit gain follows once enough has come in to see. Both
+        # are consequences of the volume balance, so a student who is watching
+        # gets the same warning a real one does, at the same point.
+        state.set_level(
+            EventKind.FLOW_CHECK,
+            state.flow_out_bpm - state.flow_in_bpm,
+            rises_above=0.4,
+            falls_below=0.1,
+            message="Flow out is greater than flow in — the well is flowing.",
+            severity=Severity.CRITICAL,
+            cleared_message="Flow out back in balance with flow in.",
+        )
+        state.set_level(
+            EventKind.PIT_GAIN,
+            self.pits.gain_bbl,
+            rises_above=5.0,
+            falls_below=2.0,
+            message=(
+                f"Pit gain {self.pits.gain_bbl:.1f} bbl and rising."
+            ),
+            severity=Severity.CRITICAL,
+            cleared_message="Pit level back to baseline.",
+        )
+
+        # The moment of truth on a drilling start. Two events, not one: the
+        # well being closed in, and -- later -- the pressures having settled.
+        # Quoting the gauges at the instant of shut-in would report numbers
+        # still climbing through the influx, which is exactly the mistake the
+        # message is warning against.
+        closed_in = (
+            self.flow_path.bop_is_closed
+            and not self.pump.running
+            and state.influx_volume_bbl > 0
+        )
+        if closed_in:
+            state.record(
+                EventKind.WELL_SHUT_IN_BY_STUDENT,
+                "Well shut in. Let the pressures stabilise before reading them.",
+                severity=Severity.INFO,
+                once=True,
+            )
+        # "Stable" means the influx condition has cleared, not that the rate is
+        # exactly zero: as the well comes back into balance the underbalance
+        # hovers a psi or two above nothing, so a literal zero never arrives.
+        # Reusing the hysteresis keeps the log and the gauges telling the same
+        # story.
+        if (
+            closed_in
+            and not state.event_log.is_active(EventKind.INFLUX_TAKEN)
+            and state.event_log.has(EventKind.WELL_SHUT_IN_BY_STUDENT)
+        ):
+            state.record(
+                EventKind.SHUT_IN,
+                f"Pressures stable. SIDPP {state.standpipe_pressure_psi:.0f} psi, "
+                f"SICP {state.casing_pressure_psi:.0f} psi, "
+                f"pit gain {self.pits.gain_bbl:.1f} bbl. "
+                "Build the kill sheet from these.",
+                severity=Severity.INFO,
+                once=True,
+            )
 
         maasp = self.maasp_psi
         if maasp is not None:
@@ -567,7 +771,10 @@ class Simulator:
         state.set_condition(
             EventKind.PUMP_STARTED,
             self.pump.running,
-            message=f"Pump running at {self.pump.spm:.0f} spm.",
+            # The commanded speed, not the instantaneous one: the pump ramps,
+            # so at the moment it starts turning it is still doing 0 spm and
+            # logging that reads as a fault rather than an action.
+            message=f"Pump running up to {self.pump.commanded_spm:.0f} spm.",
             severity=Severity.INFO,
             cleared_message="Pump stopped.",
         )

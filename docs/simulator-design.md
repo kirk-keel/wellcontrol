@@ -5,8 +5,16 @@ pump online, and works the choke to circulate the influx out — with the well
 responding to what they actually do rather than what they intended.
 
 **Status: stages 1–3 done — headless engine, lineup, validation, event log and
-assessment, and the choke panel running on FastAPI. Stage 4 is the remaining
-screens.**
+assessment, and the choke panel running on FastAPI. The full drilling → kick →
+detection → shut-in sequence is in. Remaining: the other screens, the other kill
+methods as things you operate rather than plan, and the scenario library.**
+
+**Scope agreed: a true simulator, not a choke trainer.** The student drills
+ahead, takes a kick they have to *notice*, shuts in on their own initiative, and
+reads their own shut-in pressures. Physics stays behaviourally right — the
+documented idealisations (single bubble, ideal isothermal gas, kill-sheet
+friction convention) are kept, because every lesson a student must feel already
+emerges from them.
 
 **UI decision taken (§9.1): FastAPI + browser.** Streamlit reruns the whole
 script on every interaction and has no game loop, so gauges would be widgets

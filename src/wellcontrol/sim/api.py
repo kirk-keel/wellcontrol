@@ -55,11 +55,13 @@ class NewSession(BaseModel):
     trajectory: str = Field(
         default="vertical", description="vertical, deviated or horizontal"
     )
-    shut_in: bool = Field(
-        default=True,
+    start: str = Field(
+        default="shut_in",
         description=(
-            "Start shut in with the choke line lined up. False leaves the rig "
-            "lined up for drilling, so the student must shut in themselves."
+            "shut_in hands over a kick already in the hole, with the well "
+            "closed on it and the pressures on the gauges. drilling starts on "
+            "a well that is behaving; the kick arrives later and the student "
+            "has to spot it and shut in themselves."
         ),
     )
 
@@ -110,7 +112,7 @@ def speeds() -> dict:
 def create_session(body: NewSession) -> dict:
     try:
         session = store.create(
-            bop=body.bop, trajectory=body.trajectory, shut_in=body.shut_in
+            bop=body.bop, trajectory=body.trajectory, start=body.start
         )
     except ValueError as exc:
         # An unknown BOP location or trajectory: the enum says what is valid.

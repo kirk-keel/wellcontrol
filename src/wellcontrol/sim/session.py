@@ -37,8 +37,8 @@ from typing import Callable
 
 from .. import examples
 from ..wellconfig import BOPLocation, Trajectory, WellConfiguration
-from .assessment import Assessment, Severity, Standard
-from .engine import Simulator
+from .assessment import Assessment, EventKind, Severity, Standard
+from .engine import Simulator, StartState
 from .flowpath import ValveState
 
 #: Simulated seconds a single advance may cover, however long the gap was.
@@ -73,8 +73,11 @@ class Session:
     speed: float = 0.0
     clock: Callable[[], float] = time.monotonic
     session_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    #: Drop to real time once, when the well first flows. See _should_slow_down.
+    auto_slow: bool = True
     #: Wall-clock reading at the last advance.
     _last_tick: float | None = field(default=None, repr=False)
+    _auto_slowed: bool = field(default=False, repr=False)
 
     # -- construction --------------------------------------------------------
 
@@ -83,7 +86,7 @@ class Session:
         cls,
         bop: str = "surface",
         trajectory: str = "vertical",
-        shut_in: bool = True,
+        start: str = "shut_in",
         **kwargs,
     ) -> "Session":
         """Build a session on one of the library's example wells.
@@ -91,21 +94,53 @@ class Session:
         Args:
             bop: ``surface`` or ``subsea``.
             trajectory: ``vertical``, ``deviated`` or ``horizontal``.
-            shut_in: Start with the well shut in on the annular and the choke
-                line lined up, which is where a kill exercise begins. False
-                leaves the rig lined up for normal drilling, so the student has
-                to shut in themselves.
+            start: ``shut_in`` hands over a kick that is already in the hole,
+                sized and identified, with the well closed on it and the choke
+                line lined up -- an exercise in working a choke. ``drilling``
+                starts on a well that is behaving, lined up for normal drilling
+                with returns up the flowline; the kick arrives later and the
+                student has to notice it and shut in themselves.
         """
         config = WellConfiguration(BOPLocation(bop), Trajectory(trajectory))
-        session = cls(simulator=Simulator(well=examples.well_state(config)),
-                      **kwargs)
-        if shut_in:
-            session.simulator.flow_path.close("annular")
-            session.simulator.flow_path.open(
-                "choke_line_valve", "choke_line_to_manifold", "choke_1"
-            )
-            session.simulator.flow_path.open("pump_discharge", "standpipe_valve")
+        state = StartState(start)
+        session = cls(
+            simulator=Simulator(well=examples.well_state(config), start=state),
+            **kwargs,
+        )
+        path = session.simulator.flow_path
+        if state is StartState.SHUT_IN:
+            path.close("annular")
+            path.open("choke_line_valve", "choke_line_to_manifold", "choke_1")
+            path.open("pump_discharge", "standpipe_valve")
+        else:
+            # Lined up to drill: pump through the string, returns up the
+            # flowline over the shakers. Nothing on the choke side is open,
+            # which is the point -- shutting in is the student's job.
+            path.open("pump_discharge", "standpipe_valve")
         return session
+
+    # -- what the student is allowed to see ----------------------------------
+
+    @property
+    def downhole_visible(self) -> bool:
+        """Whether the downhole truth is on display.
+
+        **Hidden while a drilling kick is developing.** A rig has no bottomhole
+        gauge and no pore pressure readout; showing them would turn kick
+        detection -- which is the skill being taught -- into reading a number.
+        Until the well is shut in the student gets what a driller gets: the pit
+        level, the flow line, and the standpipe.
+
+        Once they have shut in, it comes back. At that point it is a teaching
+        aid rather than a giveaway: the kick has been taken, and seeing what
+        bottomhole pressure does while they work the choke is the whole reason
+        this is a simulator and not a rig.
+        """
+        if self.simulator.start is StartState.SHUT_IN:
+            return True
+        return self.simulator.state.event_log.has(
+            EventKind.WELL_SHUT_IN_BY_STUDENT
+        )
 
     # -- time ----------------------------------------------------------------
 
@@ -138,7 +173,38 @@ class Session:
         steps = int(simulated / STEP_S)
         for _ in range(steps):
             self.simulator.step(STEP_S)
+            if self._should_slow_down():
+                # Stop mid-batch. Running the rest of this batch at the old
+                # speed would spend the seconds the slow-down exists to give
+                # back.
+                break
         return steps * STEP_S
+
+    def _should_slow_down(self) -> bool:
+        """Drop to real time the moment the well starts flowing.
+
+        **An undetected kick accelerates.** Gas replacing mud lightens the
+        annulus, which deepens the underbalance, which brings in more gas. At
+        60x the whole thing is over between two glances at the screen, and the
+        student learns nothing except that they lost.
+
+        So the clock drops to 1x by itself at the moment the flow line tells
+        them something is wrong. That is not making the exercise easier -- the
+        well does exactly what it did before -- it is giving them the seconds a
+        driller standing at the panel would actually have.
+        """
+        if not self.auto_slow or self.speed <= 1.0 or self._auto_slowed:
+            return False
+        if not self.simulator.state.event_log.is_active(EventKind.FLOW_CHECK):
+            return False
+        self._auto_slowed = True
+        self.speed = 1.0
+        self.simulator.state.record(
+            EventKind.FLOW_CHECK,
+            "Real time from here — the well is flowing.",
+            severity=Severity.INFO,
+        )
+        return True
 
     # -- controls ------------------------------------------------------------
 
@@ -169,7 +235,15 @@ class Session:
         """
         state = self.simulator.state
         route = self.simulator.flow_path.return_route()
+        visible = self.downhole_visible
+
+        def downhole(value):
+            """None while the student is meant to be detecting, not reading."""
+            return None if not visible else value
+
         return {
+            # The rig's own instruments. Always readable, because they are the
+            # ones a driller actually has.
             "drill_pipe_psi": round(state.standpipe_pressure_psi),
             "casing_psi": round(state.casing_pressure_psi),
             "strokes": round(state.strokes),
@@ -177,30 +251,36 @@ class Session:
             "choke_commanded": round(self.simulator.choke.commanded_position, 1),
             "pump_spm": round(self.simulator.pump.spm, 1),
             "pump_commanded": round(self.simulator.pump.commanded_spm, 1),
-            "bottomhole_psi": round(state.bottomhole_pressure_psi),
-            "formation_psi": round(self.simulator.formation_pressure_psi),
-            "overbalance_psi": round(
-                state.bottomhole_pressure_psi - self.simulator.formation_pressure_psi
-            ),
-            "shoe_psi": round(state.shoe_pressure_psi),
-            "frac_psi": (
-                round(self.simulator.frac_pressure_psi)
-                if self.simulator.frac_pressure_psi is not None else None
-            ),
-            "maasp_psi": (
-                round(self.simulator.maasp_psi)
-                if self.simulator.maasp_psi is not None else None
-            ),
-            "influx_bbl": round(state.influx_volume_bbl, 1),
-            "influx_top_md": round(state.influx_top_md),
             "pit_gain_bbl": round(self.simulator.pits.gain_bbl, 1),
             "flow_in_bpm": round(state.flow_in_bpm, 2),
             "flow_out_bpm": round(state.flow_out_bpm, 2),
             "time_s": round(state.time_s, 1),
             "returns": route.description,
-            "gas_at_surface": state.gas_at_surface,
             "well_is_dead": state.well_is_dead,
             "speed": self.speed,
+
+            # Downhole truth. No rig has these; see downhole_visible.
+            "downhole_visible": visible,
+            "bottomhole_psi": downhole(round(state.bottomhole_pressure_psi)),
+            "formation_psi": downhole(
+                round(self.simulator.formation_pressure_psi)
+            ),
+            "overbalance_psi": downhole(round(
+                state.bottomhole_pressure_psi
+                - self.simulator.formation_pressure_psi
+            )),
+            "shoe_psi": downhole(round(state.shoe_pressure_psi)),
+            "frac_psi": downhole(
+                round(self.simulator.frac_pressure_psi)
+                if self.simulator.frac_pressure_psi is not None else None
+            ),
+            "maasp_psi": downhole(
+                round(self.simulator.maasp_psi)
+                if self.simulator.maasp_psi is not None else None
+            ),
+            "influx_bbl": downhole(round(state.influx_volume_bbl, 1)),
+            "influx_top_md": downhole(round(state.influx_top_md)),
+            "gas_at_surface": downhole(state.gas_at_surface),
         }
 
     def lineup(self) -> list[dict]:
@@ -241,19 +321,29 @@ class Session:
         }
 
     def trace(self, limit: int = 240) -> list[dict]:
-        """Recent trace samples for the panel's strip chart."""
+        """Recent trace samples for the panel's strip chart.
+
+        Carries the surface pressures always and the downhole ones only when
+        they are on display, so a chart cannot leak what the gauges withhold.
+        """
+        visible = self.downhole_visible
         samples = self.simulator.state.trace[-limit:]
-        return [
-            {
+        rows = []
+        for sample in samples:
+            row = {
                 "time_s": round(sample.time_s, 1),
                 "casing_psi": round(sample.casing_psi),
                 "drill_pipe_psi": round(sample.standpipe_psi),
-                "bottomhole_psi": round(sample.bottomhole_psi),
-                "shoe_psi": round(sample.shoe_psi),
-                "influx_bbl": round(sample.influx_bbl, 1),
+                "pit_gain_bbl": round(sample.pit_gain_bbl, 1),
+                "flow_out_bpm": round(sample.flow_out_bpm, 2),
+                "flow_in_bpm": round(sample.flow_in_bpm, 2),
             }
-            for sample in samples
-        ]
+            if visible:
+                row["bottomhole_psi"] = round(sample.bottomhole_psi)
+                row["shoe_psi"] = round(sample.shoe_psi)
+                row["influx_bbl"] = round(sample.influx_bbl, 1)
+            rows.append(row)
+        return rows
 
     def snapshot(self, since_event: int = 0, trace_limit: int = 240) -> dict:
         """Everything the panel needs in one poll.

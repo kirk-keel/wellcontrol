@@ -143,7 +143,7 @@ class TestStartingPosition:
         assert path.return_route().through_choke
 
     def test_drilling_start_leaves_the_stack_open(self, clock):
-        session = Session.for_configuration(shut_in=False, clock=clock)
+        session = Session.for_configuration(start="drilling", clock=clock)
         path = session.simulator.flow_path
         assert not path.bop_is_closed
         assert not path.return_route().through_choke
@@ -251,7 +251,7 @@ class TestTheWellStillResponds:
         assert session.gauges()["casing_psi"] > before + 100
 
     def test_circulating_with_the_bop_open_does_nothing(self, clock):
-        session = Session.for_configuration(shut_in=False, clock=clock)
+        session = Session.for_configuration(start="drilling", clock=clock)
         session.set_speed(10.0)
         session.set_valve("choke_line_valve", "open")
         session.set_valve("choke_line_to_manifold", "open")

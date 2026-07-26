@@ -82,6 +82,11 @@ class EventKind(Enum):
     """
 
     SHUT_IN = "shut_in"
+    DRILLING = "drilling"
+    KICK_ZONE_DRILLED = "kick_zone_drilled"
+    PIT_GAIN = "pit_gain"
+    FLOW_CHECK = "flow_check"
+    WELL_SHUT_IN_BY_STUDENT = "well_shut_in_by_student"
     PUMP_STARTED = "pump_started"
     PUMP_STOPPED = "pump_stopped"
     PUMP_DEADHEADED = "pump_deadheaded"

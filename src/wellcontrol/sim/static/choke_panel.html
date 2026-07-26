@@ -60,6 +60,8 @@
   .gauge .unit { font-size: 11px; color: var(--dim); }
   .gauge.dp .value { color: var(--dp); }
   .gauge.csg .value { color: var(--csg); }
+  .gauge.warn-gauge { border-color: var(--critical); }
+  .gauge.warn-gauge .value { color: var(--critical); }
 
   .secondary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
   @media (max-width: 720px) { .secondary { grid-template-columns: repeat(2, 1fr); } }
@@ -121,6 +123,11 @@
   <span class="pill" id="returns">—</span>
   <span class="pill" id="clock">00:00:00</span>
   <span class="grow"></span>
+  <label class="ctl" style="margin:0">Scenario</label>
+  <select id="scenario">
+    <option value="drilling">Drilling — find the kick</option>
+    <option value="shut_in" selected>Shut in — kill it</option>
+  </select>
   <label class="ctl" style="margin:0">Speed</label>
   <select id="speed">
     <option value="0">Paused</option>
@@ -147,17 +154,21 @@
           <div class="value" id="g-csg">—</div>
           <div class="unit">psi</div>
         </div>
+        <!-- These two swap with the phase. While a kick is developing the
+             driller's scan is the pit level and the flow line; once the well
+             is shut in it is the stroke counter and the choke. -->
         <div class="gauge">
-          <div class="label">Strokes</div>
+          <div class="label" id="g-3-label">Strokes</div>
           <div class="value" id="g-stk">—</div>
-          <div class="unit">since start</div>
+          <div class="unit" id="g-3-unit">since start</div>
         </div>
         <div class="gauge">
-          <div class="label">Choke</div>
+          <div class="label" id="g-4-label">Choke</div>
           <div class="value" id="g-chk">—</div>
-          <div class="unit">% open</div>
+          <div class="unit" id="g-4-unit">% open</div>
         </div>
       </div>
+      <div class="note" id="phase-note"></div>
 
       <div class="secondary">
         <div class="stat"><div class="label">Pump</div><div class="value" id="s-spm">—</div></div>
@@ -181,7 +192,7 @@
       </div>
     </div>
 
-    <div class="card" style="margin-top:16px">
+    <div class="card" style="margin-top:16px" id="downhole-card">
       <h2>Downhole pressures</h2>
       <canvas id="chart-downhole" class="strip"></canvas>
       <div class="legend">
@@ -246,7 +257,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 let sessionId = null, nextEvent = 0, trace = [], busy = false;
-let formationPsi = null, fracPsi = null, maaspPsi = null;
+let formationPsi = null, fracPsi = null, maaspPsi = null, downholeVisible = true;
 
 async function api(path, options) {
   const response = await fetch(path, Object.assign({
@@ -259,7 +270,9 @@ async function api(path, options) {
 async function start() {
   const created = await api("/api/sessions", {
     method: "POST",
-    body: JSON.stringify({bop: "surface", trajectory: "vertical", shut_in: true})
+    body: JSON.stringify({
+      bop: "surface", trajectory: "vertical", start: $("scenario").value
+    })
   });
   sessionId = created.session_id;
   nextEvent = 0; trace = [];
@@ -291,26 +304,60 @@ async function poll() {
 }
 
 function paint(g) {
+  const psi = v => v === null || v === undefined ? "—" : v + " psi";
+  const seen = g.downhole_visible;
+
   $("g-dp").textContent = g.drill_pipe_psi;
   $("g-csg").textContent = g.casing_psi;
-  $("g-stk").textContent = g.strokes.toLocaleString();
-  $("g-chk").textContent = g.choke_percent.toFixed(1);
+
+  // Slots three and four follow the phase. Before the well is shut in the
+  // student is looking for a kick, and the stroke counter tells them nothing.
+  const excess = g.flow_out_bpm - g.flow_in_bpm;
+  if (seen) {
+    $("g-3-label").textContent = "Strokes";
+    $("g-3-unit").textContent = "since start";
+    $("g-stk").textContent = g.strokes.toLocaleString();
+    $("g-4-label").textContent = "Choke";
+    $("g-4-unit").textContent = "% open";
+    $("g-chk").textContent = g.choke_percent.toFixed(1);
+    $("phase-note").textContent = "";
+  } else {
+    $("g-3-label").textContent = "Pit gain";
+    $("g-3-unit").textContent = "bbl";
+    $("g-stk").textContent = g.pit_gain_bbl.toFixed(1);
+    $("g-4-label").textContent = "Flow out − in";
+    $("g-4-unit").textContent = "bpm";
+    $("g-chk").textContent = excess.toFixed(2);
+    $("phase-note").textContent =
+      "Drilling ahead. There is no bottomhole gauge on a rig — watch the pit " +
+      "level and the flow line. Shut in when you are sure.";
+  }
+  $("g-stk").parentElement.classList.toggle(
+    "warn-gauge", !seen && g.pit_gain_bbl > 5);
+  $("g-chk").parentElement.classList.toggle(
+    "warn-gauge", !seen && excess > 0.4);
+
   $("s-spm").textContent = g.pump_spm.toFixed(0) + " spm";
   $("s-out").textContent = g.flow_out_bpm.toFixed(2) + " bpm";
   $("s-pit").textContent = g.pit_gain_bbl.toFixed(1) + " bbl";
-  $("s-ob").textContent = (g.overbalance_psi > 0 ? "+" : "") + g.overbalance_psi + " psi";
-  $("s-bhp").textContent = g.bottomhole_psi + " psi";
-  $("s-shoe").textContent = g.shoe_psi + " psi";
-  $("s-influx").textContent = g.influx_bbl.toFixed(1) + " bbl";
-  $("s-maasp").textContent = g.maasp_psi === null ? "—" : g.maasp_psi + " psi";
+  $("s-ob").textContent = g.overbalance_psi === null ? "—"
+    : (g.overbalance_psi > 0 ? "+" : "") + g.overbalance_psi + " psi";
+  $("s-bhp").textContent = psi(g.bottomhole_psi);
+  $("s-shoe").textContent = psi(g.shoe_psi);
+  $("s-influx").textContent = g.influx_bbl === null ? "—"
+    : g.influx_bbl.toFixed(1) + " bbl";
+  $("s-maasp").textContent = psi(g.maasp_psi);
   formationPsi = g.formation_psi;
   fracPsi = g.frac_psi;
   maaspPsi = g.maasp_psi;
+  downholeVisible = seen;
+  $("downhole-card").style.display = seen ? "" : "none";
 
   // Alarms mark the two things that actually damage the well.
-  $("s-ob-wrap").classList.toggle("alarm", g.overbalance_psi < -50);
+  $("s-ob-wrap").classList.toggle("alarm",
+    g.overbalance_psi !== null && g.overbalance_psi < -50);
   $("s-shoe-wrap").classList.toggle("alarm",
-    g.frac_psi !== null && g.shoe_psi > g.frac_psi);
+    g.frac_psi !== null && g.shoe_psi !== null && g.shoe_psi > g.frac_psi);
   $("s-maasp-wrap").classList.toggle("alarm",
     g.maasp_psi !== null && g.casing_psi > g.maasp_psi);
 
@@ -334,6 +381,13 @@ function paint(g) {
     $("pump").value = g.pump_commanded;
   }
   $("pump-read").textContent = g.pump_spm.toFixed(0);
+
+  // The server drops the clock to real time by itself when the well starts
+  // flowing, so the selector has to follow rather than argue with it.
+  if (document.activeElement !== $("speed")
+      && Number($("speed").value) !== g.speed) {
+    $("speed").value = String(g.speed);
+  }
 }
 
 function addEvent(event) {
@@ -379,6 +433,7 @@ function drawChart() {
     [{key: "drill_pipe_psi", colour: getCss("--dp")},
      {key: "casing_psi", colour: getCss("--csg")}],
     [{value: maaspPsi, label: "MAASP"}]);
+  if (!downholeVisible) return;
   drawPanel("chart-downhole",
     [{key: "bottomhole_psi", colour: getCss("--bhp")},
      {key: "shoe_psi", colour: getCss("--shoe")}],
@@ -501,6 +556,7 @@ $("speed").addEventListener("change", async () => {
 });
 
 $("restart").onclick = () => start();
+$("scenario").addEventListener("change", () => start());
 $("debrief").onclick = async () => {
   const report = await api(`/api/sessions/${sessionId}/debrief`);
   alert(report.report);
