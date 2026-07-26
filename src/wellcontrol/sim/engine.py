@@ -162,6 +162,16 @@ class SimState:
     #: Where it has got to inside the pipe, once it is in there.
     influx_string_top_md: float = 0.0
     influx_string_bottom_md: float = 0.0
+
+    # -- stripping -----------------------------------------------------------
+    #: Pipe run into the hole since the start, ft. Negative is pulling out.
+    pipe_moved_ft: float = 0.0
+    #: Steel put into the well by that movement, bbl. Closed-end, because a
+    #: string being stripped has a float in it. This is the volume that has to
+    #: come out of the choke to hold bottomhole pressure.
+    pipe_displacement_bbl: float = 0.0
+    #: Where the bit has got to.
+    bit_md_ft: float = 0.0
     strokes: float = 0.0
     influx_volume_bbl: float = 0.0
     influx_bottom_md: float = 0.0
@@ -253,6 +263,8 @@ class Simulator:
     #: How fast gas climbs through the mud, ft/hr. None takes the well's own
     #: figure, which is zero where migration is not reliable.
     migration_rate_ft_per_hr: float | None = None
+    #: Pipe speed through the stripping element, ft/min. Positive runs in.
+    strip_rate_ft_per_min: float = 0.0
     #: Where the session begins. See :class:`StartState`.
     start: StartState = StartState.SHUT_IN
     #: Seconds of *circulating* before the bit drills into the kicking zone.
@@ -287,6 +299,7 @@ class Simulator:
         # until these are filled in below.
         self._initial_gas_pv = 0.0
         self._initial_gas_volume_bbl = self.well.pit_gain_bbl
+        self.state.bit_md_ft = self.well.bit_md_ft
 
         #: Pore pressure once the kicking zone is drilled. Held aside from
         #: ``formation_pressure_psi`` so a drilling start can raise it later.
@@ -557,6 +570,58 @@ class Simulator:
         if after_psia >= before_psia:
             return 0.0
         return self._gas_pv / after_psia - self._gas_pv / before_psia
+
+    # -- stripping -----------------------------------------------------------
+
+    def strip(self, feet_per_min: float) -> None:
+        """Run pipe in, or pull it out, at a given speed.
+
+        Positive runs in. The student sets a speed and works the choke against
+        it, exactly as they set a pump rate and work the choke against that.
+        """
+        self.strip_rate_ft_per_min = float(feet_per_min)
+
+    @property
+    def closed_end_displacement_bbl_per_ft(self) -> float:
+        """Steel displaced per foot of pipe run in.
+
+        **Closed-end**, because a string being stripped has a float in it: the
+        bore goes in full and displaces along with the metal, so it is the
+        whole outside diameter that counts and not just the wall. Taking the
+        open-end figure instead under-states what has to be bled by a factor of
+        three or so, and the bleed volume *is* the method.
+
+        Measured on the drill pipe, which is what is going through the
+        stripping element for all but the first stand or two.
+        """
+        components = self.well.annulus.string.components
+        pipe = max(components, key=lambda c: c.length_ft)
+        return pipe.closed_end_displacement_bbl_per_ft
+
+    def _advance_stripping(self, dt: float) -> float:
+        """Move the pipe, and return the volume of steel that put in, bbl.
+
+        The displaced volume is handed to the same balance as everything else.
+        Closed in, there is nowhere to put it and it becomes pressure -- which
+        is the thing the student is bleeding against.
+        """
+        if self.strip_rate_ft_per_min == 0.0:
+            return 0.0
+        state = self.state
+        moved = self.strip_rate_ft_per_min * dt / 60.0
+
+        # Stop at the bottom of the hole going in, and at surface coming out.
+        limit_in = self.hole_md - state.bit_md_ft
+        limit_out = -state.bit_md_ft
+        moved = max(limit_out, min(moved, limit_in))
+        if moved == 0.0:
+            return 0.0
+
+        state.pipe_moved_ft += moved
+        state.bit_md_ft += moved
+        displaced = self.closed_end_displacement_bbl_per_ft * moved
+        state.pipe_displacement_bbl += displaced
+        return displaced
 
     def _reconcile_controlled_gauge(self, bottomhole_psi: float) -> None:
         """Re-reference the controlled gauge so bottomhole pressure is continuous.
@@ -901,6 +966,10 @@ class Simulator:
         # nowhere to put that volume and it becomes pressure instead.
         migration_bbl = self._migrate_gas(dt)
 
+        # -- pipe run into the hole ------------------------------------------
+        # Steel going in is volume going in, and it lands in the same balance.
+        displacement_bbl = self._advance_stripping(dt)
+
         # -- volume balance drives surface pressure --------------------------
         if route.open_to_pits and not route.through_choke:
             pass  # open hole to atmosphere; casing pressure pinned at zero
@@ -911,6 +980,7 @@ class Simulator:
                     - flow_out - loss_rate - injection_rate
                 ) * minutes
                 + migration_bbl
+                + displacement_bbl
             )
             change = net / self._capacitance_bbl_per_psi()
             if reverse:

@@ -153,6 +153,29 @@ Two calibration points worth keeping:
 
 `state.bled_bbl` counts what leaves through the choke with the pump off. Volumetric is executed by bleeding *measured* increments, so it is the instrument the method is worked to, not a diagnostic.
 
+### Stripping: the pipe is the control
+
+The only method where the pump stays off and the *pipe* does the work. Running pipe in puts steel into a closed well, and that volume has to come out of the choke or bottomhole pressure climbs. `Simulator.strip(feet_per_min)` is the control; `state.pipe_displacement_bbl` is what the student is bleeding against.
+
+**Closed-end displacement is the number the method turns on** — a string being stripped has a float in it, so the bore goes in full and displaces along with the metal. It is the whole outside diameter that counts, not the wall. The open-end figure is about a third of it and would under-state every bleed.
+
+The simulator and the planner agree exactly on the geometry: 0.0243 bbl/ft, 2.3 bbl per stand, 24.3 bbl total over 1,000 ft, peak shoe 3,915 against the planner's 3,971.
+
+#### Open question: the migration allowance
+
+**They disagree by about 4× on how much extra to bleed for migration, and it is not yet resolved.**
+
+`stripping.migration_bleed_per_stand_bbl` uses the textbook volumetric formula — gas rising `d` raises surface pressure by `0.052 × MW × d`, so bleed a mud column of the same height, `d × annular capacity`. That gives 7.0 bbl per stand here against 2.3 bbl of pipe displacement.
+
+The simulator disagrees. Bleeding is governed by system capacitance: take a barrel out of a closed well and the gas expands a barrel, Boyle drops its pressure, and bottomhole pressure falls with it. Measured in the engine, **1 bbl of bleed drops bottomhole pressure 44 psi**, where the textbook relation implies about 11 psi. Bleeding the planner's 7 bbl in a stand would drop the well several hundred psi and take another influx.
+
+Both cannot be right, and the direction matters: if the engine is right, the planner's figure is non-conservative. Two candidate resolutions, neither confirmed:
+
+- The textbook figure may describe the volume bled across a *whole cycle* in which migration continues throughout, not an instantaneous pressure-to-volume relationship — in which case the two are answering different questions and both stand.
+- Or the engine's capacitance is under-stating how much the annulus gives up, in which case `_capacitance_bbl_per_psi` needs revisiting.
+
+**Nothing has been changed in the library on the strength of this.** The stripping test asserts only that more is bled than the steel displaces, not how much more. Settling it needs a domain judgement or a second source.
+
 ### Reverse circulation: the influx goes up the pipe
 
 Down the annulus, back up the drill pipe. The influx travels up the **inside of the string**, so it never passes the casing shoe — which is the whole attraction, and the string holds a fraction of the annulus volume so the job is over in a third of the strokes.
