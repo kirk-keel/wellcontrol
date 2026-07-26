@@ -19,13 +19,19 @@ Setup from scratch (real interpreter lives at `%LOCALAPPDATA%\Programs\Python\Py
 python -m venv .venv && .venv/Scripts/python.exe -m pip install -e ".[dev,app]"
 ```
 
-Run the app — or double-click `Launch Kill Planner.bat`, which builds the venv on first run and binds to localhost only:
+Run the planner — or double-click `Launch Kill Planner.bat`, which builds the venv on first run and binds to localhost only:
 
 ```bash
 .venv/Scripts/python.exe -m streamlit run app/streamlit_app.py
 ```
 
-`[dev]` is dependency-free (library + tests). `[app]` adds matplotlib, streamlit, pandas. `tests/test_streamlit_app.py` skips itself via `importorskip` when streamlit is absent, so the core suite stays dependency-free.
+Run the simulator — or double-click `Launch Simulator.bat`:
+
+```bash
+.venv/Scripts/python.exe -m uvicorn wellcontrol.sim.api:app --reload
+```
+
+`[dev]` is dependency-free (library + tests). `[app]` adds matplotlib, streamlit, pandas for the planner; `[sim]` adds fastapi, uvicorn, httpx for the simulator's web front end. `tests/test_streamlit_app.py` and `tests/test_sim_api.py` skip themselves via `importorskip`, so the core suite stays dependency-free.
 
 ## Rounding is directional
 
@@ -130,6 +136,22 @@ Validated by an autopilot in `tests/test_simulator.py` standing in for a driller
 
 **The autopilot needs its derivative term.** The plant integrates — choke position sets a flow, and pressure is the running total of the imbalance — and the choke is rate-limited on top of that. Proportional control alone limit cycles: it held bottomhole pressure to a steady 65 psi oscillation on a 25-second period. That is a mediocre driller, not a perfect one, and validating the physics against it is validating against the wrong thing. With damping the same run holds 16 psi. If a change makes the autopilot oscillate again, suspect the controller before the engine.
 
+### The web front end (`sim/session.py`, `sim/api.py`, `sim/static/`)
+
+Run it with `Launch Simulator.bat`, or:
+
+```bash
+.venv/Scripts/python.exe -m uvicorn wellcontrol.sim.api:app --reload
+```
+
+`[sim]` (fastapi, uvicorn, httpx) is a separate extra from `[app]`, so the planner does not drag in a web server and vice versa. `tests/test_sim_api.py` skips itself via `importorskip`.
+
+**Three layers, and the split is load-bearing.** `session.py` owns the wall-clock-to-simulated-time mapping and has **no web dependency**, so the time model is tested with a fake clock and no sleeping. `api.py` is transport only — parse, call a session method, serialise. If a well control rule ever appears in `api.py`, it is in the wrong file. The HTML is a client.
+
+**Time advances on demand, not on a background thread.** Each request computes elapsed wall time × speed and steps the engine that far. The well only evolves while somebody is watching, which is right for self-study and makes tests deterministic. Catch-up is clamped (`MAX_CATCHUP_S`), or ten minutes away at 60× returns ten hours of well in one request. Every control change advances *first*, then acts — otherwise time elapsed at the old setting is credited to the new one.
+
+**The panel is two charts, not one.** Surface pressure runs in hundreds of psi and downhole in thousands; on a shared axis the drill pipe and casing traces flatten onto the baseline, which is exactly the gauge the student is working to. Thresholds are labelled on the line rather than in the legend, because two identical dashes do not tell you which one the shoe is about to cross.
+
 ### Assessment (`sim/assessment.py`)
 
 Scoring is on **outcome and margin, never procedure**. Nothing checks the order of actions and nothing checks the lineup — a wrong lineup is not marked incorrect, it simply does not work, and the consequence is what shows up in the metrics.
@@ -160,7 +182,7 @@ A related resolution trap: **peak casing pressure is a sharp cusp**, reached as 
 
 ## Where this is up to
 
-- **Simulator**: stages 1 and 2 of 5 done (headless engine, lineup, validation, event log and assessment). Next: the choke panel, then the remaining screens, then a scenario library. **The UI stack is still undecided and stage 3 cannot start without it** — see §9.1 of the design doc; the recommendation there was to defer until the engine drives something, and it now does.
+- **Simulator**: stages 1–3 of 5 done (headless engine, lineup, validation, event log and assessment, and the choke panel). Next: the remaining screens, then a scenario library. **UI decided: FastAPI + browser** — Streamlit has no game loop and reruns the whole script per interaction, which would make gauges into widgets and the choke laggy. The planner stays on Streamlit; the two apps share the library and nothing else.
 - **Importers**: done and validated against real-shaped files in `test_data/`, with an independent answer key. See *Importing real geometry* below.
 
 ## Adding a kill method

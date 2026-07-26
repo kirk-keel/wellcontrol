@@ -16,9 +16,15 @@ dependencies = []
 dev = ["pytest>=8.0"]
 plots = ["matplotlib>=3.8"]
 app = ["matplotlib>=3.8", "streamlit>=1.36", "pandas>=2.0", "openpyxl>=3.1"]
+# The simulator's web front end. Kept separate from [app] so the Streamlit
+# planner does not drag in a web server, and vice versa.
+sim = ["fastapi>=0.110", "uvicorn>=0.27", "httpx>=0.27"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+wellcontrol = ["sim/static/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

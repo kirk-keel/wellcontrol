@@ -4,9 +4,15 @@ A training simulator where a student plans a kill, lines up the rig, brings the
 pump online, and works the choke to circulate the influx out — with the well
 responding to what they actually do rather than what they intended.
 
-**Status: stages 1 and 2 done (headless engine, lineup, validation, event log
-and assessment). Stage 3 — the choke panel — is next, and needs the UI decision
-in §9.1.**
+**Status: stages 1–3 done — headless engine, lineup, validation, event log and
+assessment, and the choke panel running on FastAPI. Stage 4 is the remaining
+screens.**
+
+**UI decision taken (§9.1): FastAPI + browser.** Streamlit reruns the whole
+script on every interaction and has no game loop, so gauges would be widgets
+rather than instruments and the choke would feel laggy — the wrong trade for the
+one control the whole exercise turns on. The planner stays on Streamlit; the two
+apps share the library and nothing else.
 
 Decisions taken:
 
@@ -219,6 +225,27 @@ A real kill runs three to five hours. The simulator needs:
 - **Automatic slow-down at the interesting moments** — optional: drop to 1×
   when gas reaches the choke, which is when the student most needs the time
 
+### As built (`sim/session.py`)
+
+**Time advances on demand, not on a background thread.** Each call looks at how
+much wall time has passed, multiplies by the speed, and steps the engine that
+far. No timers, nothing running when nobody is watching. Two consequences:
+
+* **The well only evolves while somebody is looking at it.** For a self-study
+  trainer that is right — a student who walks away has not lost the kick — and it
+  makes every test deterministic without sleeping.
+* **Catch-up is clamped** (`MAX_CATCHUP_S`). Without it, ten minutes away at 60×
+  returns ten hours of simulated well integrated in a single request.
+
+The clock is injected, defaulting to `time.monotonic`, so the whole time model is
+tested with a fake clock. Monotonic rather than wall clock: the simulation must
+not jump when the machine's clock is adjusted.
+
+Changing speed advances first, then changes — otherwise time that elapsed at the
+old speed gets integrated at the new one. The same applies to every control
+change, which is why `set_choke`, `set_pump` and `set_valve` all advance before
+acting.
+
 ---
 
 ## 7. Where it sits
@@ -252,7 +279,10 @@ Each stage is useful on its own and de-risks the next.
    shoe pressure and losses; a choke left wide open fails on additional influx;
    a kill attempted with the BOP open fails on influx and logs the critical
    "the choke has no effect".
-3. **One screen — the choke panel.** The minimum needed to actually fly a kill.
+3. ~~**One screen — the choke panel.**~~ **Done.** `sim/session.py` owns the
+   wall-clock-to-simulated-time mapping, `sim/api.py` is the HTTP transport, and
+   `sim/static/choke_panel.html` is the panel. Launch it with
+   *Launch Simulator.bat*.
 4. **The rest of the screens**, lineup schematic last since it is the most UI-heavy.
 5. **Scenario library** and instructor debrief.
 

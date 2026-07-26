@@ -41,6 +41,7 @@ from .assessment import (
 from .engine import MUD_COMPRESSIBILITY, SimState, Simulator
 from .equipment import AdjustableChoke, MudPump, PitSystem, TripTank
 from .flowpath import FlowPath, Node, ReturnRoute, Valve, ValveState, default_valves
+from .session import SPEEDS, Session, SessionStore
 
 __all__ = [
     "AdjustableChoke",
@@ -56,6 +57,9 @@ __all__ = [
     "Node",
     "PitSystem",
     "ReturnRoute",
+    "SPEEDS",
+    "Session",
+    "SessionStore",
     "Severity",
     "SimState",
     "Simulator",
