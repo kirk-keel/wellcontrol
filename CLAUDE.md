@@ -153,6 +153,16 @@ Two calibration points worth keeping:
 
 `state.bled_bbl` counts what leaves through the choke with the pump off. Volumetric is executed by bleeding *measured* increments, so it is the instrument the method is worked to, not a diagnostic.
 
+### Bullheading: the formation takes fluid both ways
+
+Underbalanced, the zone gives up gas through `productivity_index`. Pushed hard enough it takes fluid back, and that is the whole of bullheading — the one method that never brings the influx to surface.
+
+**`INJECTION_THRESHOLD_PSI` is the load-bearing part.** A zone does not start accepting mud the moment it is overbalanced: filter cake, near-wellbore skin and relative permeability have to be pushed through first. Without the threshold, every kill flown a few tens of psi above pore pressure would quietly bleed into the formation for hours, and bullheading would need no pressure worth speaking of. `INJECTION_INDEX` is well below the productivity index in the other direction, because a gas sand gives up gas far more readily than it accepts mud.
+
+Gas is what goes back first, since it sits against the zone it came from. That is the assumption bullheading rests on, and it is also why the method gets unreliable once the influx has migrated away from the zone.
+
+On the reference well, bullheading **breaks the shoe** — peak 4,714 psi against a 4,677 psi fracture — and nothing scripts that. The surface pressure needed simply exceeds what the casing seat will hold. Pumped gently enough the same well keeps its shoe, which is the trade the method is about.
+
 ### Drilling → kick → detection → shut-in (`StartState`)
 
 **A session can start two ways, and the difference is the difference between a trainer and a simulator.** `StartState.SHUT_IN` hands over a kick already in the hole, sized and identified, with the pressures on the gauges. `StartState.DRILLING` starts on a well that is behaving; pore pressure is `DRILLING_OVERBALANCE_PSI` below the mud column, and after a stretch of *circulating* the bit drills into a zone the mud cannot hold.

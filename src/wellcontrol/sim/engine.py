@@ -77,6 +77,21 @@ DRILLING_OVERBALANCE_PSI: float = 150.0
 #: the student lets the well go underbalanced again.
 TIGHT_PRODUCTIVITY_INDEX: float = 0.004
 
+#: Overbalance needed before the formation will take fluid at all, psi.
+#:
+#: A zone does not start accepting mud the moment it is overbalanced. Filter
+#: cake, near-wellbore skin and relative permeability all have to be pushed
+#: through first, which is why a well can sit a hundred psi overbalanced all day
+#: without losing anything. It also keeps a normal kill -- flown a few tens of
+#: psi above pore pressure -- from quietly bleeding into the formation, and it
+#: is why bullheading needs real pressure rather than a nudge.
+INJECTION_THRESHOLD_PSI: float = 300.0
+
+#: How readily the zone takes fluid once that threshold is passed, bbl/min per
+#: psi. Much lower than the productivity index in the other direction: a gas
+#: sand gives up gas far more easily than it accepts mud.
+INJECTION_INDEX: float = 0.004
+
 #: Representative gas migration rate, ft/hr, where nobody has measured one.
 #: Field figures run from a few hundred to a couple of thousand; 1,000 is the
 #: number the teaching content works to.
@@ -135,6 +150,11 @@ class SimState:
     flow_in_bpm: float = 0.0
     flow_out_bpm: float = 0.0
     influx_rate_bpm: float = 0.0
+    #: Fluid going back into the kicking zone, bbl/min. Bullheading is the
+    #: deliberate case; it is also what a badly over-pressured well does.
+    injection_rate_bpm: float = 0.0
+    #: Cumulative volume squeezed back into the formation, bbl.
+    injected_bbl: float = 0.0
     loss_rate_bpm: float = 0.0
     kill_mud_pumped_bbl: float = 0.0
     #: Volume taken out through the choke with the pump off. The Volumetric
@@ -205,6 +225,8 @@ class Simulator:
     #: state: a drilling kick has to develop while the student watches, where a
     #: shut-in start only needs this if they lose control again.
     productivity_index: float | None = None
+    #: bbl/min per psi of overbalance beyond INJECTION_THRESHOLD_PSI.
+    injection_index: float = INJECTION_INDEX
     loss_index: float = 0.01
     kill_mud_weight_ppg: float | None = None
     #: How fast gas climbs through the mud, ft/hr. None takes the well's own
@@ -630,9 +652,16 @@ class Simulator:
         state.flow_out_bpm = flow_out
 
         # -- the formation's response ----------------------------------------
+        # It works both ways. Underbalanced it gives up gas; pushed hard enough
+        # it takes fluid back, which is the whole of bullheading. The threshold
+        # between them is not zero -- see INJECTION_THRESHOLD_PSI.
         underbalance = self.formation_pressure_psi - state.bottomhole_pressure_psi
         influx_rate = self.productivity_index * underbalance if underbalance > 0 else 0.0
         state.influx_rate_bpm = influx_rate
+
+        squeeze = -underbalance - INJECTION_THRESHOLD_PSI
+        injection_rate = self.injection_index * squeeze if squeeze > 0 else 0.0
+        state.injection_rate_bpm = injection_rate
 
         loss_rate = 0.0
         over = 0.0
@@ -662,7 +691,10 @@ class Simulator:
             pass  # open hole to atmosphere; casing pressure pinned at zero
         else:
             net = (
-                (flow_in + influx_rate - flow_out - loss_rate) * minutes
+                (
+                    flow_in + influx_rate
+                    - flow_out - loss_rate - injection_rate
+                ) * minutes
                 + migration_bbl
             )
             state.casing_pressure_psi = max(
@@ -706,6 +738,18 @@ class Simulator:
             cleared_message="Back overbalanced — the influx has stopped.",
             underbalance_psi=underbalance,
         )
+
+        # Fluid squeezed back into the zone takes the influx with it. The gas
+        # sits against the formation it came from, so it is what goes back
+        # first -- which is the assumption bullheading is built on, and the
+        # reason the method is unreliable once the influx has risen away from
+        # the zone.
+        if injection_rate > 0:
+            pushed_back = injection_rate * minutes
+            state.injected_bbl += pushed_back
+            if state.influx_volume_bbl > 1e-9:
+                fraction = min(1.0, pushed_back / state.influx_volume_bbl)
+                self._gas_pv *= 1.0 - fraction
 
         # Gas reaching surface leaves with the returns.
         if state.gas_at_surface and flow_out > 0 and route.through_choke:
