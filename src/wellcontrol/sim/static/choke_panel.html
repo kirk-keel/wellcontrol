@@ -166,6 +166,19 @@
   svg { display: block; width: 100%; }
   #schematic { height: min(74vh, 620px); }
   #pid { height: min(58vh, 420px); }
+
+  /* Dials. Two big ones for the pressures a kill is flown on, three smaller
+     for the settings, exactly as the panel is laid out on a rig. */
+  .dials { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .dials.small { grid-template-columns: repeat(3, 1fr); margin-top: 12px; }
+  .dials > div { max-width: 260px; margin: 0 auto; width: 100%; }
+  .dials.small > div { max-width: 170px; }
+  @media (max-width: 700px) { .dials.small { grid-template-columns: repeat(2, 1fr); } }
+  .lamps {
+    display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px;
+    padding: 9px 12px; background: var(--sunk);
+    border: 1px solid var(--edge); border-radius: 6px;
+  }
   .verdict {
     font: 700 22px/1.2 "Segoe UI", system-ui, sans-serif; letter-spacing: .02em;
   }
@@ -288,8 +301,18 @@
   <div class="cols">
     <div>
       <div class="card">
-        <h2>Choke panel — instrument scan</h2>
-        <div class="gauges">
+        <h2>Choke panel</h2>
+        <div class="dials">
+          <div id="dial-dp"></div>
+          <div id="dial-csg"></div>
+        </div>
+        <div class="dials small">
+          <div id="dial-spm"></div>
+          <div id="dial-choke"></div>
+          <div id="dial-extra"></div>
+        </div>
+        <div class="lamps" id="lamps"></div>
+        <div class="gauges" style="margin-top:12px">
           <div class="g dp"><div class="k">Drill pipe</div><div class="v" id="g-dp">—</div><div class="u">psi</div></div>
           <div class="g csg"><div class="k">Casing</div><div class="v" id="g-csg">—</div><div class="u">psi</div></div>
           <div class="g"><div class="k" id="g-3-label">Strokes</div><div class="v" id="g-stk">—</div><div class="u" id="g-3-unit">since start</div></div>
@@ -392,7 +415,8 @@
       </div>
       <div class="card">
         <h2>BOP stack</h2>
-        <div class="valves" id="bop-list"></div>
+        <svg id="stack" viewBox="0 0 300 300" role="img" aria-label="BOP stack"></svg>
+        <div class="valves" id="bop-list" style="margin-top:10px"></div>
         <div class="note">
           Closed is what seals the annulus, so these read the opposite way to
           every other valve. Each operation costs accumulator pressure.
@@ -534,7 +558,7 @@ async function poll() {
 function redraw() {
   if (screen === "choke") drawCharts();
   else if (screen === "driller") drawPits();
-  else if (screen === "bop") { drawPid(); drawLineup(lineupCache); }
+  else if (screen === "bop") { drawPid(); drawStack(); drawLineup(lineupCache); }
   else if (screen === "well") drawSchematic();
 }
 
@@ -566,7 +590,40 @@ function paint(g) {
     ? "Hookload is at zero — the well is pushing the string out. This has to be snubbed, not stripped."
     : "";
 
-  /* --- choke --- */
+  /* --- choke: the dials --- */
+  // Scale chosen once from what this well can actually reach, so the needle
+  // uses the face instead of sitting near zero all run.
+  const full = Math.max(2000, Math.ceil((maaspPsi || 1500) * 1.6 / 500) * 500);
+  $("dial-dp").innerHTML = dial({
+    value: g.drill_pipe_psi, max: full, label: "Drill Pipe", unit: "psi",
+    colour: "#c62828",
+  });
+  $("dial-csg").innerHTML = dial({
+    value: g.casing_psi, max: full, label: "Casing", unit: "psi",
+    colour: "#c62828",
+  });
+  $("dial-spm").innerHTML = dial({
+    value: g.pump_spm, max: 80, label: "Pump", unit: "spm", size: 170, ticks: 5,
+  });
+  $("dial-choke").innerHTML = dial({
+    value: g.choke_percent, max: 100, label: "Choke", unit: "% open",
+    size: 170, ticks: 6,
+  });
+  $("dial-extra").innerHTML = seen
+    ? dial({value: g.influx_bbl || 0, max: 120, label: "Influx", unit: "bbl",
+            size: 170, ticks: 5, colour: "#e07b39"})
+    : dial({value: g.pit_gain_bbl, max: 60, label: "Pit Gain", unit: "bbl",
+            size: 170, ticks: 5, colour: "#e07b39"});
+  $("lamps").innerHTML =
+    lamp(g.pump_spm > 0, "Mud pump") +
+    lamp(g.bop_closed, "BOP closed", "#e2453d") +
+    lamp(g.returns.indexOf("choke") >= 0, "Returns on choke") +
+    lamp(g.reverse_circulating, "Reverse", "#d4a13c") +
+    lamp(g.maasp_psi !== null && g.casing_psi > g.maasp_psi, "Above MAASP", "#e2453d") +
+    lamp(!g.accumulator_ok, "Accumulator low", "#e2453d") +
+    lamp(g.well_is_dead, "Well dead");
+
+  /* --- choke: digital backup --- */
   $("g-dp").textContent = g.drill_pipe_psi.toLocaleString();
   $("g-csg").textContent = g.casing_psi.toLocaleString();
   if (seen) {
@@ -641,6 +698,82 @@ function addEvent(e) {
   const row = document.createElement("div");
   row.innerHTML = `<span class="t">${e.clock}</span><span class="sev-${e.severity}">${e.message}</span>`;
   $("log").prepend(row);
+}
+
+/* ------------------------------- gauges -------------------------------- */
+/* Round dials with needles, because that is what a choke panel is. A digital
+   tile tells you the number; a needle tells you the *rate*, and which way it is
+   going, without being read. Working a choke is a scan, not a series of
+   readings, so the panel is built the way the rig builds it. */
+
+function polar(cx, cy, r, deg) {
+  const a = deg * Math.PI / 180;
+  return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+}
+
+/* Sweeps 270 degrees, from bottom-left round to bottom-right. */
+const A0 = 135, SWEEP = 270;
+
+function dial(opts) {
+  const {value, max, label, unit, colour, size = 200, ticks = 9} = opts;
+  const c = size / 2, r = c - 10;
+  const frac = Math.max(0, Math.min(1, (value || 0) / max));
+  const bits = [];
+
+  bits.push(`<circle cx="${c}" cy="${c}" r="${r}" fill="#f2f4f6" stroke="#9aa8b4" stroke-width="2"/>`);
+  bits.push(`<circle cx="${c}" cy="${c}" r="${r - 7}" fill="none" stroke="#c9d2da" stroke-width="1"/>`);
+
+  // The number ring sits close to the rim, which leaves the middle of the face
+  // clear for the label and the digital inset. Placed further in they collide,
+  // and a gauge you have to squint at is worse than no gauge.
+  for (let i = 0; i <= (ticks - 1) * 4; i++) {
+    const f = i / ((ticks - 1) * 4), major = i % 4 === 0;
+    const deg = A0 + f * SWEEP;
+    const [x1, y1] = polar(c, c, r - 6, deg);
+    const [x2, y2] = polar(c, c, r - (major ? 17 : 11), deg);
+    bits.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+      stroke="#33404b" stroke-width="${major ? 2 : 1}"/>`);
+    if (major) {
+      const [tx, ty] = polar(c, c, r - 27, deg);
+      bits.push(`<text x="${tx}" y="${ty + 4}" text-anchor="middle" fill="#33404b"
+        font-size="${size / 20}" font-family="system-ui, sans-serif">${Math.round(max * f).toLocaleString()}</text>`);
+    }
+  }
+
+  // Digital inset, as on the real panel: under the hub, in the clear.
+  const bw = size * 0.40, bh = size * 0.15;
+  bits.push(`<rect x="${c - bw / 2}" y="${c + size * 0.03}" width="${bw}" height="${bh}"
+    rx="3" fill="#0d1117" stroke="#4b5a67"/>`);
+  bits.push(`<text x="${c}" y="${c + size * 0.03 + bh * 0.76}" text-anchor="middle"
+    fill="#5df08a" font-size="${size / 11}" font-weight="700"
+    font-family="Consolas, ui-monospace, monospace">${Math.round(value || 0).toLocaleString()}</text>`);
+
+  // Label and unit go in the gap at the bottom, where the 270-degree sweep
+  // does not reach. The upper half has no clear band at all -- the number ring
+  // runs right across it -- so a label placed there collides whatever the
+  // font size.
+  bits.push(`<text x="${c}" y="${c + size * 0.30}" text-anchor="middle" fill="#22303b"
+    font-size="${size / 14}" font-weight="600" font-family="system-ui, sans-serif">${label}</text>`);
+  bits.push(`<text x="${c}" y="${c + size * 0.40}" text-anchor="middle" fill="#4c5a66"
+    font-size="${size / 20}" font-family="system-ui, sans-serif">${unit}</text>`);
+
+  const [nx, ny] = polar(c, c, r - 16, A0 + frac * SWEEP);
+  const [bx1, by1] = polar(c, c, 7, A0 + frac * SWEEP + 90);
+  const [bx2, by2] = polar(c, c, 7, A0 + frac * SWEEP - 90);
+  bits.push(`<polygon points="${nx},${ny} ${bx1},${by1} ${bx2},${by2}"
+    fill="${colour || '#c62828'}"/>`);
+  bits.push(`<circle cx="${c}" cy="${c}" r="9" fill="#2b3640" stroke="#0d1117" stroke-width="2"/>`);
+
+  return `<svg viewBox="0 0 ${size} ${size}" style="width:100%;height:auto">${bits.join("")}</svg>`;
+}
+
+function lamp(on, label, onColour) {
+  const colour = on ? (onColour || "#3fdc6a") : "#3a444e";
+  return `<div style="display:flex;align-items:center;gap:7px">
+    <span style="width:15px;height:15px;border-radius:50%;background:${colour};
+      border:2px solid #0d1117;box-shadow:${on ? `0 0 9px ${colour}` : "none"};
+      display:inline-block"></span>
+    <span style="font-size:11px;color:var(--dim)">${label}</span></div>`;
 }
 
 /* ------------------------------- charts -------------------------------- */
@@ -870,9 +1003,16 @@ function drawPid() {
       const len = Math.hypot(bx - ax, by - ay) || 1;
       const mx = (ax + bx) / 2 + (bx - ax) / len * offset;
       const my = (ay + by) / 2 + (by - ay) / len * offset;
-      bits.push(`<g class="pv" data-valve="${v.name}" style="cursor:pointer">
-        <circle cx="${mx}" cy="${my}" r="7.5" fill="${colour}"
-          stroke="#0b1016" stroke-width="1.5"/>
+      // A gate valve, drawn as the bowtie it is on every P&ID: two triangles
+      // meeting at the stem. Green through when open, dark when shut.
+      const ang = Math.atan2(by - ay, bx - ax) * 180 / Math.PI;
+      bits.push(`<g class="pv" data-valve="${v.name}" style="cursor:pointer"
+        transform="translate(${mx} ${my}) rotate(${ang})">
+        <circle r="11" fill="transparent"/>
+        <polygon points="-8,-7 -8,7 0,0" fill="${colour}" stroke="#0b1016" stroke-width="1"/>
+        <polygon points="8,-7 8,7 0,0" fill="${colour}" stroke="#0b1016" stroke-width="1"/>
+        <line x1="0" y1="0" x2="0" y2="-11" stroke="${colour}" stroke-width="1.5"/>
+        <line x1="-4" y1="-11" x2="4" y2="-11" stroke="${colour}" stroke-width="2"/>
         <title>${v.label} — ${v.state}${v.is_bop
           ? " (BOP: closed seals the annulus)" : ""}</title></g>`);
     });
@@ -889,6 +1029,48 @@ function drawPid() {
   svg.querySelectorAll(".pv").forEach(g => {
     g.onclick = () => toggleValve(g.dataset.valve);
   });
+}
+
+/* ----------------------------- BOP stack ------------------------------- */
+/* Drawn the way the remote panel draws it: the stack in elevation with each
+   element showing its own state, rather than a list of words. A student who
+   has closed the wrong element sees it here immediately. */
+function drawStack() {
+  const svg = $("stack"); if (!svg || !lineupCache.length) return;
+  const elements = lineupCache.filter(v => v.is_bop);
+  const bits = [`<rect width="300" height="300" fill="var(--sunk)"/>`];
+  const CX = 150, W = 96;
+
+  // Wellbore through the middle, and the pipe in it.
+  bits.push(`<rect x="${CX - 12}" y="10" width="24" height="280" fill="#2b3640"/>`);
+
+  const top = 40, gap = 58;
+  elements.forEach((v, i) => {
+    const y = top + i * gap;
+    const shut = v.state !== "open";
+    const body = shut ? "#8d2f2b" : "#4a5a67";
+    // Body of the element.
+    bits.push(`<rect x="${CX - W / 2}" y="${y}" width="${W}" height="40" rx="4"
+      fill="${body}" stroke="#0d1117" stroke-width="2"/>`);
+    // The rams themselves, meeting in the middle when shut.
+    const reach = shut ? W / 2 - 12 : 16;
+    bits.push(`<rect x="${CX - W / 2 + 6}" y="${y + 12}" width="${reach}" height="16"
+      fill="#cbd5dd"/>`);
+    bits.push(`<rect x="${CX + W / 2 - 6 - reach}" y="${y + 12}" width="${reach}" height="16"
+      fill="#cbd5dd"/>`);
+    bits.push(`<text x="${CX}" y="${y - 5}" text-anchor="middle" fill="${css("--dim")}"
+      font-size="10">${v.label}</text>`);
+    bits.push(`<rect x="${CX + W / 2 + 8}" y="${y + 10}" width="54" height="20" rx="3"
+      fill="${shut ? "#e2453d" : "#2b3640"}" stroke="#0d1117"/>`);
+    bits.push(`<text x="${CX + W / 2 + 35}" y="${y + 24}" text-anchor="middle"
+      fill="#fff" font-size="10" font-weight="600">${shut ? "CLOSED" : "OPEN"}</text>`);
+  });
+
+  const base = top + elements.length * gap;
+  bits.push(`<rect x="${CX - 60}" y="${base + 4}" width="120" height="14" fill="#3c4a58"/>`);
+  bits.push(`<text x="${CX}" y="${base + 34}" text-anchor="middle" fill="${css("--faint")}"
+    font-size="10">wellhead</text>`);
+  svg.innerHTML = bits.join("");
 }
 
 /* -------------------------------- lineup ------------------------------- */
@@ -919,7 +1101,7 @@ async function toggleValve(name) {
     body: JSON.stringify({name, state: v.state === "open" ? "closed" : "open"})
   });
   drawLineup(r.lineup); paint(r.gauges);
-  if (screen === "bop") drawPid();
+  if (screen === "bop") { drawPid(); drawStack(); }
 }
 
 /* ------------------------------ kill sheet ----------------------------- */
