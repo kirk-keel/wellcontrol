@@ -73,6 +73,8 @@ class Session:
     speed: float = 0.0
     clock: Callable[[], float] = time.monotonic
     session_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    #: The exercise this session is running, if it came from one.
+    scenario: object | None = None
     #: Drop to real time once, when the well first flows. See _should_slow_down.
     auto_slow: bool = True
     #: Wall-clock reading at the last advance.
@@ -117,6 +119,46 @@ class Session:
             # flowline over the shakers. Nothing on the choke side is open,
             # which is the point -- shutting in is the student's job.
             path.open("pump_discharge", "standpipe_valve")
+        return session
+
+    @classmethod
+    def for_scenario(cls, key: str, **kwargs) -> "Session":
+        """Build a session from a named exercise.
+
+        The scenario decides the well, where it starts, the lineup and what is
+        going to go wrong; everything else is the same session as any other.
+        """
+        from .scenario import get_scenario
+
+        scenario = get_scenario(key)
+        config = WellConfiguration(
+            BOPLocation(scenario.bop), Trajectory(scenario.trajectory)
+        )
+        well = examples.well_state(
+            config, bit_off_bottom_ft=scenario.bit_off_bottom_ft
+        )
+        simulator = Simulator(
+            well=well,
+            start=scenario.start,
+            faults=scenario.faults,
+            migration_rate_ft_per_hr=scenario.migration_rate_ft_per_hr,
+        )
+        session = cls(simulator=simulator, **kwargs)
+        session.scenario = scenario
+
+        path = simulator.flow_path
+        if scenario.start is StartState.SHUT_IN:
+            path.close("annular")
+            path.open("choke_line_valve", "choke_line_to_manifold", "choke_1")
+            path.open("pump_discharge", "standpipe_valve")
+        else:
+            path.open("pump_discharge", "standpipe_valve")
+        # The scenario's own lineup goes on last, so it can override the
+        # default for the exercise it describes.
+        if scenario.open_valves:
+            path.open(*scenario.open_valves)
+        if scenario.closed_valves:
+            path.close(*scenario.closed_valves)
         return session
 
     # -- what the student is allowed to see ----------------------------------
@@ -482,13 +524,24 @@ class Session:
             "schematic": self.schematic(),
         }
 
-    def assess(self, require_kill: bool = False) -> Assessment:
+    def assess(self, require_kill: bool | None = None) -> Assessment:
+        """Grade the run. The scenario's own standard applies unless overridden."""
         self.advance()
-        return self.simulator.assess(Standard(require_kill=require_kill))
+        if require_kill is None:
+            standard = (
+                self.scenario.standard if self.scenario is not None
+                else Standard(require_kill=False)
+            )
+        else:
+            standard = Standard(require_kill=require_kill)
+        return self.simulator.assess(standard)
 
-    def debrief(self, require_kill: bool = False) -> dict:
+    def debrief(self, require_kill: bool | None = None) -> dict:
         assessment = self.assess(require_kill)
         return {
+            "scenario": (
+                None if self.scenario is None else self.scenario.summary()
+            ),
             "grade": assessment.grade.value,
             "passed": assessment.passed,
             "killed": assessment.killed,
@@ -529,8 +582,11 @@ class SessionStore:
     def __init__(self) -> None:
         self._sessions: dict[str, Session] = {}
 
-    def create(self, **kwargs) -> Session:
-        session = Session.for_configuration(**kwargs)
+    def create(self, scenario: str | None = None, **kwargs) -> Session:
+        session = (
+            Session.for_scenario(scenario, **kwargs) if scenario
+            else Session.for_configuration(**kwargs)
+        )
         self._sessions[session.session_id] = session
         return session
 

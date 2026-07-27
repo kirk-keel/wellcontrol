@@ -198,11 +198,8 @@
   <span class="pill mono" id="clock">00:00:00</span>
   <span class="pill" id="deadpill" style="display:none">Well dead</span>
   <span class="grow"></span>
-  <label class="lbl">Scenario</label>
-  <select id="scenario">
-    <option value="drilling">Drilling — find the kick</option>
-    <option value="shut_in" selected>Shut in — kill it</option>
-  </select>
+  <label class="lbl">Exercise</label>
+  <select id="scenario"></select>
   <label class="lbl">Speed</label>
   <select id="speed">
     <option value="0">Paused</option>
@@ -228,6 +225,14 @@
 <section class="screen active" id="s-driller">
   <div class="cols">
     <div>
+      <div class="card" id="briefing-card">
+        <h2>Briefing</h2>
+        <div style="font-weight:600;margin-bottom:4px" id="brief-name">—</div>
+        <div style="color:var(--csg);font-size:13px;margin-bottom:8px" id="brief-obj"></div>
+        <div style="color:var(--dim);font-size:13px" id="brief-text"></div>
+        <div class="note" id="brief-warn"></div>
+      </div>
+
       <div class="card">
         <h2>Driller's console</h2>
         <div class="gauges">
@@ -520,13 +525,33 @@ async function api(path, options) {
 }
 
 /* ------------------------------ lifecycle ------------------------------ */
+async function loadScenarios() {
+  const list = (await api("/api/scenarios")).scenarios;
+  $("scenario").innerHTML = list
+    .map(s => `<option value="${s.key}">${s.name}</option>`).join("");
+  window._scenarios = list;
+}
+
+function showBriefing(key) {
+  const s = (window._scenarios || []).find(x => x.key === key);
+  if (!s) return;
+  $("brief-name").textContent = s.name;
+  $("brief-obj").textContent = s.objective;
+  $("brief-text").textContent = s.briefing;
+  // That something can go wrong is worth saying. What, and when, is not --
+  // a student who knows the choke plugs at stroke 2,000 is not being tested
+  // on noticing that the choke has plugged.
+  $("brief-warn").textContent = s.has_faults
+    ? "Equipment on this exercise may not behave. Watch the gauges."
+    : "";
+}
+
 async function start() {
   const created = await api("/api/sessions", {
     method: "POST",
-    body: JSON.stringify({
-      bop: "surface", trajectory: "vertical", start: $("scenario").value
-    })
+    body: JSON.stringify({scenario: $("scenario").value})
   });
+  showBriefing($("scenario").value);
   sessionId = created.session_id;
   nextEvent = 0; trace = []; schematicCache = null;
   $("log").innerHTML = "";
@@ -1136,8 +1161,9 @@ async function loadSheet() {
 /* -------------------------------- debrief ------------------------------ */
 async function loadDebrief() {
   if (!sessionId) return;
-  const d = await api(
-    `/api/sessions/${sessionId}/debrief?require_kill=${$("db-require").checked}`);
+  // Left unchecked, the scenario's own standard applies.
+  const d = await api(`/api/sessions/${sessionId}/debrief`
+    + ($("db-require").checked ? "?require_kill=true" : ""));
   $("db-grade").textContent = d.grade.toUpperCase();
   $("db-grade").className = "verdict " + d.grade;
   $("db-summary").textContent = d.summary;
@@ -1205,7 +1231,7 @@ $("tabs").addEventListener("click", e => {
 });
 window.addEventListener("resize", redraw);
 
-start().then(() => setInterval(poll, 250));
+loadScenarios().then(start).then(() => setInterval(poll, 250));
 </script>
 </body>
 </html>

@@ -51,6 +51,14 @@ store = SessionStore()
 # --------------------------------------------------------------------------
 
 class NewSession(BaseModel):
+    scenario: str | None = Field(
+        default=None,
+        description=(
+            "Key of a named exercise from /api/scenarios. When given it "
+            "decides the well, the lineup and any faults, and the rest of "
+            "this body is ignored."
+        ),
+    )
     bop: str = Field(default="surface", description="surface or subsea")
     trajectory: str = Field(
         default="vertical", description="vertical, deviated or horizontal"
@@ -115,12 +123,32 @@ def speeds() -> dict:
     return {"speeds": list(SPEEDS)}
 
 
+@app.get("/api/scenarios")
+def scenarios() -> dict:
+    """The exercise library.
+
+    Faults are reported only as a flag, never as a list. A student who knows
+    the choke is going to plug at stroke 2,000 is not being tested on noticing
+    that the choke has plugged.
+    """
+    from .scenario import scenario_list
+
+    return {"scenarios": scenario_list()}
+
+
 @app.post("/api/sessions", status_code=201)
 def create_session(body: NewSession) -> dict:
     try:
         session = store.create(
-            bop=body.bop, trajectory=body.trajectory, start=body.start
+            scenario=body.scenario,
+            **({} if body.scenario else {
+                "bop": body.bop,
+                "trajectory": body.trajectory,
+                "start": body.start,
+            }),
         )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         # An unknown BOP location or trajectory: the enum says what is valid.
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -128,6 +156,9 @@ def create_session(body: NewSession) -> dict:
         "session_id": session.session_id,
         "gauges": session.gauges(),
         "lineup": session.lineup(),
+        "scenario": (
+            None if session.scenario is None else session.scenario.summary()
+        ),
     }
 
 
@@ -201,7 +232,8 @@ def kill_sheet(session_id: str) -> dict:
 
 
 @app.get("/api/sessions/{session_id}/debrief")
-def debrief(session_id: str, require_kill: bool = False) -> dict:
+def debrief(session_id: str, require_kill: bool | None = None) -> dict:
+    """Grade the run. Omit require_kill to use the scenario's own standard."""
     return _session(session_id).debrief(require_kill=require_kill)
 
 

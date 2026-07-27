@@ -101,6 +101,7 @@ class EventKind(Enum):
     GAS_AT_SURFACE = "gas_at_surface"
     KILL_MUD_AT_BIT = "kill_mud_at_bit"
     WELL_DEAD = "well_dead"
+    EQUIPMENT_FAILURE = "equipment_failure"
 
     @property
     def label(self) -> str:

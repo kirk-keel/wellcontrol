@@ -79,6 +79,41 @@ class TestSessionLifecycle:
         assert other["gauges"]["choke_commanded"] == 0.0
 
 
+class TestScenarioLibrary:
+    def test_the_library_is_published(self, client):
+        body = client.get("/api/scenarios").json()["scenarios"]
+        assert len(body) >= 8
+        assert any(s["key"] == "drillers" for s in body)
+
+    def test_a_session_can_be_built_from_one(self, client):
+        body = client.post("/api/sessions", json={"scenario": "stripping"}).json()
+        assert body["scenario"]["key"] == "stripping"
+        assert body["gauges"]["bit_md_ft"] < 10000
+
+    def test_an_unknown_scenario_is_a_404_naming_the_options(self, client):
+        response = client.post("/api/sessions", json={"scenario": "nope"})
+        assert response.status_code == 404
+        assert "drillers" in response.json()["detail"]
+
+    def test_the_listing_does_not_reveal_the_faults(self, client):
+        """Only that there are some. Which and when is the exercise."""
+        for s in client.get("/api/scenarios").json()["scenarios"]:
+            assert "faults" not in s
+            assert isinstance(s["has_faults"], bool)
+
+    def test_the_debrief_defaults_to_the_scenarios_standard(self, client):
+        created = client.post("/api/sessions", json={"scenario": "drillers"}).json()
+        body = client.get(
+            f"/api/sessions/{created['session_id']}/debrief"
+        ).json()
+        assert body["scenario"]["key"] == "drillers"
+
+    def test_the_panel_offers_the_library(self, client):
+        text = client.get("/").text
+        assert "/api/scenarios" in text
+        assert "brief-obj" in text
+
+
 class TestSnapshot:
     def test_snapshot_carries_gauges_events_and_trace(self, client, session_id):
         body = client.get(f"/api/sessions/{session_id}").json()
@@ -305,10 +340,11 @@ class TestPanel:
         for element in ("g-dp", "g-csg", "g-stk", "g-chk"):
             assert element in text
 
-    def test_the_panel_offers_both_scenarios(self, client):
+    def test_the_panel_offers_the_exercise_picker(self, client):
+        """Populated from the library rather than hard-coded."""
         text = client.get("/").text
-        assert 'value="drilling"' in text
-        assert 'value="shut_in"' in text
+        assert 'id="scenario"' in text
+        assert "loadScenarios" in text
 
 
 class TestWhatTheStudentCanSee:

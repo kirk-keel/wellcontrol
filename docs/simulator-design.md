@@ -4,10 +4,14 @@ A training simulator where a student plans a kill, lines up the rig, brings the
 pump online, and works the choke to circulate the influx out — with the well
 responding to what they actually do rather than what they intended.
 
-**Status: stages 1–4 done — headless engine, lineup, validation, event log and
-assessment, all six screens on FastAPI, the full drilling → kick → detection →
-shut-in sequence, and every kill method operable rather than merely planned.
-Remaining: the scenario library and instructor fault injection (stage 5).**
+**Status: all five stages done.** Headless engine, lineup, validation, event log
+and assessment, all six screens on FastAPI, the full drilling → kick → detection
+→ shut-in sequence, every kill method operable rather than merely planned, and a
+scenario library with fault injection.
+
+Known open question: the stripping migration allowance, where the planner and
+the simulator disagree by about 4×. Written up in CLAUDE.md; nothing has been
+changed on the strength of it.
 
 **Scope agreed: a true simulator, not a choke trainer.** The student drills
 ahead, takes a kick they have to *notice*, shuts in on their own initiative, and
@@ -295,7 +299,11 @@ Each stage is useful on its own and de-risks the next.
    the clickable P&ID and the live well cross-section. The accumulator and
    hookload were added to the engine so the BOP and stripping screens show real
    instruments rather than indicator lights.
-5. **Scenario library** and instructor debrief.
+5. ~~**Scenario library** and instructor debrief.~~ **Done.** Ten built-in
+   exercises in `sim/scenario.py`, and faults that fire on time, stroke count or
+   an event the student caused. Scenarios are plain data with a `from_dict`, so
+   an instructor can add one without touching Python. The listing says only
+   *that* an exercise has faults, never which or when.
 
 Stage 1 is where the real risk is. If the engine is right, everything else is
 presentation.

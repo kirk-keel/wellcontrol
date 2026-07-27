@@ -136,6 +136,20 @@ Validated by an autopilot in `tests/test_simulator.py` standing in for a driller
 
 **The autopilot needs its derivative term.** The plant integrates — choke position sets a flow, and pressure is the running total of the imbalance — and the choke is rate-limited on top of that. Proportional control alone limit cycles: it held bottomhole pressure to a steady 65 psi oscillation on a 25-second period. That is a mediocre driller, not a perfect one, and validating the physics against it is validating against the wrong thing. With damping the same run holds 16 psi. If a change makes the autopilot oscillate again, suspect the controller before the engine.
 
+### Scenarios and faults (`sim/scenario.py`)
+
+A scenario names an exercise: which well, where it starts, the lineup, what the student is asked to achieve, and what is going to go wrong. **Scenarios are data** — plain dataclasses built from primitives, with `Scenario.from_dict` taking the same shape as JSON, so an instructor can add one without touching Python. `SCENARIOS` is the built-in library written out longhand.
+
+**Faults are triggers, not scripts.** Each does one thing to one piece of equipment at one moment — the pump fails, the choke plugs, the seat is weaker than the leak-off said. What follows is whatever the well does about it, through the same volume balance as everything else. Nothing in `_break_equipment` knows what a kick is, and a fault cannot make the well behave in a way it could not have behaved on its own.
+
+That distinction is worth defending. A scripted "and now the pressure spikes" teaches a student to recognise a scripted spike; a choke that plugs while they are holding 400 psi on it teaches them what a plugged choke feels like.
+
+Triggers are time, stroke count, or an event already in the log — the last so a fault can hang on something the *student* caused, such as gas reaching surface, rather than on the clock.
+
+**The listing never says which faults or when**, only that there are some. A student who knows the choke plugs at stroke 2,000 is not being tested on noticing that the choke has plugged. `Scenario.summary()` and `/api/scenarios` both carry a bare `has_faults` flag and a test pins that.
+
+`WEAK_SHOE_MARGIN_PSI` is measured against the pressure the shoe is *already* carrying, not against its own hydrostatic. Halving the latter put the fracture pressure below the shut-in shoe pressure, so the well began the exercise already broken down and there was nothing to fly.
+
 ### Gas migration, and the Volumetric method (`_migrate_gas`)
 
 **Every other method is driven by the pump. Volumetric is not** — the well is shut in, nothing circulates, and the only thing moving is the gas. Without migration the simulator cannot represent it at all, and a shut-in well sat still forever, which is what it used to do.
@@ -298,7 +312,7 @@ A related resolution trap: **peak casing pressure is a sharp cusp**, reached as 
 
 ## Where this is up to
 
-- **Simulator**: stages 1–4 of 5 done — headless engine, lineup, validation, event log and assessment, all six screens, the full drilling → kick → detection → shut-in sequence, and **every kill method operable rather than merely planned** (Driller's, Wait and Weight, Volumetric, Bullheading, Lube and Bleed, Reverse Circulation, Stripping). Next: the scenario library and instructor fault injection. **UI decided: FastAPI + browser** — Streamlit has no game loop and reruns the whole script per interaction, which would make gauges into widgets and the choke laggy. The planner stays on Streamlit; the two apps share the library and nothing else.
+- **Simulator**: **all five stages done** — headless engine, lineup, validation, event log and assessment, all six screens, the full drilling → kick → detection → shut-in sequence, every kill method operable rather than merely planned (Driller's, Wait and Weight, Volumetric, Bullheading, Lube and Bleed, Reverse Circulation, Stripping), and a scenario library with fault injection. **UI decided: FastAPI + browser** — Streamlit has no game loop and reruns the whole script per interaction, which would make gauges into widgets and the choke laggy. The planner stays on Streamlit; the two apps share the library and nothing else.
 - **Open question**: the stripping migration allowance, where the planner and the simulator disagree by about 4×. Written up under *Stripping* below; nothing has been changed on the strength of it.
 - **Importers**: done and validated against real-shaped files in `test_data/`, with an independent answer key. See *Importing real geometry* below.
 

@@ -93,6 +93,11 @@ INJECTION_THRESHOLD_PSI: float = 300.0
 #: sand gives up gas far more easily than it accepts mud.
 INJECTION_INDEX: float = 0.004
 
+#: Margin left above the shut-in shoe pressure by the weak-shoe fault, psi.
+#: Tight enough to punish a heavy hand on the choke, wide enough that the
+#: exercise can still be flown.
+WEAK_SHOE_MARGIN_PSI: float = 250.0
+
 #: How close the influx has to stay to the zone, ft, for bullheading to push it
 #: back rather than merely squeezing mud past it.
 GAS_AT_ZONE_TOLERANCE_FT: float = 200.0
@@ -267,6 +272,10 @@ class Simulator:
     migration_rate_ft_per_hr: float | None = None
     #: Pipe speed through the stripping element, ft/min. Positive runs in.
     strip_rate_ft_per_min: float = 0.0
+    #: Faults waiting to fire. Each does one thing to one piece of equipment;
+    #: see wellcontrol.sim.scenario. Typed loosely to keep the engine from
+    #: importing the scenario module, which imports it.
+    faults: tuple = ()
     #: Where the session begins. See :class:`StartState`.
     start: StartState = StartState.SHUT_IN
     #: Seconds of *circulating* before the bit drills into the kicking zone.
@@ -572,6 +581,66 @@ class Simulator:
         if after_psia >= before_psia:
             return 0.0
         return self._gas_pv / after_psia - self._gas_pv / before_psia
+
+    # -- faults --------------------------------------------------------------
+
+    def _apply_faults(self) -> None:
+        """Fire any fault whose moment has come.
+
+        **A fault does one thing to one piece of equipment.** What follows is
+        whatever the well does about it, through the same volume balance as
+        everything else. Nothing here knows what a kick is or how a kill should
+        go, and a fault cannot make the well behave in a way it could not have
+        behaved on its own.
+
+        That distinction is the point. A scripted "and now the pressure spikes"
+        teaches a student to recognise a scripted spike; a choke that plugs
+        while they are holding 400 psi on it teaches them what a plugged choke
+        feels like.
+        """
+        if not self.faults:
+            return
+        state = self.state
+        remaining = []
+        for fault in self.faults:
+            if not fault.is_due(state.time_s, state.strokes, state.event_log):
+                remaining.append(fault)
+                continue
+            self._break_equipment(fault)
+            state.record(
+                EventKind.EQUIPMENT_FAILURE,
+                fault.message or f"{fault.kind.label}.",
+                severity=fault.severity,
+                fault=fault.kind.value,
+            )
+        self.faults = tuple(remaining)
+
+    def _break_equipment(self, fault) -> None:
+        kind = fault.kind.value
+        if kind == "pump_failure":
+            self.pump.stop()
+            self.pump.spm = 0.0
+            self.pump.max_spm = 0.0
+        elif kind == "choke_plugged":
+            # The handle still moves; nothing gets through it.
+            self.choke.full_open_area_in2 = 0.02
+        elif kind == "choke_washout":
+            # The opposite problem: it cannot hold pressure any more.
+            self.choke.full_open_area_in2 *= 4.0
+        elif kind == "accumulator_leak":
+            self.accumulator.pressure_psi = 0.0
+            self.accumulator.recharge_psi_per_min = 0.0
+        elif kind == "weak_shoe":
+            if self.frac_pressure_psi is not None:
+                # Measured against the pressure the shoe is *already* carrying,
+                # not against its own hydrostatic. Halving the latter put the
+                # fracture pressure below the shut-in shoe pressure, so the
+                # well began the exercise already broken down and there was
+                # nothing to fly. This leaves a real but unforgiving window.
+                self.frac_pressure_psi = min(
+                    self.frac_pressure_psi,
+                    self.state.shoe_pressure_psi + WEAK_SHOE_MARGIN_PSI,
+                )
 
     # -- the driller's own instruments ---------------------------------------
 
@@ -907,6 +976,7 @@ class Simulator:
         state = self.state
         minutes = dt / 60.0
 
+        self._apply_faults()
         self.pump.advance(dt)
         self.choke.advance(dt)
         self.accumulator.advance(dt)
