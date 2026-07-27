@@ -463,6 +463,7 @@
     <div>
       <div class="card">
         <h2>Kill sheet</h2>
+        <div class="note" id="sheet-source" style="margin:0 0 10px"></div>
         <table id="sheet"><tbody></tbody></table>
       </div>
     </div>
@@ -986,11 +987,20 @@ const PID_NODES = {
   "trip tank":         [600, 130, 80, 30],
 };
 
+/* Drawn as a manifold panel rather than a graph: heavy red pipework on a
+   light panel, with gate valves that show green when they are passing. That is
+   what the schematic on a standpipe or choke manifold screen looks like, and a
+   student who has seen one should recognise this. See simulator_screens/. */
+const PIPE_RED = "#b8322c";
+const PIPE_DARK = "#7d211c";
+const VALVE_OPEN = "#25c04e";
+const VALVE_SHUT = "#14181c";
+
 function drawPid() {
   const svg = $("pid");
   const active = new Set();
   lineupCache.forEach(v => { if (v.state === "open" && !v.is_bop) { active.add(v.from); active.add(v.to); } });
-  const bits = [`<rect width="720" height="420" fill="var(--sunk)"/>`];
+  const bits = [`<rect width="720" height="420" fill="#b9c0c6"/>`];
 
   // Several valves can join the same pair of nodes -- the three BOP elements
   // all sit between the annulus and the stack, and the kelly cock and the
@@ -1010,17 +1020,19 @@ function drawPid() {
       if (!a || !b) return;
       const ax = a[0] + a[2] / 2, ay = a[1] + a[3] / 2;
       const bx = b[0] + b[2] / 2, by = b[1] + b[3] / 2;
-      const open = v.state === "open";
       // A BOP element reads backwards: closed is what seals the annulus, so
       // closed is the state worth colouring as significant.
-      const colour = v.is_bop ? (open ? css("--faint") : css("--critical"))
-        : (open ? css("--good") : css("--faint"));
+      const open = v.state === "open";
       if (i === 0) {
+        // Pipework is pipework whether or not it is flowing -- it is the
+        // valves that say what is passing. Drawn heavy, with a darker casing
+        // line under it so it reads as pipe rather than as a connector.
+        const live = group.some(g => g.state === "open" && !g.is_bop);
         bits.push(`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}"
-          stroke="${group.some(g => g.state === "open" && !g.is_bop)
-            ? css("--good") : css("--faint")}"
-          stroke-width="${group.some(g => g.state === "open" && !g.is_bop) ? 2.5 : 1.2}"
-          ${group.some(g => g.state === "open") ? "" : 'stroke-dasharray="4 4"'} />`);
+          stroke="${PIPE_DARK}" stroke-width="13" stroke-linecap="round"/>`);
+        bits.push(`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}"
+          stroke="${live ? PIPE_RED : "#9c4a45"}" stroke-width="9"
+          stroke-linecap="round"/>`);
       }
       // Fan the markers along the line, centred on its midpoint.
       const spread = 19;
@@ -1028,27 +1040,37 @@ function drawPid() {
       const len = Math.hypot(bx - ax, by - ay) || 1;
       const mx = (ax + bx) / 2 + (bx - ax) / len * offset;
       const my = (ay + by) / 2 + (by - ay) / len * offset;
-      // A gate valve, drawn as the bowtie it is on every P&ID: two triangles
-      // meeting at the stem. Green through when open, dark when shut.
+      // A gate valve: the bowtie every P&ID uses, with a stem and handwheel,
+      // ringed in green when it is passing. The ring is what the manifold
+      // screens use to make an open valve findable at a glance.
       const ang = Math.atan2(by - ay, bx - ax) * 180 / Math.PI;
+      const face = v.is_bop
+        ? (open ? "#4a5560" : "#c0392b")
+        : (open ? VALVE_OPEN : VALVE_SHUT);
       bits.push(`<g class="pv" data-valve="${v.name}" style="cursor:pointer"
         transform="translate(${mx} ${my}) rotate(${ang})">
-        <circle r="11" fill="transparent"/>
-        <polygon points="-8,-7 -8,7 0,0" fill="${colour}" stroke="#0b1016" stroke-width="1"/>
-        <polygon points="8,-7 8,7 0,0" fill="${colour}" stroke="#0b1016" stroke-width="1"/>
-        <line x1="0" y1="0" x2="0" y2="-11" stroke="${colour}" stroke-width="1.5"/>
-        <line x1="-4" y1="-11" x2="4" y2="-11" stroke="${colour}" stroke-width="2"/>
+        <circle r="14" fill="transparent"/>
+        ${open && !v.is_bop
+          ? `<circle r="12" fill="none" stroke="${VALVE_OPEN}" stroke-width="2.5"
+               opacity="0.85"/>` : ""}
+        <polygon points="-9,-8 -9,8 0,0" fill="${face}" stroke="#12161a" stroke-width="1.2"/>
+        <polygon points="9,-8 9,8 0,0" fill="${face}" stroke="#12161a" stroke-width="1.2"/>
+        <line x1="0" y1="0" x2="0" y2="-13" stroke="#12161a" stroke-width="2"/>
+        <line x1="-5" y1="-13" x2="5" y2="-13" stroke="#12161a" stroke-width="2.5"/>
         <title>${v.label} — ${v.state}${v.is_bop
           ? " (BOP: closed seals the annulus)" : ""}</title></g>`);
     });
   });
 
+  // Equipment as labelled plates on the panel, in the manifold-screen idiom:
+  // a dark tag with light lettering, brightened when fluid can reach it.
   Object.entries(PID_NODES).forEach(([name, [x, yy, w, h]]) => {
     const on = active.has(name);
-    bits.push(`<rect x="${x}" y="${yy}" width="${w}" height="${h}" rx="5"
-      fill="${on ? '#1b2b36' : '#141c24'}" stroke="${on ? css('--dp') : css('--edge')}"/>`);
+    bits.push(`<rect x="${x}" y="${yy}" width="${w}" height="${h}" rx="3"
+      fill="${on ? "#1d2830" : "#454e56"}" stroke="#12161a" stroke-width="1.5"/>`);
     bits.push(`<text x="${x + w / 2}" y="${yy + h / 2 + 4}" text-anchor="middle"
-      fill="${on ? css('--ink') : css('--dim')}" font-size="10.5">${name}</text>`);
+      fill="${on ? "#eef3f7" : "#c2c9cf"}" font-size="10.5"
+      font-family="system-ui, sans-serif" font-weight="600">${name}</text>`);
   });
   svg.innerHTML = bits.join("");
   svg.querySelectorAll(".pv").forEach(g => {
@@ -1063,38 +1085,47 @@ function drawPid() {
 function drawStack() {
   const svg = $("stack"); if (!svg || !lineupCache.length) return;
   const elements = lineupCache.filter(v => v.is_bop);
-  const bits = [`<rect width="300" height="300" fill="var(--sunk)"/>`];
-  const CX = 150, W = 96;
+  // The closing unit panel is red on every rig; the stack drawn on it is the
+  // thing the driller looks at. See simulator_screens/surface_bop_remote_panel.
+  const bits = [
+    `<rect width="300" height="300" rx="6" fill="#a52a26"/>`,
+    `<rect x="6" y="6" width="288" height="288" rx="4" fill="none"
+       stroke="#7c1d1a" stroke-width="2"/>`,
+  ];
+  const CX = 132, W = 104;
 
-  // Wellbore through the middle, and the pipe in it.
-  bits.push(`<rect x="${CX - 12}" y="10" width="24" height="280" fill="#2b3640"/>`);
+  // Wellbore through the stack, with the pipe in it.
+  bits.push(`<rect x="${CX - 15}" y="14" width="30" height="272" fill="#4a4f54"/>`);
+  bits.push(`<rect x="${CX - 6}" y="14" width="12" height="272" fill="#6f7880"/>`);
 
-  const top = 40, gap = 58;
+  const top = 42, gap = 58;
   elements.forEach((v, i) => {
     const y = top + i * gap;
     const shut = v.state !== "open";
-    const body = shut ? "#8d2f2b" : "#4a5a67";
-    // Body of the element.
-    bits.push(`<rect x="${CX - W / 2}" y="${y}" width="${W}" height="40" rx="4"
-      fill="${body}" stroke="#0d1117" stroke-width="2"/>`);
-    // The rams themselves, meeting in the middle when shut.
-    const reach = shut ? W / 2 - 12 : 16;
-    bits.push(`<rect x="${CX - W / 2 + 6}" y="${y + 12}" width="${reach}" height="16"
-      fill="#cbd5dd"/>`);
-    bits.push(`<rect x="${CX + W / 2 - 6 - reach}" y="${y + 12}" width="${reach}" height="16"
-      fill="#cbd5dd"/>`);
-    bits.push(`<text x="${CX}" y="${y - 5}" text-anchor="middle" fill="${css("--dim")}"
-      font-size="10">${v.label}</text>`);
-    bits.push(`<rect x="${CX + W / 2 + 8}" y="${y + 10}" width="54" height="20" rx="3"
-      fill="${shut ? "#e2453d" : "#2b3640"}" stroke="#0d1117"/>`);
-    bits.push(`<text x="${CX + W / 2 + 35}" y="${y + 24}" text-anchor="middle"
-      fill="#fff" font-size="10" font-weight="600">${shut ? "CLOSED" : "OPEN"}</text>`);
+    bits.push(`<rect x="${CX - W / 2}" y="${y}" width="${W}" height="40" rx="3"
+      fill="#d8dade" stroke="#33383d" stroke-width="2"/>`);
+    // The rams themselves: across the bore when shut, drawn back when open.
+    const reach = shut ? W / 2 - 15 : 15;
+    bits.push(`<rect x="${CX - W / 2 + 5}" y="${y + 11}" width="${reach}" height="18"
+      fill="${shut ? "#c0392b" : "#8a9099"}" stroke="#33383d"/>`);
+    bits.push(`<rect x="${CX + W / 2 - 5 - reach}" y="${y + 11}" width="${reach}" height="18"
+      fill="${shut ? "#c0392b" : "#8a9099"}" stroke="#33383d"/>`);
+    bits.push(`<text x="${CX}" y="${y - 5}" text-anchor="middle" fill="#f7e9e8"
+      font-size="10" font-weight="600"
+      font-family="system-ui, sans-serif">${v.label.toUpperCase()}</text>`);
+    // Status flag, in the panel's own lamp idiom.
+    bits.push(`<rect x="${CX + W / 2 + 12}" y="${y + 9}" width="62" height="22" rx="2"
+      fill="${shut ? "#161a1e" : "#e9edf0"}" stroke="#33383d" stroke-width="1.5"/>`);
+    bits.push(`<text x="${CX + W / 2 + 43}" y="${y + 24}" text-anchor="middle"
+      fill="${shut ? "#ff5f57" : "#2a2f34"}" font-size="10" font-weight="700"
+      font-family="system-ui, sans-serif">${shut ? "CLOSED" : "OPEN"}</text>`);
   });
 
   const base = top + elements.length * gap;
-  bits.push(`<rect x="${CX - 60}" y="${base + 4}" width="120" height="14" fill="#3c4a58"/>`);
-  bits.push(`<text x="${CX}" y="${base + 34}" text-anchor="middle" fill="${css("--faint")}"
-    font-size="10">wellhead</text>`);
+  bits.push(`<rect x="${CX - 64}" y="${base + 4}" width="128" height="16" rx="2"
+    fill="#d8dade" stroke="#33383d" stroke-width="2"/>`);
+  bits.push(`<text x="${CX}" y="${base + 36}" text-anchor="middle" fill="#f7e9e8"
+    font-size="10" font-family="system-ui, sans-serif">WELLHEAD</text>`);
   svg.innerHTML = bits.join("");
 }
 
@@ -1134,6 +1165,24 @@ async function loadSheet() {
   if (!sessionId) return;
   const k = await api(`/api/sessions/${sessionId}/killsheet`);
   const row = (a, b, u) => `<tr><td>${a}</td><td class="num">${b}${u ? " " + u : ""}</td></tr>`;
+
+  if (!k.available) {
+    // Nothing to show, and inventing one would hand over the exercise.
+    $("sheet").innerHTML =
+      `<tbody><tr><td style="color:var(--dim);padding:18px 8px">${k.reason}</td></tr></tbody>`;
+    $("sheet-live").innerHTML = "<tbody>" +
+      row("Strokes pumped", k.actual_strokes.toLocaleString(), "") +
+      row("Drill pipe now", k.actual_drill_pipe_psi.toLocaleString(), "psi") +
+      row("Casing now", k.actual_casing_psi.toLocaleString(), "psi") + "</tbody>";
+    $("sheet-source").textContent = "";
+    return;
+  }
+  $("sheet-source").textContent = k.readings_are_the_students
+    ? "Built from the pressures you read after shutting in — not from the "
+      + "figures the exercise was designed around. Shut in slowly and this "
+      + "sheet gets heavier."
+    : "The shut-in readings were handed to you with the exercise.";
+
   $("sheet").innerHTML = "<tbody>" +
     row("Mud weight", k.mud_weight_ppg, "ppg") +
     row("Kill mud weight, as mixed", k.kill_mud_weight_ppg, "ppg") +

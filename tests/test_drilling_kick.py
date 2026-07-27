@@ -284,6 +284,72 @@ class TestWhatTheStudentCanSee:
         assert session.gauges()["bottomhole_psi"] is not None
 
 
+class TestTheKillSheetIsTheirs:
+    """Built from what the student read, not from the exercise's own figures.
+
+    On a drilling start those are different numbers: a slow shut-in takes more
+    influx and reads higher, so a sheet computed from the designer's values is
+    the answer to a question nobody asked -- and the wrong answer for the kick
+    that was actually taken.
+    """
+
+    def test_there_is_no_sheet_before_shutting_in(self):
+        session = Session.for_configuration(start="drilling")
+        sheet = session.kill_sheet()
+        assert sheet["available"] is False
+        assert "kill_mud_weight_ppg" not in sheet
+
+    def test_the_readings_are_latched_when_the_pressures_settle(
+        self, shut_in_and_migrating
+    ):
+        state = shut_in_and_migrating.state
+        assert state.measured_sidpp_psi is not None
+        assert state.measured_sicp_psi is not None
+
+    def test_the_sheet_is_built_from_those_readings(self, shut_in_well):
+        import sys
+        from pathlib import Path
+
+        app_dir = Path(__file__).resolve().parent.parent / "app"
+        if str(app_dir) not in sys.path:
+            sys.path.insert(0, str(app_dir))
+        from wellcontrol.sim import Session
+
+        session = Session(simulator=shut_in_well)
+        sheet = session.kill_sheet()
+        assert sheet["available"] is True
+        assert sheet["readings_are_the_students"] is True
+        assert sheet["sidpp_psi"] == pytest.approx(
+            round(shut_in_well.state.measured_sidpp_psi), abs=1
+        )
+
+    def test_the_kill_weight_follows_the_rounding_rules(self, shut_in_well):
+        from wellcontrol.sim import Session
+
+        sheet = Session(simulator=shut_in_well).kill_sheet()
+        # Rounded up to the tenth, because that is what the rig can mix.
+        assert sheet["kill_mud_weight_ppg"] >= sheet["kill_mud_weight_exact_ppg"]
+        assert sheet["kill_mud_weight_ppg"] == pytest.approx(
+            round(sheet["kill_mud_weight_ppg"], 1)
+        )
+
+    def test_a_heavier_shut_in_gives_a_heavier_kill_weight(self):
+        """The consequence a student should feel: a slow shut-in costs mud."""
+        from wellcontrol.sim import Session
+        from wellcontrol.units import PSI_PER_PPG_FT
+
+        session = Session.for_configuration(start="drilling")
+        sim = session.simulator
+        sim.state.measured_sidpp_psi = 400.0
+        sim.state.measured_sicp_psi = 600.0
+        sim.state.measured_pit_gain_bbl = 20.0
+        light = session.kill_sheet()["kill_mud_weight_ppg"]
+
+        sim.state.measured_sidpp_psi = 700.0
+        heavy = session.kill_sheet()["kill_mud_weight_ppg"]
+        assert heavy > light
+
+
 class TestAutomaticSlowDown:
     """The clock drops to real time when the well starts flowing."""
 

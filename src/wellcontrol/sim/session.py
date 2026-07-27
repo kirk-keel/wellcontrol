@@ -422,25 +422,71 @@ class Session:
         return picture
 
     def kill_sheet(self) -> dict:
-        """The plan the student is working to, and how the well compares.
+        """The kill sheet, built from what the student read off the gauges.
 
-        Straight off the library's own kill sheet, so the numbers on this
-        screen and the numbers the planner would print are the same numbers.
+        **Not from the numbers the scenario was designed around.** On a drilling
+        exercise those are two different things: a slow shut-in takes more
+        influx and reads higher, and a kill sheet computed from the designer's
+        figures is the answer to a question the student was not asked. Worse,
+        it is the wrong answer for the kick they actually took.
+
+        Until the pressures have settled there is nothing to build from, so the
+        sheet is withheld rather than guessed at -- which is also the honest
+        answer on a rig, where you do not have a kill sheet until you have read
+        the gauges.
+
+        A shut-in start hands the readings over as part of the exercise, so
+        there the measured figures and the well's own are the same numbers.
         """
+        from .. import rounding
+        from ..units import PSI_PER_PPG_FT
+
         sim = self.simulator
         state = sim.state
         sheet = sim.well.kill_sheet
+
+        if state.measured_sidpp_psi is not None:
+            sidpp = state.measured_sidpp_psi
+            sicp = state.measured_sicp_psi
+            pit_gain = state.measured_pit_gain_bbl
+            readings_are_the_students = True
+        elif sim.start is StartState.SHUT_IN:
+            sidpp = sim.well.sidpp_psi
+            sicp = sim.well.sicp_psi
+            pit_gain = sim.well.pit_gain_bbl
+            readings_are_the_students = False
+        else:
+            # Drilling, and nothing has been shut in yet. There is no kill
+            # sheet to show and inventing one would give the exercise away.
+            return {
+                "available": False,
+                "reason": (
+                    "No kill sheet yet. Shut the well in, let the pressures "
+                    "stabilise, and it will be built from what you read."
+                ),
+                "actual_strokes": round(state.strokes),
+                "actual_drill_pipe_psi": round(state.standpipe_pressure_psi),
+                "actual_casing_psi": round(state.casing_pressure_psi),
+            }
+
+        mud = sim.well.mud_weight_ppg
+        scr = sim.well.slow_circulating_rate.pressure_psi
+        exact_kmw = mud + sidpp / (PSI_PER_PPG_FT * sim.well.bit_tvd_ft)
+        kmw = rounding.kill_mud_weight(exact_kmw)
+
         return {
-            "mud_weight_ppg": round(sim.well.mud_weight_ppg, 1),
-            "kill_mud_weight_ppg": sheet.kill_mud_weight_ppg,
-            "kill_mud_weight_exact_ppg": round(
-                sheet.kill_mud_weight_exact_ppg, 3
-            ),
-            "sidpp_psi": round(sim.well.sidpp_psi),
-            "sicp_psi": round(sim.well.sicp_psi),
-            "pit_gain_bbl": round(sim.well.pit_gain_bbl, 1),
-            "icp_psi": round(sheet.initial_circulating_pressure_psi),
-            "fcp_psi": round(sheet.final_circulating_pressure_psi),
+            "available": True,
+            "readings_are_the_students": readings_are_the_students,
+            "mud_weight_ppg": round(mud, 1),
+            # Rounded UP to the tenth: the rig mixes what it can mix.
+            "kill_mud_weight_ppg": kmw,
+            "kill_mud_weight_exact_ppg": round(exact_kmw, 3),
+            "sidpp_psi": round(sidpp),
+            "sicp_psi": round(sicp),
+            "pit_gain_bbl": round(pit_gain, 1),
+            "icp_psi": rounding.pressure(sidpp + scr),
+            # Built from the weight actually mixed, not the calculated one.
+            "fcp_psi": rounding.pressure(scr * kmw / mud),
             "formation_psi": round(sim.formation_pressure_psi),
             "maasp_psi": (
                 None if sim.maasp_psi is None else round(sim.maasp_psi)

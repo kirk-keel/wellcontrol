@@ -220,6 +220,21 @@ class TestTheRigScreenEndpoints:
             assert body[key] is not None
         assert body["icp_psi"] > body["fcp_psi"]
 
+    def test_a_drilling_session_has_no_kill_sheet_yet(self, client):
+        """Inventing one would hand over the exercise."""
+        created = client.post("/api/sessions", json={"start": "drilling"}).json()
+        body = client.get(
+            f"/api/sessions/{created['session_id']}/killsheet"
+        ).json()
+        assert body["available"] is False
+        assert "shut" in body["reason"].lower()
+        assert "kill_mud_weight_ppg" not in body
+
+    def test_a_shut_in_session_says_the_readings_were_given(self, client, session_id):
+        body = client.get(f"/api/sessions/{session_id}/killsheet").json()
+        assert body["available"] is True
+        assert body["readings_are_the_students"] is False
+
     def test_the_snapshot_carries_the_lineup_and_schematic(self, client, session_id):
         body = client.get(f"/api/sessions/{session_id}").json()
         assert body["lineup"] and body["schematic"]
@@ -273,6 +288,53 @@ class TestDebrief:
         body = client.get(f"/api/sessions/{session_id}/debrief").json()
         named = {metric["name"] for metric in body["metrics"]}
         assert "Peak shoe pressure" in named
+
+
+class TestThePanelScriptParses:
+    """A syntax error in the page takes every screen down at once.
+
+    It happened: a second ``const open`` in one block stopped the whole script
+    parsing, so nothing initialised and every gauge read a dash -- while the
+    API, the tests and the HTML were all perfectly fine. Nothing in the suite
+    noticed, because nothing in the suite runs the script.
+
+    A full JavaScript parser is not available here, so this checks the two
+    things that actually broke and are cheap to detect: a redeclared ``const``
+    inside one block, and unbalanced brackets across the script.
+    """
+
+    @staticmethod
+    def _script(client) -> str:
+        return client.get("/").text.split("<script>")[1].split("</script>")[0]
+
+    def test_no_const_is_declared_twice_in_the_same_block(self, client):
+        import re
+
+        depth, seen, offenders = 0, {0: set()}, []
+        for line in self._script(client).split("\n"):
+            bare = re.sub(r"//.*$", "", line)
+            match = re.match(r"\s*const\s+([A-Za-z_$][\w$]*)\s*=", bare)
+            if match:
+                name = match.group(1)
+                if name in seen.setdefault(depth, set()):
+                    offenders.append(f"{name} at depth {depth}")
+                seen[depth].add(name)
+            opened = bare.count("{") - bare.count("}")
+            if opened > 0:
+                depth += opened
+                seen[depth] = set()
+            elif opened < 0:
+                for _ in range(-opened):
+                    seen.pop(depth, None)
+                    depth = max(0, depth - 1)
+        assert not offenders, f"redeclared const: {offenders}"
+
+    def test_brackets_balance(self, client):
+        script = self._script(client)
+        for opener, closer in (("{", "}"), ("(", ")"), ("[", "]")):
+            assert script.count(opener) == script.count(closer), (
+                f"unbalanced {opener}{closer}"
+            )
 
 
 class TestScreens:

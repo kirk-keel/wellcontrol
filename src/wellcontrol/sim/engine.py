@@ -169,6 +169,15 @@ class SimState:
     influx_string_top_md: float = 0.0
     influx_string_bottom_md: float = 0.0
 
+    # -- what the student actually read off the gauges ------------------------
+    #: Captured once, when the pressures settle after a shut-in. These are the
+    #: numbers a kill sheet is built from, and on a drilling exercise they are
+    #: emphatically not the ones the scenario was designed around -- a slow
+    #: shut-in takes more influx and reads higher.
+    measured_sidpp_psi: float | None = None
+    measured_sicp_psi: float | None = None
+    measured_pit_gain_bbl: float | None = None
+
     # -- stripping -----------------------------------------------------------
     #: Pipe run into the hole since the start, ft. Negative is pulling out.
     pipe_moved_ft: float = 0.0
@@ -1311,6 +1320,13 @@ class Simulator:
             and not state.event_log.is_active(EventKind.INFLUX_TAKEN)
             and state.event_log.has(EventKind.WELL_SHUT_IN_BY_STUDENT)
         ):
+            if state.measured_sidpp_psi is None:
+                # Latch what the gauges read at the moment they settle. The
+                # kill sheet is built from these, not from whatever the
+                # scenario was designed around.
+                state.measured_sidpp_psi = state.standpipe_pressure_psi
+                state.measured_sicp_psi = state.casing_pressure_psi
+                state.measured_pit_gain_bbl = max(0.0, self.pits.gain_bbl)
             state.record(
                 EventKind.SHUT_IN,
                 f"Pressures stable. SIDPP {state.standpipe_pressure_psi:.0f} psi, "
