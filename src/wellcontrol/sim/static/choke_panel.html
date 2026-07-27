@@ -5,23 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Well Control Simulator</title>
 <style>
+  /* The instrument face. A choke panel is an orange console carrying white
+     dials, black digital windows with green lettering, and grey switchgear --
+     see simulator_screens/choke_panel_example. Everything below is that,
+     rather than a dashboard that happens to show well control numbers. */
   :root {
-    --bg: #0e1319;
-    --panel: #171f28;
-    --sunk: #0b1016;
-    --edge: #28323d;
-    --edge-soft: #1f2832;
-    --ink: #e9eff5;
-    --dim: #8398ab;
-    --faint: #5b6c7c;
-    --good: #4a9d5f;
-    --caution: #c99a3a;
-    --warning: #c2703c;
-    --critical: #cc4f49;
-    --dp: #5b8ff9;
-    --csg: #d4a13c;
-    --bhp: #5cb98d;
-    --shoe: #9b7bd4;
+    --bg: #e8760f;              /* the console itself */
+    --panel: #ef8320;           /* a raised area of it */
+    --sunk: #0b0f13;            /* a digital window cut into it */
+    --edge: #a8540a;            /* shadow line between panel sections */
+    --edge-soft: #c96a0e;
+    --ink: #17120c;             /* lettering silkscreened on the console */
+    --dim: #4a3311;
+    --faint: #6b4a1c;
+    --readout: #4bf07e;         /* the green of a seven-segment window */
+    --metal: #c9ccd0;           /* switchgear */
+    --metal-dark: #8f959c;
+    --good: #2f9e4a;
+    --caution: #b8860b;
+    --warning: #b4530e;
+    --critical: #c4302a;
+    --dp: #4f7fe8;
+    --csg: #c98a12;
+    --bhp: #2f9e6a;
+    --shoe: #7f5fc0;
     --gas: #c2703c;
     --killmud: #3f7a5a;
   }
@@ -41,39 +48,56 @@
     border-bottom: 1px solid var(--edge);
   }
   header h1 {
-    font-size: 14px; margin: 0; font-weight: 600; letter-spacing: .04em;
-    text-transform: uppercase; color: var(--dim);
+    font-size: 14px; margin: 0; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--ink);
   }
   .grow { flex: 1 1 auto; }
   .pill {
     font-size: 11px; padding: 3px 10px; border-radius: 999px;
-    border: 1px solid var(--edge); color: var(--dim); white-space: nowrap;
+    border: 1.5px solid var(--ink); color: var(--ink); white-space: nowrap;
+    font-weight: 600; background: rgba(255, 255, 255, .14);
   }
   .pill.warn { border-color: var(--warning); color: var(--warning); }
   .pill.bad { border-color: var(--critical); color: var(--critical); }
   .pill.ok { border-color: var(--good); color: var(--good); }
+  /* Switchgear: grey mouldings with a highlight along the top edge and a
+     shadow under, so they read as things you press rather than as links. */
   select, button {
-    background: #212c37; color: var(--ink); border: 1px solid var(--edge);
-    border-radius: 5px; padding: 6px 11px; font-size: 13px; cursor: pointer;
-    font-family: inherit;
+    background: linear-gradient(#e2e5e8, var(--metal) 55%, var(--metal-dark));
+    color: #14181c; border: 1px solid #6e747b;
+    border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer;
+    font-family: inherit; font-weight: 600;
+    box-shadow: inset 0 1px 0 #fff, 0 1px 2px rgba(0, 0, 0, .35);
   }
-  select:hover, button:hover { background: #2a3743; }
-  button.on { background: var(--good); border-color: var(--good); color: #fff; }
-  button.danger { background: var(--critical); border-color: var(--critical); color: #fff; }
-  button:disabled { opacity: .4; cursor: not-allowed; }
-  label.lbl { font-size: 11px; color: var(--dim); }
+  select:hover, button:hover { filter: brightness(1.06); }
+  button:active { box-shadow: inset 0 2px 4px rgba(0, 0, 0, .4); }
+  button.on {
+    background: linear-gradient(#5fd47c, #2f9e4a 60%, #24793a);
+    border-color: #1d6330; color: #fff;
+  }
+  button.danger {
+    background: linear-gradient(#e06b65, var(--critical) 60%, #9c2620);
+    border-color: #7d1e19; color: #fff;
+  }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  label.lbl { font-size: 11px; color: var(--ink); font-weight: 600; }
 
+  /* The dark strip of screen-select keys along the bottom of the reference
+     panel, brought to the top because that is where a browser expects tabs. */
   nav {
-    display: flex; gap: 2px; padding: 0 12px; background: var(--panel);
-    border-bottom: 1px solid var(--edge); overflow-x: auto;
+    display: flex; gap: 0; padding: 0 10px; background: #14181c;
+    border-bottom: 2px solid #000; overflow-x: auto;
   }
   nav button {
-    background: none; border: none; border-bottom: 2px solid transparent;
-    border-radius: 0; padding: 9px 14px; color: var(--dim); font-size: 13px;
-    white-space: nowrap;
+    background: none; border: none; border-bottom: 3px solid transparent;
+    border-radius: 0; padding: 10px 16px; color: #b6bfc7; font-size: 13px;
+    white-space: nowrap; box-shadow: none; font-weight: 600;
+    letter-spacing: .03em;
   }
-  nav button:hover { color: var(--ink); background: none; }
-  nav button.active { color: var(--ink); border-bottom-color: var(--dp); }
+  nav button:hover { color: #fff; background: #1e242a; filter: none; }
+  nav button.active {
+    color: #fff; border-bottom-color: var(--bg); background: #1e242a;
+  }
 
   main { padding: 16px; }
   .screen { display: none; }
@@ -81,84 +105,125 @@
   .cols { display: grid; gap: 16px; grid-template-columns: 1fr 330px; align-items: start; }
   @media (max-width: 980px) { .cols { grid-template-columns: 1fr; } }
 
+  /* A card is a raised area of the console, not a floating panel: a hairline
+     highlight along the top and a shadow line beneath, no heavy border. */
   .card {
-    background: var(--panel); border: 1px solid var(--edge);
-    border-radius: 8px; padding: 14px; margin-bottom: 16px;
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-top-color: #f7a04d;
+    border-radius: 6px; padding: 14px; margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .22);
   }
   .card:last-child { margin-bottom: 0; }
   .card h2 {
-    font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
-    color: var(--dim); margin: 0 0 12px; font-weight: 600;
+    font-size: 11px; text-transform: uppercase; letter-spacing: .12em;
+    color: var(--ink); margin: 0 0 12px; font-weight: 700;
   }
-  .note { font-size: 11px; color: var(--faint); margin-top: 10px; line-height: 1.5; }
+  .note { font-size: 11px; color: var(--dim); margin-top: 10px; line-height: 1.5; }
 
   /* ---- gauges ---- */
   .gauges { display: grid; gap: 10px; grid-template-columns: repeat(4, 1fr); }
   .gauges.six { grid-template-columns: repeat(3, 1fr); }
   @media (max-width: 760px) { .gauges, .gauges.six { grid-template-columns: repeat(2, 1fr); } }
-  .g {
-    background: var(--sunk); border: 1px solid var(--edge);
-    border-radius: 6px; padding: 11px 10px; text-align: center;
-  }
+  /* A digital window: the label is silkscreened on the console above it, the
+     number is behind glass. That is the arrangement on the reference panel and
+     it is why the label sits outside the black. */
+  .g { text-align: center; }
   .g .k {
-    font-size: 10px; text-transform: uppercase; letter-spacing: .09em;
-    color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 10px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--ink); font-weight: 700; margin-bottom: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .g .v {
-    font: 700 clamp(22px, 3.1vw, 34px)/1.15 Consolas, ui-monospace, monospace;
-    margin-top: 3px; font-variant-numeric: tabular-nums;
+    background: var(--sunk); border: 1px solid #33383d; border-radius: 3px;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, .75);
+    color: var(--readout); padding: 6px 4px;
+    font: 700 clamp(20px, 2.9vw, 32px)/1.15 Consolas, ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
   }
-  .g .u { font-size: 10px; color: var(--faint); }
-  .g.dp .v { color: var(--dp); }
-  .g.csg .v { color: var(--csg); }
-  .g.alarm { border-color: var(--critical); box-shadow: inset 0 0 0 1px rgba(204,79,73,.35); }
-  .g.alarm .v { color: var(--critical); }
+  .g .u { font-size: 10px; color: var(--dim); margin-top: 3px; font-weight: 600; }
+  .g.dp .v { color: #7fb2ff; }
+  .g.csg .v { color: #ffc451; }
+  .g.alarm .v { color: #ff6b62; box-shadow: inset 0 2px 5px rgba(0,0,0,.75), 0 0 0 2px var(--critical); }
 
   .stats { display: grid; gap: 8px; grid-template-columns: repeat(4, 1fr); margin-top: 12px; }
   @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } }
-  .s { background: var(--sunk); border: 1px solid var(--edge); border-radius: 6px; padding: 8px 10px; }
-  .s .k { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
-  .s .v { font: 600 16px/1.25 Consolas, ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-  .s.alarm { border-color: var(--critical); }
-  .s.alarm .v { color: var(--critical); }
+  .s .k {
+    font-size: 10px; color: var(--ink); text-transform: uppercase;
+    letter-spacing: .05em; font-weight: 700; margin-bottom: 2px;
+  }
+  .s .v {
+    background: var(--sunk); border: 1px solid #33383d; border-radius: 3px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, .7);
+    color: var(--readout); padding: 5px 8px;
+    font: 700 15px/1.3 Consolas, ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .s.alarm .v { color: #ff6b62; box-shadow: inset 0 2px 4px rgba(0,0,0,.7), 0 0 0 2px var(--critical); }
 
   /* ---- controls ---- */
   .row { display: flex; align-items: center; gap: 10px; }
   .row.wrap { flex-wrap: wrap; }
-  input[type=range] { width: 100%; accent-color: var(--csg); }
-  .readback { font: 700 21px/1 Consolas, ui-monospace, monospace; min-width: 72px; text-align: right; }
+  input[type=range] { width: 100%; accent-color: #14181c; }
+  .readback {
+    font: 700 19px/1 Consolas, ui-monospace, monospace; min-width: 78px;
+    text-align: center; background: var(--sunk); color: var(--readout);
+    border: 1px solid #33383d; border-radius: 3px; padding: 6px 8px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, .7);
+  }
   .btns { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
   .btns button { flex: 1 1 auto; min-width: 58px; }
 
   /* ---- charts ---- */
-  canvas.strip { width: 100%; height: 160px; display: block; }
-  .legend { display: flex; gap: 14px; font-size: 11px; color: var(--dim); margin-top: 6px; flex-wrap: wrap; }
+  /* The trend chart on the reference panel is a black window, like the digital
+     readouts and for the same reason: coloured traces need a dark ground. */
+  canvas.strip {
+    width: 100%; height: 160px; display: block;
+    background: var(--sunk); border: 1px solid #33383d; border-radius: 3px;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, .7);
+  }
+  .legend { display: flex; gap: 14px; font-size: 11px; color: var(--ink); margin-top: 6px; flex-wrap: wrap; font-weight: 600; }
   .key { display: inline-block; width: 11px; height: 2px; vertical-align: middle; margin-right: 5px; }
   .key.dash { height: 0; border-top: 2px dashed var(--dim); background: none; }
 
   /* ---- log ---- */
+  /* Long prose does not belong on orange. The log and the tables get their own
+     black window, which is also where the reference panel puts its readouts. */
+  #log, .readout-panel {
+    background: var(--sunk); border: 1px solid #33383d; border-radius: 3px;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, .7);
+    padding: 4px 10px; color: #dbe3ea;
+  }
   #log { max-height: 300px; overflow-y: auto; font-size: 12px; }
-  #log div { padding: 5px 0; border-bottom: 1px solid var(--edge-soft); }
+  #log div { padding: 5px 0; border-bottom: 1px solid #232a31; }
   #log div:last-child { border-bottom: none; }
-  #log .t { color: var(--faint); font-family: Consolas, monospace; margin-right: 7px; }
-  .sev-caution { color: var(--caution); }
-  .sev-warning { color: var(--warning); }
-  .sev-critical { color: var(--critical); font-weight: 600; }
+  #log .t { color: #7b8792; font-family: Consolas, monospace; margin-right: 7px; }
+  .sev-caution { color: #e8b93d; }
+  .sev-warning { color: #ef8a44; }
+  .sev-critical { color: #ff6b62; font-weight: 600; }
 
   /* ---- lineup list ---- */
-  .valves { display: grid; gap: 4px; font-size: 12px; }
+  .valves { display: grid; gap: 5px; font-size: 12px; color: var(--ink); font-weight: 600; }
   .valve { display: flex; align-items: center; gap: 8px; }
   .valve span { flex: 1; }
-  .valve button { padding: 2px 8px; font-size: 11px; min-width: 64px; }
-  .bop { color: var(--caution); }
+  .valve button { padding: 3px 9px; font-size: 11px; min-width: 66px; }
+  .bop { color: #5a2f04; font-weight: 700; }
 
   /* ---- tables ---- */
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--edge-soft); }
-  th { color: var(--dim); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
-  td.num { text-align: right; font-family: Consolas, monospace; font-variant-numeric: tabular-nums; }
-  tr.fail td { color: var(--critical); }
-  tr.pass td.mark { color: var(--good); }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+    background: var(--sunk); color: #dbe3ea;
+    border: 1px solid #33383d; border-radius: 3px;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, .7);
+  }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #232a31; }
+  th { color: #93a0ab; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  td.num {
+    text-align: right; font-family: Consolas, monospace;
+    font-variant-numeric: tabular-nums; color: var(--readout);
+  }
+  tr.fail td { color: #ff6b62; }
+  tr.pass td.mark { color: #5fd47c; }
 
   /* Both schematics are taller than they are wide in viewBox terms, so left
      to scale on width alone they grow to a thousand pixels and the student
@@ -180,18 +245,19 @@
   .dials > div { max-width: 260px; margin: 0 auto; width: 100%; }
   .dials.small > div { max-width: 170px; }
   @media (max-width: 700px) { .dials.small { grid-template-columns: repeat(2, 1fr); } }
+  /* Indicator lamps sit on the console face, not behind glass. */
   .lamps {
-    display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px;
-    padding: 9px 12px; background: var(--sunk);
-    border: 1px solid var(--edge); border-radius: 6px;
+    display: flex; gap: 20px; flex-wrap: wrap; margin-top: 14px;
+    padding: 10px 12px; background: rgba(0, 0, 0, .10);
+    border-radius: 5px; border-top: 1px solid rgba(255, 255, 255, .18);
   }
   .verdict {
     font: 700 22px/1.2 "Segoe UI", system-ui, sans-serif; letter-spacing: .02em;
   }
-  .verdict.excellent, .verdict.pass { color: var(--good); }
-  .verdict.marginal { color: var(--caution); }
-  .verdict.fail { color: var(--critical); }
-  .bar { height: 8px; border-radius: 4px; background: var(--sunk); border: 1px solid var(--edge); overflow: hidden; }
+  .verdict.excellent, .verdict.pass { color: #10471f; }
+  .verdict.marginal { color: #5a3d02; }
+  .verdict.fail { color: #6d120d; }
+  .bar { height: 9px; border-radius: 4px; background: var(--sunk); border: 1px solid #33383d; overflow: hidden; }
   .bar i { display: block; height: 100%; background: var(--good); }
   .bar i.low { background: var(--critical); }
 </style>
@@ -234,9 +300,12 @@
     <div>
       <div class="card" id="briefing-card">
         <h2>Briefing</h2>
-        <div style="font-weight:600;margin-bottom:4px" id="brief-name">—</div>
-        <div style="color:var(--csg);font-size:13px;margin-bottom:8px" id="brief-obj"></div>
-        <div style="color:var(--dim);font-size:13px" id="brief-text"></div>
+        <div style="font-weight:700;margin-bottom:5px;font-size:15px" id="brief-name">—</div>
+        <!-- Dark on the console, not gold: a mid-tone accent that reads well on
+             a dark page disappears entirely on orange. -->
+        <div style="font-size:13px;margin-bottom:8px;font-weight:700;
+                    color:#4a1d02" id="brief-obj"></div>
+        <div style="font-size:13px;color:var(--dim)" id="brief-text"></div>
         <div class="note" id="brief-warn"></div>
       </div>
 
@@ -1485,7 +1554,7 @@ async function loadSheet() {
   if (!k.available) {
     // Nothing to show, and inventing one would hand over the exercise.
     $("sheet").innerHTML =
-      `<tbody><tr><td style="color:var(--dim);padding:18px 8px">${k.reason}</td></tr></tbody>`;
+      `<tbody><tr><td style="color:#8d99a4;padding:18px 10px">${k.reason}</td></tr></tbody>`;
     $("sheet-live").innerHTML = "<tbody>" +
       row("Strokes pumped", k.actual_strokes.toLocaleString(), "") +
       row("Drill pipe now", k.actual_drill_pipe_psi.toLocaleString(), "psi") +
@@ -1539,15 +1608,15 @@ async function loadDebrief() {
      <th style="text-align:right">Limit</th></tr></thead><tbody>` +
     d.metrics.map(m => `<tr class="${m.passed ? "pass" : "fail"}">
       <td class="mark">${m.passed ? "✓" : "✕"}</td>
-      <td>${m.name}<div style="color:var(--faint);font-size:11px">${m.detail || ""}</div></td>
+      <td>${m.name}<div style="color:#8d99a4;font-size:11px">${m.detail || ""}</div></td>
       <td class="num">${m.value.toLocaleString()} ${m.unit}</td>
       <td class="num">${m.limit === null ? "—" : m.limit.toLocaleString()}</td></tr>`).join("") +
     "</tbody>";
   $("db-events").innerHTML = d.events.length
     ? d.events.map(e => `<div style="padding:5px 0;border-bottom:1px solid var(--edge-soft)">
-        <span class="t mono" style="color:var(--faint);margin-right:7px">${e.clock}</span>
+        <span class="t mono" style="color:#7b8792;margin-right:7px">${e.clock}</span>
         <span class="sev-${e.severity}">${e.message}</span></div>`).join("")
-    : `<div style="color:var(--faint)">Nothing worth reporting — the well was never in trouble.</div>`;
+    : `<div style="color:#8d99a4;padding:8px 0">Nothing worth reporting — the well was never in trouble.</div>`;
 }
 
 /* ------------------------------- controls ------------------------------ */
