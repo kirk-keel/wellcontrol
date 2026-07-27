@@ -267,18 +267,21 @@ One page, six tabs, one poll loop; only the visible screen redraws. Everything i
 | Screen | What it is for |
 | --- | --- |
 | **Driller** | Standpipe, pump, pit gain, flow differential, hookload, trip tank. Pump and **stripping** controls. |
-| **Choke** | The instrument scan, the choke, both pressure charts, the event log. |
-| **BOP & Lineup** | Clickable P&ID, the BOP stack, the accumulator. |
+| **Choke** | Dials, lamps, the choke, both pressure charts, the event log. |
+| **BOP** | The control panel — red remote panel for a surface stack, monitoring screen for a subsea one. |
+| **Manifolds** | Standpipe manifold, choke and kill manifold, and the whole circulating system. |
 | **Well** | Cross-section with live fluid zones, plus the column as a table. |
-| **Kill sheet** | The library's own kill sheet, and the plan against actual. |
+| **Kill sheet** | Built from the student's own readings; plan against actual. |
 | **Debrief** | Verdict, measures against their limits, and what happened. |
+
+**There are two BOP panels because a rig has two.** A surface stack is worked from a red remote panel with a rotary selector per element; a subsea stack is watched on a screen, where what matters is each element's position and health on both pods. `gauges["is_subsea"]` picks which to draw, so the panel follows the well rather than a setting.
 
 Two engine additions exist because a screen would otherwise be decoration:
 
 - **`Accumulator`.** Every BOP element costs pressure to shift and the pumps put it back slowly. A student who cycles the stack because they are unsure can find they have nothing left to close with. Below the minimum the element simply does not move — consistent with the rest of the lineup model, where a thing that cannot work does not work rather than raising an error at the student.
 - **`hookload_lbf`.** String weight less buoyancy, less the upward push of well pressure on the closed end of the pipe. That last term is why it belongs on the stripping screen: as surface pressure climbs the well tries to push the string out, and when hookload reaches zero the pipe has to be snubbed rather than stripped. Watching pressure gauges alone never shows it coming.
 
-**A JavaScript parse error takes every screen down at once, and nothing else notices.** It happened: a second `const open` in one block stopped the whole script parsing, so every gauge read a dash while the API, the tests and the HTML were all fine. `TestThePanelScriptParses` checks the two things that actually broke — a redeclared `const` inside one block, and unbalanced brackets. Node is not installed here, so a real parser is not an option; if it ever is, `node --check` would be better than either.
+**A JavaScript parse error takes every screen down at once, and nothing else notices.** It happened: a second `const open` in one block stopped the whole script parsing, so every gauge read a dash while the API, the tests and the HTML were all fine. `TestThePanelScriptParses` now runs the page's script through **`node --check`**, and a companion test feeds it the exact mistake that got through so the guard is known to work. Node was installed for this (`winget install OpenJS.NodeJS.LTS`); the test finds it on PATH or under the winget package directory, and skips rather than approximating if it is absent — a hand-rolled substitute is exactly the kind of thing that passes on the next variation of the bug.
 
 **The kill sheet is built from what the student read**, not from the figures the scenario was designed around. On a drilling exercise those differ: a slow shut-in takes more influx and reads higher, so a sheet computed from the designer's values answers a question nobody asked — and answers it wrongly for the kick actually taken. `state.measured_sidpp_psi` and friends latch when the pressures settle. Before that the sheet is *withheld* rather than guessed at, which is also the honest answer on a rig.
 

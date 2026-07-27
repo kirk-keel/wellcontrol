@@ -163,9 +163,15 @@
   /* Both schematics are taller than they are wide in viewBox terms, so left
      to scale on width alone they grow to a thousand pixels and the student
      scrolls to see the bottom of the hole. Height drives instead. */
+  /* Every schematic here has a viewBox taller than it is wide relative to the
+     card, so all of them are sized by height. Left to scale on width they run
+     to a thousand pixels and the student scrolls to find the bottom. */
   svg { display: block; width: 100%; }
   #schematic { height: min(74vh, 620px); }
-  #pid { height: min(58vh, 420px); }
+  #pid { height: min(46vh, 340px); }
+  #bop-panel { height: min(76vh, 560px); }
+  #standpipe { height: min(72vh, 540px); }
+  #ckmanifold { height: min(44vh, 320px); }
 
   /* Dials. Two big ones for the pressures a kill is flown on, three smaller
      for the settings, exactly as the panel is laid out on a rig. */
@@ -213,7 +219,8 @@
 <nav id="tabs">
   <button data-screen="driller" class="active">Driller</button>
   <button data-screen="choke">Choke</button>
-  <button data-screen="bop">BOP &amp; Lineup</button>
+  <button data-screen="bop">BOP</button>
+  <button data-screen="manifolds">Manifolds</button>
   <button data-screen="well">Well</button>
   <button data-screen="sheet">Kill sheet</button>
   <button data-screen="debrief">Debrief</button>
@@ -398,13 +405,9 @@
   <div class="cols">
     <div>
       <div class="card">
-        <h2>Circulating system</h2>
-        <svg id="pid" viewBox="0 0 720 420" role="img" aria-label="Piping schematic"></svg>
-        <div class="note">
-          The highlighted path is where fluid can actually go right now. A wrong
-          lineup is not marked wrong — it simply does not work, and the well
-          tells you by doing nothing.
-        </div>
+        <h2 id="bop-title">BOP control panel</h2>
+        <svg id="bop-panel" viewBox="0 0 640 430" role="img" aria-label="BOP panel"></svg>
+        <div class="note" id="bop-note"></div>
       </div>
     </div>
     <div>
@@ -419,16 +422,43 @@
         </div>
       </div>
       <div class="card">
-        <h2>BOP stack</h2>
-        <svg id="stack" viewBox="0 0 300 300" role="img" aria-label="BOP stack"></svg>
-        <div class="valves" id="bop-list" style="margin-top:10px"></div>
+        <h2>Stack elements</h2>
+        <div class="valves" id="bop-list"></div>
         <div class="note">
           Closed is what seals the annulus, so these read the opposite way to
           every other valve. Each operation costs accumulator pressure.
         </div>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- =========================== MANIFOLDS ========================== -->
+<section class="screen" id="s-manifolds">
+  <div class="cols">
+    <div>
       <div class="card">
-        <h2>Valves</h2>
+        <h2>Standpipe manifold</h2>
+        <svg id="standpipe" viewBox="0 0 470 460" role="img"
+             aria-label="Standpipe manifold"></svg>
+      </div>
+      <div class="card">
+        <h2>Choke and kill manifold</h2>
+        <svg id="ckmanifold" viewBox="0 0 640 330" role="img"
+             aria-label="Choke and kill manifold"></svg>
+        <div class="note">
+          Click any handwheel to work it. A wrong lineup is not marked wrong —
+          it simply does not work, and the well tells you by doing nothing.
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h2>Circulating system</h2>
+        <svg id="pid" viewBox="0 0 720 420" role="img" aria-label="Piping schematic"></svg>
+      </div>
+      <div class="card">
+        <h2>All valves</h2>
         <div class="valves" id="valve-list"></div>
       </div>
     </div>
@@ -517,6 +547,10 @@ const $ = (id) => document.getElementById(id);
 let sessionId = null, nextEvent = 0, trace = [], busy = false, screen = "driller";
 let formationPsi = null, fracPsi = null, maaspPsi = null, downholeVisible = true;
 let lineupCache = [], schematicCache = null;
+// Readings the equipment panels draw from, kept here so a redraw does not have
+// to go back to the server for numbers the last poll already brought.
+let accumulatorPsi = 3000, manifoldPsi = 3000, accumulatorOk = true;
+let drillPipePsi = 0, chokePsi = 0, clfPsi = 0, chokePercent = 0;
 
 async function api(path, options) {
   const r = await fetch(path, Object.assign(
@@ -584,7 +618,11 @@ async function poll() {
 function redraw() {
   if (screen === "choke") drawCharts();
   else if (screen === "driller") drawPits();
-  else if (screen === "bop") { drawPid(); drawStack(); drawLineup(lineupCache); }
+  else if (screen === "bop") { drawBopPanel(); drawLineup(lineupCache); }
+  else if (screen === "manifolds") {
+    drawStandpipeManifold(); drawChokeKillManifold(); drawPid();
+    drawLineup(lineupCache);
+  }
   else if (screen === "well") drawSchematic();
 }
 
@@ -688,6 +726,16 @@ function paint(g) {
     g.frac_psi !== null && g.shoe_psi !== null && g.shoe_psi > g.frac_psi);
   $("s-maasp-wrap").classList.toggle("alarm",
     g.maasp_psi !== null && g.casing_psi > g.maasp_psi);
+
+  /* --- what the equipment panels draw from --- */
+  accumulatorPsi = g.accumulator_psi;
+  manifoldPsi = g.accumulator_psi;
+  accumulatorOk = g.accumulator_ok;
+  drillPipePsi = g.drill_pipe_psi;
+  chokePsi = g.casing_psi;
+  clfPsi = g.choke_line_friction_psi || 0;
+  chokePercent = g.choke_percent;
+  isSubsea = !!g.is_subsea;
 
   /* --- accumulator --- */
   $("acc-psi").textContent = g.accumulator_psi.toLocaleString();
@@ -1078,55 +1126,322 @@ function drawPid() {
   });
 }
 
-/* ----------------------------- BOP stack ------------------------------- */
-/* Drawn the way the remote panel draws it: the stack in elevation with each
-   element showing its own state, rather than a list of words. A student who
-   has closed the wrong element sees it here immediately. */
-function drawStack() {
-  const svg = $("stack"); if (!svg || !lineupCache.length) return;
+/* ------------------------------ manifolds ------------------------------ */
+/* Laid out as the manifold screens are: heavy red pipework on a grey panel,
+   gate valves as red bodies ringed in green when they are passing, digital
+   pressure tags in black, pumps as blue blocks. See simulator_screens/. */
+
+function pipe(x1, y1, x2, y2) {
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${PIPE_DARK}"
+      stroke-width="17" stroke-linecap="square"/>
+    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${PIPE_RED}"
+      stroke-width="12" stroke-linecap="square"/>`;
+}
+
+function gateValve(cx, cy, name, label, open, vertical) {
+  // The green ring is what makes an open valve findable at a glance, which is
+  // the whole job of a manifold screen.
+  return `<g class="pv" data-valve="${name}" style="cursor:pointer"
+      transform="translate(${cx} ${cy}) rotate(${vertical ? 90 : 0})">
+    <circle r="17" fill="transparent"/>
+    ${open ? `<circle r="15" fill="none" stroke="${VALVE_OPEN}" stroke-width="3"/>` : ""}
+    <rect x="-11" y="-11" width="22" height="22" rx="2" fill="${PIPE_RED}"
+      stroke="#12161a" stroke-width="1.5"/>
+    <polygon points="-8,-7 -8,7 0,0" fill="${open ? VALVE_OPEN : VALVE_SHUT}"
+      stroke="#12161a"/>
+    <polygon points="8,-7 8,7 0,0" fill="${open ? VALVE_OPEN : VALVE_SHUT}"
+      stroke="#12161a"/>
+    <title>${label} — ${open ? "open" : "shut"}</title></g>`;
+}
+
+function digitalTag(x, y, label, value, unit) {
+  return `<text x="${x + 46}" y="${y - 4}" text-anchor="middle" fill="#22282e"
+      font-size="10" font-weight="600" font-family="system-ui, sans-serif">${label}</text>
+    <rect x="${x}" y="${y}" width="92" height="26" rx="2" fill="#0d1117" stroke="#3c4650"/>
+    <text x="${x + 46}" y="${y + 18}" text-anchor="middle" fill="#5df08a"
+      font-size="12" font-weight="700"
+      font-family="Consolas, monospace">${value} ${unit}</text>`;
+}
+
+function valveState(name) {
+  const v = lineupCache.find(x => x.name === name);
+  return v ? v.state === "open" : false;
+}
+
+function drawStandpipeManifold() {
+  const svg = $("standpipe"); if (!svg || !lineupCache.length) return;
+  const bits = [`<rect width="470" height="460" fill="#b9c0c6"/>`];
+  bits.push(`<text x="235" y="24" text-anchor="middle" fill="#22282e" font-size="13"
+    font-weight="700" font-family="system-ui, sans-serif">STANDPIPE MANIFOLD</text>`);
+
+  bits.push(digitalTag(60, 38, "Standpipe", Math.round(drillPipePsi), "psi"));
+  bits.push(digitalTag(310, 38, "Choke", Math.round(chokePsi), "psi"));
+
+  // Header across the middle, risers up to the taps, and the two pumps below.
+  const HEADER = 250, LEFT = 70, RIGHT = 400;
+  bits.push(pipe(LEFT, HEADER, RIGHT, HEADER));
+  bits.push(pipe(150, HEADER, 150, 120));       // standpipe riser
+  bits.push(pipe(320, HEADER, 320, 120));       // choke/kill riser
+  bits.push(pipe(LEFT, HEADER, LEFT, 360));     // down to MP1
+  bits.push(pipe(RIGHT, HEADER, RIGHT, 360));   // down to MP2
+  bits.push(pipe(235, HEADER, 235, 410));       // kill line take-off
+
+  bits.push(`<text x="150" y="112" text-anchor="middle" fill="#22282e" font-size="10"
+    font-weight="700" font-family="system-ui, sans-serif">TO STANDPIPE</text>`);
+  bits.push(`<text x="320" y="112" text-anchor="middle" fill="#22282e" font-size="10"
+    font-weight="700" font-family="system-ui, sans-serif">TO KILL LINE</text>`);
+
+  bits.push(gateValve(150, 180, "standpipe_valve", "Standpipe valve",
+    valveState("standpipe_valve"), true));
+  bits.push(gateValve(320, 180, "pump_to_kill_line", "Pump to kill line",
+    valveState("pump_to_kill_line"), true));
+  bits.push(gateValve(LEFT, 310, "pump_discharge", "Mud pump discharge",
+    valveState("pump_discharge"), true));
+  bits.push(gateValve(235, 330, "kill_line_valve", "Kill line valve",
+    valveState("kill_line_valve"), true));
+
+  // Pumps, drawn as the blue blocks the manifold screens use.
+  [[LEFT, "MP1"], [RIGHT, "MP2"]].forEach(([x, tag]) => {
+    bits.push(`<rect x="${x - 34}" y="362" width="68" height="34" rx="3"
+      fill="#2f5fa8" stroke="#12161a" stroke-width="2"/>`);
+    bits.push(`<text x="${x}" y="384" text-anchor="middle" fill="#eaf1fb"
+      font-size="12" font-weight="700" font-family="system-ui, sans-serif">${tag}</text>`);
+  });
+  bits.push(`<text x="235" y="432" text-anchor="middle" fill="#22282e" font-size="11"
+    font-weight="700" font-family="system-ui, sans-serif">KILL LINE</text>`);
+
+  svg.innerHTML = bits.join("");
+  svg.querySelectorAll(".pv").forEach(g =>
+    g.onclick = () => toggleValve(g.dataset.valve));
+}
+
+function drawChokeKillManifold() {
+  const svg = $("ckmanifold"); if (!svg || !lineupCache.length) return;
+  const bits = [`<rect width="640" height="330" fill="#b9c0c6"/>`];
+  bits.push(`<text x="320" y="22" text-anchor="middle" fill="#22282e" font-size="13"
+    font-weight="700" font-family="system-ui, sans-serif">CHOKE AND KILL MANIFOLD</text>`);
+
+  const IN = 60, HEADER = 150, OUT = 590;
+  // Two lines in from the stack, a common header, three ways out.
+  bits.push(pipe(IN, 78, 250, 78));
+  bits.push(pipe(IN, 232, 250, 232));
+  bits.push(pipe(250, 78, 250, 232));
+  bits.push(pipe(250, HEADER, 430, HEADER));
+  bits.push(pipe(430, 78, 430, 232));
+  bits.push(pipe(430, 78, OUT, 78));
+  bits.push(pipe(430, HEADER, OUT, HEADER));
+  bits.push(pipe(430, 232, OUT, 232));
+
+  const tag = (x, y, text, anchor) =>
+    `<text x="${x}" y="${y}" text-anchor="${anchor || "middle"}" fill="#22282e"
+      font-size="10" font-weight="700"
+      font-family="system-ui, sans-serif">${text}</text>`;
+  bits.push(tag(IN - 4, 74, "CHOKE LINE", "end"));
+  bits.push(tag(IN - 4, 228, "KILL LINE", "end"));
+  bits.push(tag(OUT + 6, 74, "CHOKE 1", "start"));
+  bits.push(tag(OUT + 6, 146, "BYPASS", "start"));
+  bits.push(tag(OUT + 6, 228, "CHOKE 2", "start"));
+
+  bits.push(gateValve(155, 78, "choke_line_to_manifold", "Choke line to manifold",
+    valveState("choke_line_to_manifold"), false));
+  bits.push(gateValve(155, 232, "kill_line_to_manifold", "Kill line to manifold",
+    valveState("kill_line_to_manifold"), false));
+  bits.push(gateValve(515, 78, "choke_1", "Adjustable choke 1",
+    valveState("choke_1"), false));
+  bits.push(gateValve(515, HEADER, "choke_bypass", "Choke manifold bypass",
+    valveState("choke_bypass"), false));
+  bits.push(gateValve(515, 232, "choke_2", "Adjustable choke 2",
+    valveState("choke_2"), false));
+
+  // The adjustable choke's opening, which is the one thing here that is not
+  // simply open or shut.
+  bits.push(`<rect x="250" y="266" width="140" height="30" rx="3" fill="#0d1117"
+    stroke="#3c4650"/>`);
+  bits.push(`<text x="320" y="286" text-anchor="middle" fill="#5df08a" font-size="13"
+    font-weight="700" font-family="Consolas, monospace">CHOKE ${chokePercent.toFixed(1)}%</text>`);
+  bits.push(tag(320, 312, "adjustable choke position"));
+
+  svg.innerHTML = bits.join("");
+  svg.querySelectorAll(".pv").forEach(g =>
+    g.onclick = () => toggleValve(g.dataset.valve));
+}
+
+/* ------------------------- BOP control panels -------------------------- */
+/* Two of them, because a rig has two. A surface stack is worked from a red
+   remote panel with a rotary selector per element; a subsea stack is watched
+   on a screen, where what matters is each element's position and health on
+   both pods. Drawn from simulator_screens/. */
+
+let isSubsea = false;
+
+function drawBopPanel() {
+  if (!lineupCache.length) return;
+  $("bop-title").textContent = isSubsea
+    ? "Subsea BOP — monitoring" : "BOP remote control panel";
+  $("bop-note").textContent = isSubsea
+    ? "Position and health for every element, on both pods. The stack is on "
+      + "the seabed; everything here is read at a distance."
+    : "Turn a selector to work its element. Each operation draws on the "
+      + "accumulator, and below the minimum nothing will shift.";
+  (isSubsea ? drawSubseaBop : drawSurfaceBop)();
+}
+
+function drawSurfaceBop() {
+  const svg = $("bop-panel");
   const elements = lineupCache.filter(v => v.is_bop);
-  // The closing unit panel is red on every rig; the stack drawn on it is the
-  // thing the driller looks at. See simulator_screens/surface_bop_remote_panel.
   const bits = [
-    `<rect width="300" height="300" rx="6" fill="#a52a26"/>`,
-    `<rect x="6" y="6" width="288" height="288" rx="4" fill="none"
-       stroke="#7c1d1a" stroke-width="2"/>`,
+    `<rect width="640" height="430" rx="8" fill="#a8231f"/>`,
+    `<rect x="8" y="8" width="624" height="414" rx="5" fill="none"
+       stroke="#7a1613" stroke-width="3"/>`,
   ];
-  const CX = 132, W = 104;
 
-  // Wellbore through the stack, with the pipe in it.
-  bits.push(`<rect x="${CX - 15}" y="14" width="30" height="272" fill="#4a4f54"/>`);
-  bits.push(`<rect x="${CX - 6}" y="14" width="12" height="272" fill="#6f7880"/>`);
+  // Two pressure gauges across the top, as on the cabinet.
+  const gauge = (cx, cy, r, value, max, label) => {
+    const frac = Math.max(0, Math.min(1, value / max));
+    const out = [
+      `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#f4f5f6" stroke="#5c6169" stroke-width="3"/>`,
+    ];
+    for (let i = 0; i <= 8; i++) {
+      const [x1, y1] = polar(cx, cy, r - 4, A0 + i / 8 * SWEEP);
+      const [x2, y2] = polar(cx, cy, r - 11, A0 + i / 8 * SWEEP);
+      out.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#2c3138" stroke-width="1.5"/>`);
+    }
+    const [nx, ny] = polar(cx, cy, r - 13, A0 + frac * SWEEP);
+    out.push(`<line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="#c0392b" stroke-width="3"/>`);
+    out.push(`<circle cx="${cx}" cy="${cy}" r="5" fill="#2c3138"/>`);
+    out.push(`<text x="${cx}" y="${cy + r + 15}" text-anchor="middle" fill="#f7e6e5"
+      font-size="10" font-weight="600" font-family="system-ui, sans-serif">${label}</text>`);
+    out.push(`<text x="${cx}" y="${cy + r - 8}" text-anchor="middle" fill="#2c3138"
+      font-size="11" font-weight="700"
+      font-family="Consolas, monospace">${Math.round(value).toLocaleString()}</text>`);
+    return out.join("");
+  };
+  bits.push(gauge(80, 68, 44, accumulatorPsi, 3000, "ACCUMULATOR psi"));
+  bits.push(gauge(560, 68, 44, manifoldPsi, 3000, "MANIFOLD psi"));
 
-  const top = 42, gap = 58;
+  // Stack schematic down the left, as printed on the cabinet face.
+  const sx = 175, sw = 74;
+  bits.push(`<rect x="${sx - 11}" y="46" width="22" height="330" fill="#6f7880"/>`);
   elements.forEach((v, i) => {
-    const y = top + i * gap;
+    const y = 60 + i * 78;
     const shut = v.state !== "open";
-    bits.push(`<rect x="${CX - W / 2}" y="${y}" width="${W}" height="40" rx="3"
-      fill="#d8dade" stroke="#33383d" stroke-width="2"/>`);
-    // The rams themselves: across the bore when shut, drawn back when open.
-    const reach = shut ? W / 2 - 15 : 15;
-    bits.push(`<rect x="${CX - W / 2 + 5}" y="${y + 11}" width="${reach}" height="18"
-      fill="${shut ? "#c0392b" : "#8a9099"}" stroke="#33383d"/>`);
-    bits.push(`<rect x="${CX + W / 2 - 5 - reach}" y="${y + 11}" width="${reach}" height="18"
-      fill="${shut ? "#c0392b" : "#8a9099"}" stroke="#33383d"/>`);
-    bits.push(`<text x="${CX}" y="${y - 5}" text-anchor="middle" fill="#f7e9e8"
-      font-size="10" font-weight="600"
+    bits.push(`<rect x="${sx - sw / 2}" y="${y}" width="${sw}" height="34" rx="2"
+      fill="#d9dbde" stroke="#2c3138" stroke-width="2"/>`);
+    const reach = shut ? sw / 2 - 11 : 11;
+    bits.push(`<rect x="${sx - sw / 2 + 4}" y="${y + 9}" width="${reach}" height="16"
+      fill="${shut ? "#c0392b" : "#9aa1a8"}" stroke="#2c3138"/>`);
+    bits.push(`<rect x="${sx + sw / 2 - 4 - reach}" y="${y + 9}" width="${reach}" height="16"
+      fill="${shut ? "#c0392b" : "#9aa1a8"}" stroke="#2c3138"/>`);
+  });
+  bits.push(`<rect x="${sx - 46}" y="${60 + elements.length * 78}" width="92" height="14"
+    rx="2" fill="#d9dbde" stroke="#2c3138" stroke-width="2"/>`);
+
+  // One rotary selector per element, the way the panel is actually operated.
+  elements.forEach((v, i) => {
+    const y = 78 + i * 78, cx = 400;
+    const shut = v.state !== "open";
+    // The plate is sized round the lettering rather than the other way about:
+    // at 18px high the descenders sat on the bottom stroke and the label read
+    // as struck through.
+    bits.push(`<rect x="270" y="${y - 32}" width="260" height="24" rx="2"
+      fill="#f2f3f4" stroke="#2c3138" stroke-width="1.5"/>`);
+    bits.push(`<text x="400" y="${y - 15}" text-anchor="middle" fill="#a8231f"
+      font-size="12" font-weight="700" letter-spacing="0.06em"
       font-family="system-ui, sans-serif">${v.label.toUpperCase()}</text>`);
-    // Status flag, in the panel's own lamp idiom.
-    bits.push(`<rect x="${CX + W / 2 + 12}" y="${y + 9}" width="62" height="22" rx="2"
-      fill="${shut ? "#161a1e" : "#e9edf0"}" stroke="#33383d" stroke-width="1.5"/>`);
-    bits.push(`<text x="${CX + W / 2 + 43}" y="${y + 24}" text-anchor="middle"
-      fill="${shut ? "#ff5f57" : "#2a2f34"}" font-size="10" font-weight="700"
-      font-family="system-ui, sans-serif">${shut ? "CLOSED" : "OPEN"}</text>`);
+    // OPEN / CLOSE arc, with the handle pointing at the position it is in.
+    bits.push(`<path d="M ${cx - 46} ${y + 26} A 46 46 0 0 1 ${cx + 46} ${y + 26}"
+      fill="none" stroke="#f2f3f4" stroke-width="3"/>`);
+    bits.push(`<text x="${cx - 56}" y="${y + 30}" text-anchor="end" fill="#f7e6e5"
+      font-size="9" font-weight="600" font-family="system-ui, sans-serif">OPEN</text>`);
+    bits.push(`<text x="${cx + 56}" y="${y + 30}" fill="#f7e6e5"
+      font-size="9" font-weight="600" font-family="system-ui, sans-serif">CLOSE</text>`);
+    const angle = shut ? -35 : -145;
+    const [hx, hy] = polar(cx, y + 26, 38, angle);
+    bits.push(`<g class="bopsel" data-valve="${v.name}" style="cursor:pointer">
+      <circle cx="${cx}" cy="${y + 26}" r="30" fill="transparent"/>
+      <line x1="${cx}" y1="${y + 26}" x2="${hx}" y2="${hy}" stroke="#14181c" stroke-width="7"
+        stroke-linecap="round"/>
+      <circle cx="${cx}" cy="${y + 26}" r="13" fill="#2c3138" stroke="#14181c" stroke-width="2"/>
+      <circle cx="${cx}" cy="${y + 26}" r="4" fill="#7d858d"/>
+      <title>${v.label} — ${shut ? "closed" : "open"}. Click to operate.</title></g>`);
+  });
+  svg.innerHTML = bits.join("");
+  svg.querySelectorAll(".bopsel").forEach(g =>
+    g.onclick = () => toggleValve(g.dataset.valve));
+}
+
+function drawSubseaBop() {
+  const svg = $("bop-panel");
+  const elements = lineupCache.filter(v => v.is_bop);
+  const bits = [`<rect width="640" height="430" fill="#eef1f4"/>`];
+
+  // Surface pressures strip, as the monitoring screen carries it.
+  bits.push(`<rect x="180" y="8" width="280" height="42" fill="#fff" stroke="#5b6672"/>`);
+  bits.push(`<text x="320" y="22" text-anchor="middle" fill="#26313c" font-size="10"
+    font-weight="700" font-family="system-ui, sans-serif">SURFACE PRESSURES</text>`);
+  [["Kill", 0], ["Choke", chokePsi], ["SPP", drillPipePsi], ["CLF", clfPsi]]
+    .forEach(([name, value], i) => {
+      const x = 200 + i * 70;
+      bits.push(`<text x="${x}" y="${34}" text-anchor="middle" fill="#5b6672"
+        font-size="9" font-family="system-ui, sans-serif">${name}</text>`);
+      bits.push(`<text x="${x}" y="${46}" text-anchor="middle" fill="#12303f"
+        font-size="11" font-weight="700"
+        font-family="Consolas, monospace">${Math.round(value)} psi</text>`);
+    });
+
+  // The stack in yellow, the way subsea schematics draw it.
+  const CX = 320, W = 108;
+  bits.push(`<rect x="${CX - 13}" y="62" width="26" height="330" fill="#8d949b"/>`);
+  elements.forEach((v, i) => {
+    const y = 78 + i * 84;
+    const shut = v.state !== "open";
+    bits.push(`<rect x="${CX - W / 2}" y="${y}" width="${W}" height="46" rx="3"
+      fill="#f2d94e" stroke="#7a6a12" stroke-width="2"/>`);
+    const reach = shut ? W / 2 - 13 : 13;
+    bits.push(`<rect x="${CX - W / 2 + 5}" y="${y + 14}" width="${reach}" height="18"
+      fill="${shut ? "#2b2b2b" : "#cbb93f"}" stroke="#7a6a12"/>`);
+    bits.push(`<rect x="${CX + W / 2 - 5 - reach}" y="${y + 14}" width="${reach}" height="18"
+      fill="${shut ? "#2b2b2b" : "#cbb93f"}" stroke="#7a6a12"/>`);
+
+    // Position boxes on both pods, cyan for open and black for closed --
+    // the legend every subsea monitoring screen uses.
+    ["blue", "yellow"].forEach((pod, p) => {
+      const bx = p === 0 ? CX - W / 2 - 68 : CX + W / 2 + 8;
+      bits.push(`<g class="bopsel" data-valve="${v.name}" style="cursor:pointer">
+        <rect x="${bx}" y="${y + 12}" width="60" height="22" rx="2"
+          fill="${shut ? "#14181c" : "#3fd0e0"}" stroke="#3c4650" stroke-width="1.5"/>
+        <text x="${bx + 30}" y="${y + 27}" text-anchor="middle"
+          fill="${shut ? "#fff" : "#0d2b31"}" font-size="10" font-weight="700"
+          font-family="system-ui, sans-serif">${shut ? "Close" : "Open"}</text>
+        <title>${v.label} — ${pod} pod. Click to operate.</title></g>`);
+    });
+    // Health lamps, and the element's name.
+    bits.push(`<circle cx="${CX - W / 2 - 84}" cy="${y + 23}" r="7"
+      fill="${accumulatorOk ? "#3ac455" : "#e8a33d"}" stroke="#3c4650"/>`);
+    bits.push(`<text x="${CX}" y="${y - 5}" text-anchor="middle" fill="#26313c"
+      font-size="10" font-weight="600"
+      font-family="system-ui, sans-serif">${v.label}</text>`);
   });
 
-  const base = top + elements.length * gap;
-  bits.push(`<rect x="${CX - 64}" y="${base + 4}" width="128" height="16" rx="2"
-    fill="#d8dade" stroke="#33383d" stroke-width="2"/>`);
-  bits.push(`<text x="${CX}" y="${base + 36}" text-anchor="middle" fill="#f7e9e8"
-    font-size="10" font-family="system-ui, sans-serif">WELLHEAD</text>`);
+  bits.push(`<path d="M 150 400 q 30 -10 60 0 t 60 0 t 60 0 t 60 0 t 60 0"
+    fill="none" stroke="#7f8c98" stroke-width="2"/>`);
+  bits.push(`<text x="320" y="420" text-anchor="middle" fill="#5b6672"
+    font-size="10" font-family="system-ui, sans-serif">sea bed</text>`);
+
+  // Legend, so the colours are not a private language.
+  bits.push(`<rect x="12" y="352" width="118" height="56" fill="#fff" stroke="#5b6672"/>`);
+  bits.push(`<text x="71" y="366" text-anchor="middle" fill="#26313c" font-size="9"
+    font-weight="700" font-family="system-ui, sans-serif">POSITION LEGEND</text>`);
+  bits.push(`<circle cx="26" cy="380" r="6" fill="#3fd0e0" stroke="#3c4650"/>`);
+  bits.push(`<text x="38" y="384" fill="#26313c" font-size="9"
+    font-family="system-ui, sans-serif">Open</text>`);
+  bits.push(`<circle cx="26" cy="397" r="6" fill="#14181c" stroke="#3c4650"/>`);
+  bits.push(`<text x="38" y="401" fill="#26313c" font-size="9"
+    font-family="system-ui, sans-serif">Closed</text>`);
+
   svg.innerHTML = bits.join("");
+  svg.querySelectorAll(".bopsel").forEach(g =>
+    g.onclick = () => toggleValve(g.dataset.valve));
 }
 
 /* -------------------------------- lineup ------------------------------- */
@@ -1134,6 +1449,7 @@ function drawLineup(valves) {
   if (!valves) return;
   lineupCache = valves;
   const bopHost = $("bop-list"), valveHost = $("valve-list");
+  if (!bopHost || !valveHost) return;
   bopHost.innerHTML = ""; valveHost.innerHTML = "";
   valves.forEach(v => {
     const row = document.createElement("div");
@@ -1157,7 +1473,7 @@ async function toggleValve(name) {
     body: JSON.stringify({name, state: v.state === "open" ? "closed" : "open"})
   });
   drawLineup(r.lineup); paint(r.gauges);
-  if (screen === "bop") { drawPid(); drawStack(); }
+  redraw();
 }
 
 /* ------------------------------ kill sheet ----------------------------- */

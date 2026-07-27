@@ -330,6 +330,12 @@ class Session:
             "accumulator_fraction": round(self.simulator.accumulator.fraction, 3),
             "accumulator_ok": self.simulator.accumulator.can_operate,
             "bop_closed": self.simulator.flow_path.bop_is_closed,
+            # Which BOP panel to draw. A subsea stack is monitored from a
+            # screen; a surface stack is operated from a red remote panel.
+            "is_subsea": self.simulator.well.configuration.is_subsea,
+            "choke_line_friction_psi": round(
+                self.simulator.well.effective_choke_line_friction
+            ),
             "strip_rate_ft_per_min": self.simulator.strip_rate_ft_per_min,
             "bit_md_ft": round(state.bit_md_ft),
             "pipe_moved_ft": round(state.pipe_moved_ft, 1),

@@ -290,51 +290,71 @@ class TestDebrief:
         assert "Peak shoe pressure" in named
 
 
+def _node() -> str | None:
+    """Find node, including a winget install that is not yet on PATH."""
+    import os
+    import shutil
+    from pathlib import Path
+
+    found = shutil.which("node")
+    if found:
+        return found
+    packages = Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft/WinGet/Packages"
+    if packages.is_dir():
+        for candidate in packages.glob("OpenJS.NodeJS*/**/node.exe"):
+            return str(candidate)
+    return None
+
+
 class TestThePanelScriptParses:
     """A syntax error in the page takes every screen down at once.
 
     It happened: a second ``const open`` in one block stopped the whole script
-    parsing, so nothing initialised and every gauge read a dash -- while the
-    API, the tests and the HTML were all perfectly fine. Nothing in the suite
-    noticed, because nothing in the suite runs the script.
+    parsing, so nothing initialised and every gauge on every screen read a dash
+    -- while the API returned 200, the HTML was intact and the entire suite
+    passed, because nothing in it runs the script.
 
-    A full JavaScript parser is not available here, so this checks the two
-    things that actually broke and are cheap to detect: a redeclared ``const``
-    inside one block, and unbalanced brackets across the script.
+    ``node --check`` is the real answer and is what this uses. It is skipped
+    rather than approximated where node is absent: a hand-rolled substitute
+    passed happily on the very error it was written for once the shape of the
+    mistake changed.
     """
 
-    @staticmethod
-    def _script(client) -> str:
-        return client.get("/").text.split("<script>")[1].split("</script>")[0]
+    def test_the_script_is_valid_javascript(self, client, tmp_path):
+        node = _node()
+        if node is None:
+            pytest.skip("node not installed; winget install OpenJS.NodeJS.LTS")
 
-    def test_no_const_is_declared_twice_in_the_same_block(self, client):
-        import re
+        import subprocess
 
-        depth, seen, offenders = 0, {0: set()}, []
-        for line in self._script(client).split("\n"):
-            bare = re.sub(r"//.*$", "", line)
-            match = re.match(r"\s*const\s+([A-Za-z_$][\w$]*)\s*=", bare)
-            if match:
-                name = match.group(1)
-                if name in seen.setdefault(depth, set()):
-                    offenders.append(f"{name} at depth {depth}")
-                seen[depth].add(name)
-            opened = bare.count("{") - bare.count("}")
-            if opened > 0:
-                depth += opened
-                seen[depth] = set()
-            elif opened < 0:
-                for _ in range(-opened):
-                    seen.pop(depth, None)
-                    depth = max(0, depth - 1)
-        assert not offenders, f"redeclared const: {offenders}"
+        script = client.get("/").text.split("<script>")[1].split("</script>")[0]
+        path = tmp_path / "panel.js"
+        path.write_text(script, encoding="utf-8")
+        result = subprocess.run(
+            [node, "--check", str(path)],
+            capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
 
-    def test_brackets_balance(self, client):
-        script = self._script(client)
-        for opener, closer in (("{", "}"), ("(", ")"), ("[", "]")):
-            assert script.count(opener) == script.count(closer), (
-                f"unbalanced {opener}{closer}"
-            )
+    def test_the_guard_would_catch_a_redeclaration(self, tmp_path):
+        """The exact mistake that got through, so the guard is known to work."""
+        node = _node()
+        if node is None:
+            pytest.skip("node not installed")
+
+        import subprocess
+
+        path = tmp_path / "bad.js"
+        path.write_text(
+            "function f(v) { const open = 1; const open = 2; return open; }",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [node, "--check", str(path)],
+            capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode != 0
+        assert "already been declared" in result.stderr
 
 
 class TestScreens:
@@ -345,11 +365,37 @@ class TestScreens:
         assert response.status_code == 200
         assert "Well Control Simulator" in response.text
 
-    def test_all_six_screens_exist(self, client):
+    def test_all_seven_screens_exist(self, client):
         text = client.get("/").text
-        for screen in ("driller", "choke", "bop", "well", "sheet", "debrief"):
+        for screen in ("driller", "choke", "bop", "manifolds", "well",
+                       "sheet", "debrief"):
             assert f'data-screen="{screen}"' in text
             assert f'id="s-{screen}"' in text
+
+    def test_both_bop_panels_are_drawn(self, client):
+        """A rig has two: a red remote panel, and a subsea monitoring screen."""
+        text = client.get("/").text
+        assert "function drawSurfaceBop(" in text
+        assert "function drawSubseaBop(" in text
+        assert "function drawBopPanel(" in text
+
+    def test_the_panel_follows_the_well(self, client):
+        """Surface wells get the remote panel; subsea wells get the screen."""
+        surface = client.post(
+            "/api/sessions", json={"bop": "surface"}
+        ).json()["gauges"]
+        subsea = client.post(
+            "/api/sessions", json={"bop": "subsea"}
+        ).json()["gauges"]
+        assert surface["is_subsea"] is False
+        assert subsea["is_subsea"] is True
+
+    def test_both_manifolds_are_drawn(self, client):
+        text = client.get("/").text
+        assert "function drawStandpipeManifold(" in text
+        assert "function drawChokeKillManifold(" in text
+        assert 'id="standpipe"' in text
+        assert 'id="ckmanifold"' in text
 
     def test_the_drillers_console_carries_its_instruments(self, client):
         text = client.get("/").text
@@ -382,10 +428,18 @@ class TestScreens:
             assert slot in text
 
     def test_the_bop_stack_is_drawn_in_elevation(self, client):
-        """Not a list of words: a student who shut the wrong element sees it."""
+        """Not a list of words: a student who shut the wrong element sees it.
+
+        Both panels draw it -- the surface one alongside its selectors, the
+        subsea one with position and health per pod.
+        """
         text = client.get("/").text
-        assert 'id="stack"' in text
-        assert "function drawStack(" in text
+        assert 'id="bop-panel"' in text
+        for panel in ("function drawSurfaceBop(", "function drawSubseaBop("):
+            assert panel in text
+            body = text.split(panel)[1][:2600]
+            # Rams that meet across the bore when shut and draw back when open.
+            assert "shut ?" in body
 
 
 class TestPanel:
