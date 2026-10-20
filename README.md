@@ -1,29 +1,99 @@
 # wellcontrol
 
-Well control calculations and teaching content, covering every common well type:
-vertical land wells, directional and horizontal wells, subsea wells, HPHT wells,
-and managed pressure / underbalanced operations.
+Deterministic well control & CWI (Completion and Well Intervention) physics engine, forward dynamic choke & BOP simulator, Model Context Protocol (MCP) agent server, and interactive kill planner covering vertical land wells, directional and horizontal wells, deepwater subsea wells, HPHT wells, and managed pressure / underbalanced operations.
 
-Three parts that reference each other:
+Four parts that reference each other:
 
-- **`src/wellcontrol/`** — a tested Python calculation library. The core has no
-  dependencies outside the standard library.
-- **`app/`** — a Streamlit kill planner: pick a well type and kill method, enter
-  the data, get the procedure and diagnostic plots.
-- **`content/`** — the theory behind each calculation, with worked examples that
-  use the library.
+- **`src/wellcontrol/`** — a tested, zero-dependency Python calculation library (`dependencies = []`) covering hydrostatics, directional surveys, rheology, kick analysis, 7 kill methods, CWI stripping/snubbing, subsea choke line friction, HPHT, and MPD.
+- **`src/wellcontrol/sim/`** — a real-time forward dynamic well control simulator and 7-screen rig instrument console (`Driller's Console`, `Choke Panel`, `BOP Remote Panel`, `Standpipe & Choke/Kill Manifolds`, `Wellbore Schematic`, `Latched Kill Sheet`, and `Graded Debrief`) served over FastAPI.
+- **`src/wellcontrol/mcp_server.py`** — a built-in **Model Context Protocol (MCP) Server** exposing deterministic well control planning, CWI stripping/snubbing physics, and live simulator control to LLM agents so AI workflows never hallucinate safety-critical pressure math.
+- **`app/` & `content/`** — a Streamlit kill planner and 13-chapter engineering textbook with worked examples verified against the solver.
+
+```mermaid
+flowchart LR
+    subgraph Core["Zero-Dependency Physics Core (src/wellcontrol)"]
+        Geo["Survey (MD/TVD) & Annular Geometry"]
+        Round["Directional Rounding (KMW Up / MAASP Down)"]
+        Methods["7 Kill Methods & Applicability Matrix"]
+        CWI["CWI Stripping, Snubbing & Balance Point"]
+    end
+
+    subgraph Sim["Forward Dynamic Simulator (wellcontrol.sim)"]
+        Engine["Transient Volume Balance & Boyle Gas Engine"]
+        Flow["21-Node Rig FlowPath, BOP & Koomey Accumulator"]
+        Panel["7-Screen Rig Instrument Console (FastAPI)"]
+    end
+
+    subgraph AI["Agentic AI Layer (wellcontrol.mcp_server)"]
+        MCP["MCP Server (stdio / FastMCP / MCPServer)"]
+        Tools["5 Deterministic Agent Tools"]
+    end
+
+    subgraph UI["Interactive Planner (app/ & content/)"]
+        Streamlit["Streamlit Kill Planner & CSV/XLSX Importers"]
+        Chapters["13 Engineering Chapters"]
+    end
+
+    Geo --> Methods
+    Round --> Methods
+    CWI --> Methods
+    Core --> Engine
+    Flow --> Engine
+    Engine --> Panel
+    Core --> Tools
+    Engine --> Tools
+    MCP --> Tools
+    Core --> Streamlit
+    Chapters --> Streamlit
+```
 
 ## Install
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-pip install -e ".[dev,app]"
+source .venv/bin/activate       # Linux / macOS (.venv\Scripts\activate on Windows)
+pip install -e ".[dev,app,sim,mcp]"
 pytest
 ```
 
-`[dev]` alone gives the library and tests with no third-party dependencies.
-`[app]` adds matplotlib, streamlit and pandas for the planner.
+- `[dev]` alone gives the core library and test suite with no third-party dependencies.
+- `[app]` adds `matplotlib`, `streamlit`, `pandas`, and `openpyxl` for the kill planner.
+- `[sim]` adds `fastapi`, `uvicorn`, and `httpx` for the 7-screen real-time choke simulator.
+- `[mcp]` adds `mcp` for the Model Context Protocol agent server.
+
+## Real-Time Choke & BOP Simulator (`wellcontrol.sim`)
+
+While the kill planner is an *inverse* solver ("what drill pipe pressure should the driller hold?"), `wellcontrol.sim` is a *forward* dynamic model ("the student set the choke to 35% and the pump to 30 SPM — what does the well do?"). Every failure mode—underbalance taking a secondary influx, over-pressuring the shoe into formation losses, pumping against a closed valve, running out of Koomey accumulator bottle pressure, or letting gas migrate in a shut-in well—emerges directly from the transient volume balance rather than scripted animations.
+
+```bash
+uvicorn wellcontrol.sim.api:app --reload --port 8000
+```
+
+Open `http://127.0.0.1:8000` (or double-click **`Launch Choke Panel.bat`** on Windows) to operate the 7-screen self-contained rig console:
+
+1. **Driller's Console (`driller`)** — Standpipe pressure, SPM, pit gain, flow out, hookload (including buoyed string weight minus wellhead ejection force), trip tank, and stripping controls.
+2. **Remote Choke Panel (`choke`)** — Four-dial instrument scan (Drill Pipe PSI, Casing PSI, Pump Strokes, Choke Position %) with realistic valve travel lag and pump ramp rates.
+3. **BOP Stack & Koomey Panel (`bop`)** — Switches automatically between a red surface remote panel and a deepwater subsea pod monitoring screen, tracking hydraulic accumulator drawdowns per function.
+4. **Standpipe & Choke/Kill Manifolds (`manifolds`)** — Interactive 21-node valve lineup supporting forward circulation, reverse circulation, volumetric bleeding, and top-down kill-line lubrication.
+5. **Wellbore & P&ID Schematic (`well`)** — Live fluid zones, gas bubble expansion, and bit position (withheld during kick-detection exercises until the student shuts the well in).
+6. **Kill Sheet (`sheet`)** — Built from the student's own latched shut-in readings (`SIDPP`, `SICP`, `pit gain`).
+7. **Post-Run Debrief (`debrief`)** — Automated grading (`excellent`, `pass`, `marginal`, `fail`) against scenario limits for BHP excursions, additional influx taken, and peak shoe pressure. See [`docs/simulator-design.md`](docs/simulator-design.md) for the mathematical formulation.
+
+## Model Context Protocol (MCP) Server for AI Agents
+
+LLMs are notoriously unreliable at oilfield unit conversions, minimum-curvature TVD integration, and directional rounding. `wellcontrol.mcp_server` exposes 5 deterministic tools over stdio so AI agents (Claude Desktop, Cursor, OpenAI Agents SDK, LangGraph) can plan well kills, evaluate CWI stripping/snubbing operations, and fly the simulator:
+
+```bash
+python -m wellcontrol.mcp_server
+```
+
+| MCP Tool | Description |
+| --- | --- |
+| `evaluate_kill_methods` | Evaluates all 7 methods (`drillers`, `wait_and_weight`, `volumetric`, `stripping`, `lube_and_bleed`, `reverse`, `bullhead`) across any BOP × trajectory configuration; returns KMW, MAASP, usable/blocked verdicts, and peak shoe margins. |
+| `plan_well_kill` | Generates a complete `KillPlan`, stage-by-stage procedure, drill pipe step-down schedule segments (flagging horizontal lateral pressure reversals), and optional two-phase `strip_then_kill` sequences. |
+| `plan_stripping_and_snubbing` | CWI calculator for stripping/snubbing pipe through closed BOPs: computes upward wellhead force, buoyed pipe weight, exact balance point (`balance_point_md_ft`), closed-end vs. open-end displacement, gas migration bleed allowance, surge pressure, and missed-bleed pressure spikes. |
+| `simulator_list_scenarios` | Lists all 10 built-in training scenarios (`drillers`, `find_the_kick`, `volumetric`, `lube_and_bleed`, `stripping`, `reverse`, `subsea`, `horizontal`, `weak_shoe`, `choke_plugs`). |
+| `simulator_create_or_step` | Creates or advances a live `Session`, operating the choke, pump, stripping drawworks, and manifold valves, and returns rig gauges, kill sheet, and graded debriefs. |
 
 ## The kill planner
 
@@ -133,6 +203,8 @@ up. See [the rounding rules](content/05-kill-sheet.md#rounding-is-directional).
 | `importers` | Reads real directional surveys and pipe tallies from CSV |
 | `methods` | Seven kill methods with per-configuration applicability |
 | `plotting` | Diagnostic kill plots (matplotlib) |
+| `sim` | Forward dynamic choke & BOP simulator, 10 scenarios, FastAPI server |
+| `mcp_server` | Model Context Protocol (MCP) server for deterministic AI agents |
 
 ## Kill methods
 
