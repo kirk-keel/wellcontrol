@@ -338,6 +338,13 @@ Each stage is useful on its own and de-risks the next.
     initial kick volumes/pressures (SIDPP/SICP), and scripted in-flight fault
     schedules (choke plug, choke washout, pump breakdown, accumulator leak),
     persisted to disk (`data/custom_scenarios/*.json`) and instantly playable.
+13. ~~**Oil-Based Mud (OBM) Gas Solubility & Flash Breakout Engine.**~~ **Done.**
+    Full downhole PVT methane dissolution model for synthetic and oil-based muds.
+    Methane dissolves into the liquid base oil under high downhole pressure ($P > P_b$),
+    reducing pit gain and annular volume to swelling levels ($\sim 12\%$). Once
+    pressure drops below the bubble point ($1,500 \text{ psia}$), methane flashes
+    rapidly out of solution into free gas, recreating the famous "OBM gas burp"
+    and testing trainee choke control during rapid surface unloading.
 
 Stage 1 is where the real risk is. If the engine is right, everything else is
 presentation.

@@ -210,6 +210,12 @@ class SimState:
     gas_at_surface: bool = False
     well_is_dead: bool = False
 
+    # -- oil-based mud (OBM) gas solubility ---------------------------------
+    is_obm: bool = False
+    obm_breakout: bool = False
+    gas_dissolved_fraction: float = 0.0
+    bubble_point_psi: float = 1500.0
+
     # -- recorded for the debrief -------------------------------------------
     #: Structured log. Prefer this to :attr:`events`, which is the same thing
     #: flattened to strings.
@@ -296,9 +302,15 @@ class Simulator:
     bhp_band_psi: float = 50.0
     #: How often the trace is sampled, in simulated seconds.
     trace_interval_s: float = 10.0
+    #: Oil-based mud gas solubility model. Methane dissolves above bubble point.
+    is_obm: bool = False
+    bubble_point_psi: float = 1500.0
+    swelling_factor: float = 0.12
     state: SimState = field(default_factory=SimState)
 
     def __post_init__(self) -> None:
+        self.state.is_obm = self.is_obm
+        self.state.bubble_point_psi = self.bubble_point_psi
         if self.pump is None:
             self.pump = MudPump(pump=self.well.pump)
         if self.kill_mud_weight_ppg is None:
@@ -345,6 +357,8 @@ class Simulator:
         self.state.casing_pressure_psi = self.well.sicp_psi
         self._gas_pv = self._gas_pressure_psia() * self.well.pit_gain_bbl
         self._initial_gas_pv = self._gas_pv
+        if self.is_obm:
+            self._settle_gas()
         self._update_pressures()
         self.state.record(
             EventKind.SHUT_IN,
@@ -497,11 +511,18 @@ class Simulator:
         if state.influx_volume_bbl <= 0.0 or self._initial_gas_pv <= 0.0:
             return self.influx_density_ppg
         mass_ratio = self._gas_pv / self._initial_gas_pv
-        return mass_ratio * expanded_gas_density(
+        free_gas_density = mass_ratio * expanded_gas_density(
             self.influx_density_ppg,
             self._initial_gas_volume_bbl,
             state.influx_volume_bbl,
         )
+        if self.is_obm and state.gas_dissolved_fraction > 0.01:
+            base_oil_density = 6.8
+            return (
+                state.gas_dissolved_fraction * base_oil_density
+                + (1.0 - state.gas_dissolved_fraction) * free_gas_density
+            )
+        return free_gas_density
 
     def _default_migration_rate(self) -> float:
         """How fast gas climbs, ft/hr, when nobody has measured it.
@@ -1052,10 +1073,20 @@ class Simulator:
         elif not route.through_choke:
             # Flowline: the well is open to atmosphere. Whatever goes in comes
             # out and there is no pressure control at all.
-            flow_out = flow_in + state.influx_rate_bpm
+            eff_influx = (
+                state.influx_rate_bpm * self.swelling_factor
+                if self.is_obm and state.gas_dissolved_fraction > 0.9
+                else state.influx_rate_bpm
+            )
+            flow_out = flow_in + eff_influx
             state.casing_pressure_psi = 0.0
         elif self.flow_path.bypass_is_open():
-            flow_out = flow_in + state.influx_rate_bpm
+            eff_influx = (
+                state.influx_rate_bpm * self.swelling_factor
+                if self.is_obm and state.gas_dissolved_fraction > 0.9
+                else state.influx_rate_bpm
+            )
+            flow_out = flow_in + eff_influx
             state.casing_pressure_psi = max(0.0, state.casing_pressure_psi - 50.0 * dt)
         else:
             chokes = self.flow_path.active_chokes()
@@ -1500,19 +1531,48 @@ class Simulator:
         times volume, which stands in for moles. Volume follows from it at
         whatever pressure the gas currently sits at.
 
-        Volume and pressure are mutually dependent: a taller gas column changes
-        the hydrostatic above it, which changes its pressure, which changes its
-        volume. Two passes settle it to well inside the resolution of anything
-        the student can read off a gauge.
+        In Oil-Based Mud (OBM), gas dissolves into the base oil at high pressures.
+        Above the bubble point (e.g. 1,500 psia), the gas remains dissolved with
+        only liquid swelling volume. Below the bubble point, gas flashes out of
+        solution into free gas, expanding rapidly near surface.
         """
         state = self.state
         if self._gas_pv <= 0.0:
             state.influx_volume_bbl = 0.0
+            state.gas_dissolved_fraction = 0.0
+            state.obm_breakout = False
             self._place_influx()
             return
 
         for _ in range(2):
-            state.influx_volume_bbl = self._gas_pv / self._gas_pressure_psia()
+            p_psia = self._gas_pressure_psia()
+            if not self.is_obm:
+                state.influx_volume_bbl = self._gas_pv / p_psia
+                state.gas_dissolved_fraction = 0.0
+            else:
+                pb = max(50.0, self.bubble_point_psi)
+                if p_psia >= pb:
+                    # 100% in solution. Swelling volume only.
+                    state.gas_dissolved_fraction = 1.0
+                    state.obm_breakout = False
+                    equiv_vol_at_pb = self._gas_pv / pb
+                    state.influx_volume_bbl = max(0.1, equiv_vol_at_pb * self.swelling_factor)
+                else:
+                    # Flash liberation below bubble point
+                    free_frac = (pb - p_psia) / max(1.0, pb - 14.7)
+                    free_frac = max(0.0, min(1.0, free_frac))
+                    state.gas_dissolved_fraction = 1.0 - free_frac
+                    if free_frac > 0.05 and not state.obm_breakout:
+                        state.obm_breakout = True
+                        state.record(
+                            EventKind.GAS_BREAKOUT,
+                            f"OBM Gas Breakout: Methane flashing rapidly out of solution as pressure drops below bubble point ({pb:.0f} psia)!",
+                            severity=Severity.WARNING,
+                        )
+                    equiv_vol_at_pb = self._gas_pv / pb
+                    dissolved_vol = (1.0 - free_frac) * equiv_vol_at_pb * self.swelling_factor
+                    free_vol = free_frac * (self._gas_pv / p_psia)
+                    state.influx_volume_bbl = max(0.1, dissolved_vol + free_vol)
             self._place_influx()
 
     def _check_dead(self) -> None:

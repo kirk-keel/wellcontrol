@@ -141,6 +141,8 @@ class Scenario:
     frac_gradient_ppg: float | None = None
     shoe_md_ft: float | None = None
     kick_after_s: float | None = None
+    is_obm: bool = False
+    bubble_point_psi: float | None = 1500.0
     is_custom: bool = False
 
     @property
@@ -170,6 +172,8 @@ class Scenario:
             "shoe_md_ft": self.shoe_md_ft,
             "bit_off_bottom_ft": self.bit_off_bottom_ft,
             "kick_after_s": self.kick_after_s,
+            "is_obm": self.is_obm,
+            "bubble_point_psi": self.bubble_point_psi,
             "is_custom": self.is_custom,
         }
 
@@ -244,6 +248,12 @@ class Scenario:
                 float(data["kick_after_s"])
                 if data.get("kick_after_s") is not None
                 else None
+            ),
+            is_obm=bool(data.get("is_obm", False)),
+            bubble_point_psi=(
+                float(data["bubble_point_psi"])
+                if data.get("bubble_point_psi") is not None
+                else 1500.0
             ),
             is_custom=bool(data.get("is_custom", False)),
         )
@@ -451,6 +461,29 @@ SCENARIOS: tuple[Scenario, ...] = (
         ),
         bit_off_bottom_ft=9200.0,
         start=StartState.SHUT_IN,
+    ),
+    Scenario(
+        key="obm_kick",
+        name="Oil-Based Mud (OBM) — Gas Solubility & Surface Breakout",
+        objective="Manage rapid gas flash breakout near surface without unloading the well or exceeding shoe pressure.",
+        briefing=(
+            "Drilling in synthetic oil-based mud (OBM). Gas influx dissolves directly "
+            "into the base oil downhole with minimal initial pit gain. As the kick ascends above "
+            "the 1,500 psi bubble point, methane flashes rapidly out of solution. Anticipate "
+            "the violent breakout, feather the choke, and catch the pressure surge."
+        ),
+        bop="surface",
+        trajectory="vertical",
+        start=StartState.SHUT_IN,
+        mud_weight_ppg=12.0,
+        shoe_md_ft=8000.0,
+        frac_gradient_ppg=14.5,
+        sidpp_psi=420.0,
+        sicp_psi=580.0,
+        pit_gain_bbl=20.0,
+        is_obm=True,
+        bubble_point_psi=1500.0,
+        require_kill=True,
     ),
 )
 

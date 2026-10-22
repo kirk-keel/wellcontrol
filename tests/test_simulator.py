@@ -650,3 +650,40 @@ class TestEquipment:
         sim = make()
         sim.choke.position = 50.0
         assert sim.choke.flow_bbl_per_min(-500.0, 9.6) == pytest.approx(0.0)
+
+
+class TestOBMGasSolubility:
+    """Oil-Based Mud (OBM) methane solubility and surface flash breakout."""
+
+    def test_obm_kick_dissolves_at_high_pressure(self):
+        sim_wbm = make(is_obm=False)
+        sim_obm = make(is_obm=True, bubble_point_psi=1500.0)
+
+        # In OBM downhole (P > 3000 psi), 100% of gas is in solution
+        assert sim_obm.state.gas_dissolved_fraction == 1.0
+        assert not sim_obm.state.obm_breakout
+
+        # Downhole volume in OBM is contracted by swelling factor
+        assert sim_obm.state.influx_volume_bbl < sim_wbm.state.influx_volume_bbl
+
+    def test_obm_flash_breakout_below_bubble_point(self):
+        sim = make(is_obm=True, bubble_point_psi=1500.0)
+        # Position gas near surface where pressure drops below bubble point
+        sim.state.migrated_bbl = sim.annulus_volume_bbl * 0.95
+        sim._place_influx()
+        sim._settle_gas()
+
+        # Below 1,500 psia bubble point, gas flashes out of solution
+        assert sim.state.gas_dissolved_fraction < 1.0
+        assert sim.state.obm_breakout is True
+        assert sim.state.event_log.has(EventKind.GAS_BREAKOUT)
+
+    def test_obm_scenario_instantiation_and_gauges(self):
+        from wellcontrol.sim import Session
+        session = Session.for_scenario("obm_kick")
+        assert session.simulator.is_obm is True
+        g = session.gauges()
+        assert g["is_obm"] is True
+        assert g["bubble_point_psi"] == 1500
+        assert g["gas_dissolved_fraction"] == 1.0
+        assert g["obm_breakout"] is False

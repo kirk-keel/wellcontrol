@@ -353,6 +353,8 @@
   <span class="pill" id="returns">—</span>
   <span class="pill mono" id="clock">00:00:00</span>
   <span class="pill" id="deadpill" style="display:none">Well dead</span>
+  <span class="pill warn" id="obmpill" style="display:none">OBM Mud (Gas Dissolved)</span>
+  <span class="pill bad" id="breakoutpill" style="display:none">⚠️ OBM Flash Breakout!</span>
   <span class="grow"></span>
   <div class="mm-dropdown-wrap">
     <button id="btn-multimonitor" style="background:linear-gradient(#2b3744,#1b242e);color:#e2e8f0;border-color:#3e4c5b" title="Detach and pop out screens to separate monitors">🗔 Multi-Monitor ▾</button>
@@ -549,6 +551,9 @@
           Original: <b id="d-orig-mw">—</b> ppg &nbsp;|&nbsp;
           Active: <b id="d-active-mw" style="color:var(--killmud)">—</b> ppg &nbsp;|&nbsp;
           Kill Target: <b id="d-target-mw">—</b> ppg
+        </div>
+        <div style="font-size:11px;margin-bottom:8px;color:#94a3b8">
+          System: <span id="d-mud-type">WBM (Water-Based)</span>
         </div>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
           <input type="number" id="mw-val" min="5" max="25" step="0.1" style="width:85px;padding:5px 8px;font-weight:700">
@@ -1046,6 +1051,25 @@ function paint(g) {
       if (g.target_kill_mud_weight_ppg && !$("mw-val").value) {
         $("mw-val").value = g.target_kill_mud_weight_ppg.toFixed(1);
       }
+    }
+  }
+
+  if ($("obmpill")) {
+    $("obmpill").style.display = g.is_obm ? "inline-block" : "none";
+    if (g.is_obm) {
+      const dissPct = Math.round((g.gas_dissolved_fraction || 0) * 100);
+      $("obmpill").textContent = dissPct > 0 ? `OBM: ${dissPct}% Gas in Solution` : "OBM Mud (Synthetic)";
+    }
+  }
+  if ($("breakoutpill")) {
+    $("breakoutpill").style.display = g.obm_breakout ? "inline-block" : "none";
+  }
+  if ($("d-mud-type")) {
+    if (g.is_obm) {
+      const dissPct = Math.round((g.gas_dissolved_fraction || 0) * 100);
+      $("d-mud-type").innerHTML = `<span style="color:#f59e0b;font-weight:700">OBM (Synthetic)</span> [Bubble Point: ${g.bubble_point_psi || 1500} psi, Dissolved: ${dissPct}%]`;
+    } else {
+      $("d-mud-type").textContent = "WBM (Water-Based)";
     }
   }
 

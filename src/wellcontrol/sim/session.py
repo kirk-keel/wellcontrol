@@ -164,6 +164,8 @@ class Session:
             faults=scenario.faults,
             migration_rate_ft_per_hr=scenario.migration_rate_ft_per_hr,
             kick_after_s=kick_after,
+            is_obm=bool(getattr(scenario, "is_obm", False)),
+            bubble_point_psi=float(getattr(scenario, "bubble_point_psi", 1500.0) or 1500.0),
         )
         session = cls(simulator=simulator, **kwargs)
         session.scenario = scenario
@@ -527,6 +529,10 @@ class Session:
             "original_mud_weight_ppg": round(self.simulator.well.mud_weight_ppg, 2),
             "target_kill_mud_weight_ppg": round(self.simulator.well.kill_mud_weight_ppg, 2),
             "trip_tank_volume_bbl": round(self.simulator.trip_tank.volume_bbl, 1),
+            "is_obm": self.simulator.is_obm,
+            "obm_breakout": state.obm_breakout,
+            "gas_dissolved_fraction": round(state.gas_dissolved_fraction, 2),
+            "bubble_point_psi": round(self.simulator.bubble_point_psi),
 
             # Downhole truth. No rig has these; see downhole_visible.
             "downhole_visible": visible,

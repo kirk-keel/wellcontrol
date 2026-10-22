@@ -99,6 +99,7 @@ class EventKind(Enum):
     BHP_EXCURSION = "bhp_excursion"
     GAS_MIGRATING = "gas_migrating"
     GAS_AT_SURFACE = "gas_at_surface"
+    GAS_BREAKOUT = "gas_breakout"
     KILL_MUD_AT_BIT = "kill_mud_at_bit"
     WELL_DEAD = "well_dead"
     EQUIPMENT_FAILURE = "equipment_failure"
