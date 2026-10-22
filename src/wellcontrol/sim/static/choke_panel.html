@@ -260,16 +260,156 @@
   .bar { height: 9px; border-radius: 4px; background: var(--sunk); border: 1px solid #33383d; overflow: hidden; }
   .bar i { display: block; height: 100%; background: var(--good); }
   .bar i.low { background: var(--critical); }
+
+  /* Multi-monitor dropdown menu */
+  .mm-dropdown-wrap { position: relative; display: inline-block; }
+  .multimonitor-menu {
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 1000;
+    width: 320px; background: #141a22; border: 1px solid #334155;
+    border-radius: 8px; box-shadow: 0 16px 36px rgba(0,0,0,0.7);
+    padding: 8px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .mm-header {
+    font-size: 10px; font-weight: 700; color: #94a3b8; letter-spacing: 0.08em;
+    padding: 6px 10px 4px; text-transform: uppercase;
+  }
+  .mm-item {
+    display: flex; align-items: center; gap: 12px; padding: 8px 12px;
+    background: #1e2631; border: 1px solid #2e3b4b; border-radius: 6px;
+    color: #e2e8f0; text-align: left; cursor: pointer; transition: all 0.15s ease;
+  }
+  .mm-item:hover {
+    background: #2b3746; border-color: #3b82f6; transform: translateX(2px);
+  }
+  .mm-highlight {
+    background: linear-gradient(135deg, #1e3a5f, #1e293b);
+    border-color: #3b82f6;
+  }
+  .mm-highlight:hover {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    border-color: #60a5fa; color: #fff;
+  }
+  .mm-icon { font-size: 18px; line-height: 1; flex-shrink: 0; }
+  .mm-title { font-size: 13px; font-weight: 600; color: #f8fafc; }
+  .mm-sub { font-size: 11px; color: #94a3b8; }
+  .mm-divider { height: 1px; background: #2e3b4b; margin: 4px 0; }
+
+  /* Popout mode standalone styling */
+  body.is-popout {
+    background: #0d1117;
+  }
+  body.is-popout #main-header {
+    display: none !important;
+  }
+  body.is-popout #popout-banner {
+    display: flex !important;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    background: #131821;
+    border-bottom: 2px solid #2563eb;
+  }
+  body.is-popout #tabs {
+    display: none;
+    border-bottom: 1px solid #2563eb;
+  }
+  body.is-popout #tabs.revealed {
+    display: flex !important;
+  }
+  body.is-popout main {
+    height: calc(100vh - 48px);
+    overflow-y: auto;
+    padding: 12px;
+  }
+  body.is-popout .screen {
+    min-height: 100%;
+  }
+  .popout-station-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(37, 99, 235, 0.2); border: 1px solid #2563eb;
+    color: #60a5fa; font-size: 11px; font-weight: 700;
+    padding: 3px 8px; border-radius: 4px; letter-spacing: 0.05em;
+  }
+  .popout-live-sync {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: #10b981; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  }
+  .popout-live-sync::before {
+    content: ""; display: inline-block; width: 8px; height: 8px;
+    border-radius: 50%; background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: pulse-sync 1.5s infinite;
+  }
+  @keyframes pulse-sync {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.8); }
+  }
 </style>
 </head>
 <body>
 
-<header>
+<header id="main-header">
   <h1>Well Control Simulator</h1>
   <span class="pill" id="returns">—</span>
   <span class="pill mono" id="clock">00:00:00</span>
   <span class="pill" id="deadpill" style="display:none">Well dead</span>
   <span class="grow"></span>
+  <div class="mm-dropdown-wrap">
+    <button id="btn-multimonitor" style="background:linear-gradient(#2b3744,#1b242e);color:#e2e8f0;border-color:#3e4c5b" title="Detach and pop out screens to separate monitors">🗔 Multi-Monitor ▾</button>
+    <div id="multimonitor-menu" class="multimonitor-menu" style="display:none">
+      <div class="mm-header">MULTI-MONITOR RIG COCKPIT</div>
+      <button class="mm-item mm-highlight" id="mm-launch-suite">
+        <span class="mm-icon">⚡</span>
+        <div>
+          <div class="mm-title">Launch 3-Screen Rig Suite</div>
+          <div class="mm-sub">Auto-tile Choke, Driller & Manifolds across displays</div>
+        </div>
+      </button>
+      <div class="mm-divider"></div>
+      <button class="mm-item" data-pop="choke">
+        <span class="mm-icon">🎛️</span>
+        <div>
+          <div class="mm-title">Detach Choke Panel (Screen 1)</div>
+          <div class="mm-sub">4-dial scan & hydraulic choke actuator</div>
+        </div>
+      </button>
+      <button class="mm-item" data-pop="driller">
+        <span class="mm-icon">🕹️</span>
+        <div>
+          <div class="mm-title">Detach Driller's Console (Screen 2)</div>
+          <div class="mm-sub">SPP, SPM, pit gain, flow out & hookload</div>
+        </div>
+      </button>
+      <button class="mm-item" data-pop="manifolds">
+        <span class="mm-icon">🔀</span>
+        <div>
+          <div class="mm-title">Detach Manifolds & P&ID (Screen 3)</div>
+          <div class="mm-sub">API 6A valves, MGS, pits & trip tank</div>
+        </div>
+      </button>
+      <button class="mm-item" data-pop="well">
+        <span class="mm-icon">📐</span>
+        <div>
+          <div class="mm-title">Detach Wellbore Schematic</div>
+          <div class="mm-sub">Live gas bubble migration & stratigraphy</div>
+        </div>
+      </button>
+      <button class="mm-item" data-pop="bop">
+        <span class="mm-icon">🛑</span>
+        <div>
+          <div class="mm-title">Detach BOP Stack & Control</div>
+          <div class="mm-sub">Annular, pipe rams & accumulator bottles</div>
+        </div>
+      </button>
+      <button class="mm-item" data-pop="sheet">
+        <span class="mm-icon">📋</span>
+        <div>
+          <div class="mm-title">Detach Kill Sheet</div>
+          <div class="mm-sub">Live step-down schedule & KMW solver</div>
+        </div>
+      </button>
+    </div>
+  </div>
   <a href="/teacher" target="_blank" style="text-decoration:none">
     <button style="background:linear-gradient(#2b3744,#1b242e);color:#e2e8f0;border-color:#3e4c5b" title="Open Multi-Student Teacher Dashboard">🎓 Instructor Console ↗</button>
   </a>
@@ -289,6 +429,23 @@
   <button id="restart">Restart</button>
 </header>
 
+<div id="popout-banner" style="display:none">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <span class="popout-station-badge">🖥️ DETACHED COCKPIT</span>
+    <span id="popout-title" style="font-weight:700;letter-spacing:.05em;color:#fff;text-transform:uppercase;font-size:13px">DRILLER'S CONSOLE</span>
+    <span class="pill mono" id="popout-session">SESSION: —</span>
+    <span class="pill mono" id="popout-clock">00:00:00</span>
+    <span class="pill" id="popout-returns">—</span>
+    <span class="popout-live-sync" title="Cross-Window BroadcastChannel Active">LIVE SYNC</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <button id="popout-btn-audio" style="padding:4px 10px;font-size:12px;background:#1e2631;color:#cbd5e1;border:1px solid #334155">🔇 Audio</button>
+    <button id="popout-btn-fullscreen" style="padding:4px 10px;font-size:12px;background:#1e2631;color:#cbd5e1;border:1px solid #334155" title="Toggle Fullscreen">⛶ Fullscreen</button>
+    <button id="popout-btn-tabs" style="padding:4px 10px;font-size:12px;background:#1e2631;color:#cbd5e1;border:1px solid #334155" title="Show/Hide Switcher Tabs">📑 Tabs</button>
+    <button id="popout-btn-close" style="padding:4px 10px;font-size:12px;background:linear-gradient(#dc2626,#991b1b);color:#fff;border:1px solid #7f1d1d" title="Close this popped-out screen">✕ Close</button>
+  </div>
+</div>
+
 <nav id="tabs">
   <button data-screen="driller" class="active">Driller</button>
   <button data-screen="choke">Choke</button>
@@ -298,6 +455,10 @@
   <button data-screen="sheet">Kill sheet</button>
   <button data-screen="debrief">Debrief</button>
   <button data-screen="guide">Guide</button>
+  <span class="grow"></span>
+  <button id="btn-popout-current" style="background:transparent;border:none;color:#94a3b8;font-size:12px;padding:6px 14px;display:inline-flex;align-items:center;gap:6px;cursor:pointer" title="Detach current screen into its own window">
+    <span>⤢</span> Pop Out This Screen
+  </button>
 </nav>
 
 <main>
@@ -796,6 +957,7 @@ async function start() {
   drawLineup(created.lineup);
   paint(created.gauges);
   loadSheet();
+  if (typeof notifyCockpitState === "function") notifyCockpitState("restart", { sessionId });
 }
 
 async function poll() {
@@ -847,6 +1009,13 @@ function paint(g) {
 
   if (typeof updateAudioTelemetry === "function") {
     updateAudioTelemetry(g);
+  }
+
+  if ($("popout-session")) $("popout-session").textContent = `SESSION: ${sessionId || "—"}`;
+  if ($("popout-clock") && $("clock")) $("popout-clock").textContent = $("clock").textContent;
+  if ($("popout-returns") && $("returns")) {
+    $("popout-returns").textContent = $("returns").textContent;
+    $("popout-returns").className = $("returns").className;
   }
 
   /* --- driller --- */
@@ -2129,6 +2298,7 @@ async function toggleValve(name) {
   });
   drawLineup(r.lineup); paint(r.gauges);
   redraw();
+  if (typeof notifyCockpitState === "function") notifyCockpitState("state_change", { valve: name });
 }
 
 /* ------------------------------ kill sheet ----------------------------- */
@@ -2609,17 +2779,54 @@ window.addEventListener("keydown", e => {
     $("choke-read").textContent = nextVal.toFixed(1);
     send("choke", {percent: nextVal});
   } else if (e.key >= "1" && e.key <= "8") {
-    const tabBtns = document.querySelectorAll("#tabs button");
+    const tabBtns = document.querySelectorAll("#tabs button[data-screen]");
     const idx = Number(e.key) - 1;
     if (idx < tabBtns.length) tabBtns[idx].click();
+  } else if (e.key === "p" || e.key === "P") {
+    if (!e.ctrlKey && !e.metaKey) {
+      popOutScreen(screen || "driller");
+    }
   }
 });
+
+const SCREEN_TITLES = {
+  driller: "Driller's Doghouse Console",
+  choke: "Remote Hydraulic Choke Panel",
+  bop: "BOP Control Stack & Accumulators",
+  manifolds: "Standpipe & Choke Manifolds (P&ID)",
+  well: "Live Wellbore & Stratigraphy Schematic",
+  sheet: "Kill Sheet Calculator & Step-Down Schedule",
+  debrief: "Post-Run Assessment & AI Coach",
+  guide: "Simulator Operations Guide"
+};
+
+function switchScreen(targetScreen) {
+  if (!targetScreen) return;
+  screen = targetScreen;
+  document.querySelectorAll("#tabs button[data-screen]").forEach(x => {
+    x.classList.toggle("active", x.dataset.screen === screen);
+  });
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  const targetEl = $("s-" + screen);
+  if (targetEl) targetEl.classList.add("active");
+  if (screen === "sheet") loadSheet();
+  else if (screen === "debrief") loadDebrief();
+  if (SCREEN_TITLES[screen] && $("popout-title")) {
+    $("popout-title").textContent = SCREEN_TITLES[screen];
+  }
+  document.title = (document.body.classList.contains("is-popout") ? "[Station] " : "") +
+    (SCREEN_TITLES[screen] || "Simulator") + (sessionId ? ` (${sessionId})` : "");
+  redraw();
+}
 
 async function send(what, body) {
   if (!sessionId) return;
   paint((await api(`/api/sessions/${sessionId}/${what}`, {
     method: "POST", body: JSON.stringify(body)
   })).gauges);
+  if (typeof notifyCockpitState === "function") {
+    notifyCockpitState("state_change", { what });
+  }
 }
 document.querySelectorAll("[data-choke]").forEach(b => b.onclick = () => {
   const raw = b.dataset.choke;
@@ -2640,14 +2847,8 @@ $("scenario").addEventListener("change", () => start());
 $("db-require").addEventListener("change", loadDebrief);
 
 $("tabs").addEventListener("click", e => {
-  const b = e.target.closest("button"); if (!b) return;
-  screen = b.dataset.screen;
-  document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("active", x === b));
-  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
-  $("s-" + screen).classList.add("active");
-  if (screen === "sheet") loadSheet();
-  else if (screen === "debrief") loadDebrief();
-  redraw();
+  const b = e.target.closest("button[data-screen]"); if (!b) return;
+  switchScreen(b.dataset.screen);
 });
 window.addEventListener("resize", redraw);
 
@@ -2827,14 +3028,161 @@ if ($("btn-audio")) {
   $("btn-audio").onclick = toggleAudio;
 }
 
+/* ----------------------- multi-monitor cockpit support -------------------- */
+function getPopoutUrl(screenName) {
+  const base = window.location.origin + window.location.pathname;
+  return `${base}?session=${encodeURIComponent(sessionId || "")}&screen=${encodeURIComponent(screenName)}&popout=1`;
+}
+
+function popOutScreen(screenName) {
+  if (!sessionId) return;
+  const w = 1180;
+  const h = 820;
+  const left = Math.max(0, (window.screenX || window.screenLeft || 0) + 40);
+  const top = Math.max(0, (window.screenY || window.screenTop || 0) + 40);
+  const winTitle = `wc_${screenName}_${sessionId}`;
+  window.open(
+    getPopoutUrl(screenName),
+    winTitle,
+    `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes`
+  );
+}
+
+function launch3ScreenSuite() {
+  if (!sessionId) return;
+  const screenW = window.screen.availWidth || 1920;
+  const screenH = window.screen.availHeight || 1080;
+  const halfW = Math.floor(screenW / 2);
+  const halfH = Math.floor(screenH / 2);
+
+  // Screen 1: Driller Console (Left half, full height)
+  window.open(
+    getPopoutUrl("driller"),
+    `wc_driller_${sessionId}`,
+    `width=${halfW},height=${screenH},left=0,top=0,menubar=no,toolbar=no,location=no,status=no,resizable=yes`
+  );
+
+  // Screen 2: Choke Panel (Top Right)
+  window.open(
+    getPopoutUrl("choke"),
+    `wc_choke_${sessionId}`,
+    `width=${halfW},height=${halfH},left=${halfW},top=0,menubar=no,toolbar=no,location=no,status=no,resizable=yes`
+  );
+
+  // Screen 3: Manifolds & P&ID (Bottom Right)
+  window.open(
+    getPopoutUrl("manifolds"),
+    `wc_manifolds_${sessionId}`,
+    `width=${halfW},height=${halfH},left=${halfW},top=${halfH},menubar=no,toolbar=no,location=no,status=no,resizable=yes`
+  );
+}
+
+/* Cross-window BroadcastChannel sync */
+let cockpitChannel = null;
+try {
+  if (typeof BroadcastChannel !== "undefined") {
+    cockpitChannel = new BroadcastChannel("wellcontrol_cockpit_sync");
+    cockpitChannel.onmessage = (event) => {
+      const data = event.data;
+      if (!data) return;
+      if (data.sessionId && sessionId && data.sessionId !== sessionId) return;
+      if (data.type === "state_change") {
+        poll();
+      } else if (data.type === "restart") {
+        if (data.sessionId && data.sessionId !== sessionId) {
+          sessionId = data.sessionId;
+        }
+        poll();
+      }
+    };
+  }
+} catch (e) {
+  console.warn("BroadcastChannel not active:", e);
+}
+
+function notifyCockpitState(type = "state_change", extra = {}) {
+  if (cockpitChannel) {
+    try {
+      cockpitChannel.postMessage({ type, sessionId, ...extra });
+    } catch (e) {}
+  }
+}
+
+function applyPopoutMode(screenName) {
+  document.body.classList.add("is-popout");
+  const popBanner = $("popout-banner");
+  if (popBanner) popBanner.style.display = "flex";
+  switchScreen(screenName);
+}
+
+// Multi-monitor dropdown wiring
+const btnMulti = $("btn-multimonitor");
+const menuMulti = $("multimonitor-menu");
+if (btnMulti && menuMulti) {
+  btnMulti.onclick = (e) => {
+    e.stopPropagation();
+    menuMulti.style.display = menuMulti.style.display === "none" ? "flex" : "none";
+  };
+  document.addEventListener("click", (e) => {
+    if (!menuMulti.contains(e.target) && e.target !== btnMulti) {
+      menuMulti.style.display = "none";
+    }
+  });
+}
+if ($("mm-launch-suite")) {
+  $("mm-launch-suite").onclick = () => {
+    launch3ScreenSuite();
+    if (menuMulti) menuMulti.style.display = "none";
+  };
+}
+document.querySelectorAll(".mm-item[data-pop]").forEach(b => {
+  b.onclick = () => {
+    popOutScreen(b.dataset.pop);
+    if (menuMulti) menuMulti.style.display = "none";
+  };
+});
+if ($("btn-popout-current")) {
+  $("btn-popout-current").onclick = () => {
+    popOutScreen(screen || "driller");
+  };
+}
+
+// Popout banner buttons
+if ($("popout-btn-audio")) $("popout-btn-audio").onclick = toggleAudio;
+if ($("popout-btn-fullscreen")) {
+  $("popout-btn-fullscreen").onclick = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+}
+if ($("popout-btn-tabs")) {
+  $("popout-btn-tabs").onclick = () => {
+    $("tabs").classList.toggle("revealed");
+  };
+}
+if ($("popout-btn-close")) {
+  $("popout-btn-close").onclick = () => window.close();
+}
+
 async function init() {
   await loadScenarios();
   const urlParams = new URLSearchParams(window.location.search);
   const sessionParam = urlParams.get("session");
   const scenarioParam = urlParams.get("scenario");
+  const screenParam = urlParams.get("screen");
+  const isPopout = urlParams.get("popout") === "1" || urlParams.get("standalone") === "1";
 
   if (scenarioParam && $("scenario")) {
     $("scenario").value = scenarioParam;
+  }
+
+  if (isPopout) {
+    applyPopoutMode(screenParam || "driller");
+  } else if (screenParam) {
+    switchScreen(screenParam);
   }
 
   if (sessionParam) {

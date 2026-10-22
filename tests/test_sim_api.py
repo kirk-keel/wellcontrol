@@ -492,6 +492,34 @@ class TestPanel:
         assert "loadScenarios" in text
 
 
+class TestMultiMonitorCockpit:
+    """Multi-monitor detached cockpit and popout windows."""
+
+    def test_multi_monitor_menu_and_actions(self, client):
+        text = client.get("/").text
+        assert "btn-multimonitor" in text
+        assert "multimonitor-menu" in text
+        assert "mm-launch-suite" in text
+        for scr in ("choke", "driller", "manifolds", "well", "bop", "sheet"):
+            assert f'data-pop="{scr}"' in text
+
+    def test_popout_banner_and_station_controls(self, client):
+        text = client.get("/").text
+        assert "popout-banner" in text
+        assert "popout-station-badge" in text
+        assert "popout-live-sync" in text
+        assert "popout-btn-fullscreen" in text
+        assert "popout-btn-close" in text
+        assert "btn-popout-current" in text
+
+    def test_cross_window_sync_channel_present(self, client):
+        text = client.get("/").text
+        assert "wellcontrol_cockpit_sync" in text
+        assert "BroadcastChannel" in text
+        assert "launch3ScreenSuite" in text
+        assert "popOutScreen" in text
+
+
 class TestWhatTheStudentCanSee:
     """A rig has no bottomhole gauge; nor does the panel until it is earned."""
 

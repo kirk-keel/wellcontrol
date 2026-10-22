@@ -327,6 +327,11 @@ Each stage is useful on its own and de-risks the next.
     rig-floor stations (Driller, Choke Operator, Toolpusher, Mud Engineer, Observer)
     with WebSocket state synchronization, role permission enforcement, tactical
     rig walkie-talkie / intercom callouts, and audio squelch/chimes.
+11. ~~**Multi-Monitor Detachable Cockpit Suite.**~~ **Done.** Real-time window
+    detachment for physical multi-monitor doghouse setups. Pop out individual
+    workstation screens (Choke, Driller, Manifolds P&ID, BOP Stack, Wellbore)
+    or auto-tile a 3-screen rig suite with live bidirectional cross-window
+    synchronization via `BroadcastChannel`.
 
 Stage 1 is where the real risk is. If the engine is right, everything else is
 presentation.
