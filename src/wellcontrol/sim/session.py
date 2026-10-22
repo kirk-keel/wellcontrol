@@ -140,11 +140,30 @@ class Session:
         well = examples.well_state(
             config, bit_off_bottom_ft=scenario.bit_off_bottom_ft
         )
+        if getattr(scenario, "mud_weight_ppg", None) is not None:
+            well.mud_weight_ppg = float(scenario.mud_weight_ppg)
+        if getattr(scenario, "sidpp_psi", None) is not None:
+            well.sidpp_psi = float(scenario.sidpp_psi)
+        if getattr(scenario, "sicp_psi", None) is not None:
+            well.sicp_psi = float(scenario.sicp_psi)
+        if getattr(scenario, "pit_gain_bbl", None) is not None:
+            well.pit_gain_bbl = float(scenario.pit_gain_bbl)
+        if getattr(scenario, "frac_gradient_ppg", None) is not None:
+            well.frac_gradient_ppg = float(scenario.frac_gradient_ppg)
+        if getattr(scenario, "shoe_md_ft", None) is not None:
+            well.shoe_md_ft = float(scenario.shoe_md_ft)
+
+        kick_after = (
+            float(scenario.kick_after_s)
+            if getattr(scenario, "kick_after_s", None) is not None
+            else 120.0
+        )
         simulator = Simulator(
             well=well,
             start=scenario.start,
             faults=scenario.faults,
             migration_rate_ft_per_hr=scenario.migration_rate_ft_per_hr,
+            kick_after_s=kick_after,
         )
         session = cls(simulator=simulator, **kwargs)
         session.scenario = scenario

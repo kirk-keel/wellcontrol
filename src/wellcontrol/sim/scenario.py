@@ -25,8 +25,10 @@ are holding 400 psi on it teaches them what a plugged choke feels like.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 
 from .assessment import EventKind, Severity, Standard
 from .engine import StartState
@@ -132,6 +134,14 @@ class Scenario:
     faults: tuple[Fault, ...] = ()
     require_kill: bool = False
     migration_rate_ft_per_hr: float | None = None
+    mud_weight_ppg: float | None = None
+    sidpp_psi: float | None = None
+    sicp_psi: float | None = None
+    pit_gain_bbl: float | None = None
+    frac_gradient_ppg: float | None = None
+    shoe_md_ft: float | None = None
+    kick_after_s: float | None = None
+    is_custom: bool = False
 
     @property
     def standard(self) -> Standard:
@@ -152,7 +162,32 @@ class Scenario:
             # choke is going to plug at stroke 2,000 is not being tested on
             # noticing that the choke has plugged.
             "has_faults": bool(self.faults),
+            "mud_weight_ppg": self.mud_weight_ppg,
+            "sidpp_psi": self.sidpp_psi,
+            "sicp_psi": self.sicp_psi,
+            "pit_gain_bbl": self.pit_gain_bbl,
+            "frac_gradient_ppg": self.frac_gradient_ppg,
+            "shoe_md_ft": self.shoe_md_ft,
+            "bit_off_bottom_ft": self.bit_off_bottom_ft,
+            "kick_after_s": self.kick_after_s,
+            "is_custom": self.is_custom,
         }
+
+    def detailed_dict(self) -> dict:
+        """Full specification including faults for instructors and storage."""
+        d = self.summary()
+        d["faults"] = [
+            {
+                "kind": f.kind.value,
+                "at_seconds": f.at_seconds,
+                "at_strokes": f.at_strokes,
+                "after_event": f.after_event.value if f.after_event else None,
+                "message": f.message,
+                "severity": f.severity.value,
+            }
+            for f in self.faults
+        ]
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> "Scenario":
@@ -170,7 +205,47 @@ class Scenario:
             closed_valves=tuple(data.get("closed_valves", ())),
             faults=tuple(Fault.from_dict(f) for f in data.get("faults", ())),
             require_kill=bool(data.get("require_kill", False)),
-            migration_rate_ft_per_hr=data.get("migration_rate_ft_per_hr"),
+            migration_rate_ft_per_hr=(
+                float(data["migration_rate_ft_per_hr"])
+                if data.get("migration_rate_ft_per_hr") is not None
+                else None
+            ),
+            mud_weight_ppg=(
+                float(data["mud_weight_ppg"])
+                if data.get("mud_weight_ppg") is not None
+                else None
+            ),
+            sidpp_psi=(
+                float(data["sidpp_psi"])
+                if data.get("sidpp_psi") is not None
+                else None
+            ),
+            sicp_psi=(
+                float(data["sicp_psi"])
+                if data.get("sicp_psi") is not None
+                else None
+            ),
+            pit_gain_bbl=(
+                float(data["pit_gain_bbl"])
+                if data.get("pit_gain_bbl") is not None
+                else None
+            ),
+            frac_gradient_ppg=(
+                float(data["frac_gradient_ppg"])
+                if data.get("frac_gradient_ppg") is not None
+                else None
+            ),
+            shoe_md_ft=(
+                float(data["shoe_md_ft"])
+                if data.get("shoe_md_ft") is not None
+                else None
+            ),
+            kick_after_s=(
+                float(data["kick_after_s"])
+                if data.get("kick_after_s") is not None
+                else None
+            ),
+            is_custom=bool(data.get("is_custom", False)),
         )
 
 
@@ -380,21 +455,189 @@ SCENARIOS: tuple[Scenario, ...] = (
 )
 
 _BY_KEY = {s.key: s for s in SCENARIOS}
+_CUSTOM_SCENARIOS: dict[str, Scenario] = {}
+
+#: Dedicated storage location for custom scenario JSON files
+CUSTOM_DIR = (
+    Path(__file__).resolve().parent.parent.parent.parent
+    / "data"
+    / "custom_scenarios"
+)
+
+
+def _load_custom_scenarios_from_disk() -> None:
+    """Load previously saved custom scenario definitions from disk."""
+    if not CUSTOM_DIR.exists():
+        return
+    for path in CUSTOM_DIR.glob("*.json"):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            data["is_custom"] = True
+            scen = Scenario.from_dict(data)
+            _CUSTOM_SCENARIOS[scen.key] = scen
+        except Exception:
+            pass
+
+
+_load_custom_scenarios_from_disk()
+
+
+def save_custom_scenario(data: dict) -> Scenario:
+    """Create or update a custom well control scenario and persist to disk."""
+    raw_key = str(data.get("key", "")).strip().lower().replace(" ", "_")
+    key = "".join(c for c in raw_key if c.isalnum() or c in ("_", "-"))
+    if not key:
+        raise ValueError("Scenario 'key' cannot be empty.")
+    if key in _BY_KEY:
+        raise ValueError(
+            f"Scenario key '{key}' conflicts with a built-in standard scenario."
+        )
+
+    data_copy = dict(data)
+    data_copy["key"] = key
+    data_copy["is_custom"] = True
+    scen = Scenario.from_dict(data_copy)
+
+    CUSTOM_DIR.mkdir(parents=True, exist_ok=True)
+    file_path = CUSTOM_DIR / f"{key}.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(scen.detailed_dict(), f, indent=2)
+
+    _CUSTOM_SCENARIOS[key] = scen
+    return scen
+
+
+def delete_custom_scenario(key: str) -> bool:
+    """Remove a custom scenario from active registry and delete from disk."""
+    if key not in _CUSTOM_SCENARIOS:
+        return False
+    _CUSTOM_SCENARIOS.pop(key, None)
+    file_path = CUSTOM_DIR / f"{key}.json"
+    if file_path.exists():
+        try:
+            file_path.unlink()
+        except OSError:
+            pass
+    return True
+
+
+def get_custom_templates() -> list[dict]:
+    """Pre-engineered scenario templates ready for instructor customization."""
+    return [
+        {
+            "key": "deepwater_gas_washout",
+            "name": "Deepwater HPHT Gas Kick with Choke Washout",
+            "objective": "Circulate out high-pressure deepwater gas while diagnosing severe choke orifice erosion.",
+            "briefing": "Drilling with 13.0 ppg mud at 12,500 ft TVD subsea. A 30 bbl gas kick is shut in. At stroke 800, tungsten carbide choke beans suffer erosive washout from abrasive sand. Switch to standby choke and maintain constant BHP.",
+            "bop": "subsea",
+            "trajectory": "deviated",
+            "start": "shut_in",
+            "mud_weight_ppg": 13.0,
+            "shoe_md_ft": 9800.0,
+            "frac_gradient_ppg": 15.2,
+            "sidpp_psi": 520.0,
+            "sicp_psi": 780.0,
+            "pit_gain_bbl": 30.0,
+            "require_kill": True,
+            "faults": [
+                {
+                    "kind": "choke_washout",
+                    "at_strokes": 800,
+                    "message": "Choke valve orifice severe erosion/washout detected — casing pressure dropping rapidly!",
+                    "severity": "critical",
+                }
+            ],
+        },
+        {
+            "key": "narrow_margin_losses",
+            "name": "Narrow Margin Depleted Sand — Weak Shoe Breakdown",
+            "objective": "Kill the well with less than 150 psi margin before exceeding shoe fracture pressure.",
+            "briefing": "Operating through a depleted formation with high pore pressure below. Shoe fracture margin is extremely narrow (13.8 ppg LOT vs 12.8 ppg influx EMW). At stroke 1,200, shoe breaks down. Control backpressure to avoid total losses.",
+            "bop": "surface",
+            "trajectory": "vertical",
+            "start": "shut_in",
+            "mud_weight_ppg": 12.0,
+            "shoe_md_ft": 8200.0,
+            "frac_gradient_ppg": 13.8,
+            "sidpp_psi": 420.0,
+            "sicp_psi": 610.0,
+            "pit_gain_bbl": 20.0,
+            "require_kill": True,
+            "faults": [
+                {
+                    "kind": "weak_shoe",
+                    "at_strokes": 1200,
+                    "message": "Casing shoe integrity compromised — micro-fracturing detected in permeable sand.",
+                    "severity": "critical",
+                }
+            ],
+        },
+        {
+            "key": "horizontal_detection_drill",
+            "name": "Horizontal Lateral — Active Drilling Kick Detection",
+            "objective": "Detect subtle influx signature in a 3,000 ft horizontal drainhole and execute immediate soft shut-in.",
+            "briefing": "Drilling the 8-1/2 inch reservoir section at 14,000 ft MD (9,200 ft TVD). In horizontal holes, gas influx does not build vertical hydrostatic head initially. Watch flow show and pit volume totalizer closely.",
+            "bop": "surface",
+            "trajectory": "horizontal",
+            "start": "drilling",
+            "mud_weight_ppg": 11.4,
+            "shoe_md_ft": 9400.0,
+            "frac_gradient_ppg": 14.5,
+            "kick_after_s": 60.0,
+            "require_kill": False,
+            "faults": [],
+        },
+        {
+            "key": "pump_packing_failure",
+            "name": "Driller's Circulation with Triplex Pump Breakdown",
+            "objective": "Manage pump swap during first circulation without allowing bottomhole pressure to plunge.",
+            "briefing": "First circulation of Driller's Method is underway. At stroke 1,500, mud pump #1 blows fluid-end valve packing. Shut in or switch to pump #2 on the fly while feathering the choke.",
+            "bop": "surface",
+            "trajectory": "vertical",
+            "start": "shut_in",
+            "mud_weight_ppg": 10.2,
+            "shoe_md_ft": 7500.0,
+            "frac_gradient_ppg": 14.0,
+            "sidpp_psi": 380.0,
+            "sicp_psi": 530.0,
+            "pit_gain_bbl": 18.0,
+            "require_kill": False,
+            "faults": [
+                {
+                    "kind": "pump_failure",
+                    "at_strokes": 1500,
+                    "message": "Triplex Mud Pump #1 blown packing and ruptured discharge liner!",
+                    "severity": "critical",
+                }
+            ],
+        },
+    ]
 
 
 def get_scenario(key: str) -> Scenario:
-    """Look one up by key.
+    """Look one up by key across built-in and custom scenarios.
 
     Raises:
         KeyError: naming the ones that exist, so a typo is self-correcting.
     """
-    if key not in _BY_KEY:
-        raise KeyError(
-            f"No scenario '{key}'. Available: {', '.join(sorted(_BY_KEY))}"
-        )
-    return _BY_KEY[key]
+    if key in _CUSTOM_SCENARIOS:
+        return _CUSTOM_SCENARIOS[key]
+    if key in _BY_KEY:
+        return _BY_KEY[key]
+    all_keys = sorted(list(_BY_KEY.keys()) + list(_CUSTOM_SCENARIOS.keys()))
+    raise KeyError(
+        f"No scenario '{key}'. Available: {', '.join(all_keys)}"
+    )
 
 
 def scenario_list() -> list[dict]:
-    """Every scenario, for the picker."""
-    return [s.summary() for s in SCENARIOS]
+    """Every scenario (built-in and custom), for the picker."""
+    return [s.summary() for s in SCENARIOS] + [
+        s.summary() for s in _CUSTOM_SCENARIOS.values()
+    ]
+
+
+def custom_scenario_list() -> list[dict]:
+    """Only custom instructor-defined scenarios (including faults for editor)."""
+    return [s.detailed_dict() for s in _CUSTOM_SCENARIOS.values()]

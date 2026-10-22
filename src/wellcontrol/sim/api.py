@@ -25,6 +25,7 @@ core library imports this module, so the dependency-free suite is unaffected.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -133,6 +134,27 @@ class CalloutBody(BaseModel):
     is_standard: bool = Field(default=False)
 
 
+class CustomScenarioBody(BaseModel):
+    key: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=120)
+    objective: str = Field(min_length=1, max_length=240)
+    briefing: str = Field(default="")
+    bop: str = Field(default="surface")
+    trajectory: str = Field(default="vertical")
+    start: str = Field(default="shut_in")
+    bit_off_bottom_ft: float = 0.0
+    mud_weight_ppg: float | None = None
+    sidpp_psi: float | None = None
+    sicp_psi: float | None = None
+    pit_gain_bbl: float | None = None
+    frac_gradient_ppg: float | None = None
+    shoe_md_ft: float | None = None
+    kick_after_s: float | None = None
+    require_kill: bool = False
+    migration_rate_ft_per_hr: float | None = None
+    faults: list[dict[str, Any]] = []
+
+
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------
@@ -179,6 +201,48 @@ def scenarios() -> dict:
     from .scenario import scenario_list
 
     return {"scenarios": scenario_list()}
+
+
+@app.get("/api/scenarios/custom")
+def get_custom_scenarios() -> dict:
+    """List all custom instructor-created scenarios."""
+    from .scenario import custom_scenario_list
+
+    return {"custom_scenarios": custom_scenario_list()}
+
+
+@app.get("/api/scenarios/templates")
+def get_scenario_templates() -> dict:
+    """Pre-engineered scenario templates ready to be customized."""
+    from .scenario import get_custom_templates
+
+    return {"templates": get_custom_templates()}
+
+
+@app.post("/api/scenarios/custom", status_code=201)
+def create_custom_scenario(body: CustomScenarioBody) -> dict:
+    """Create or update a custom well control scenario and save to disk."""
+    from .scenario import save_custom_scenario
+
+    try:
+        data = body.model_dump() if hasattr(body, "model_dump") else body.dict()
+        scen = save_custom_scenario(data)
+        return {"scenario": scen.summary()}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/scenarios/custom/{key}")
+def delete_scenario(key: str) -> dict:
+    """Delete a custom scenario from memory and disk."""
+    from .scenario import delete_custom_scenario
+
+    ok = delete_custom_scenario(key)
+    if not ok:
+        raise HTTPException(
+            status_code=404, detail=f"Custom scenario '{key}' not found."
+        )
+    return {"deleted": True, "key": key}
 
 
 @app.post("/api/sessions", status_code=201)

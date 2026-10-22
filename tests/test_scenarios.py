@@ -22,7 +22,11 @@ from wellcontrol.sim.scenario import (
     Fault,
     FaultKind,
     Scenario,
+    custom_scenario_list,
+    delete_custom_scenario,
+    get_custom_templates,
     get_scenario,
+    save_custom_scenario,
     scenario_list,
 )
 
@@ -288,3 +292,75 @@ class TestTheScenarioSetsTheStandard:
     def test_a_session_without_a_scenario_still_works(self):
         session = Session.for_configuration()
         assert session.debrief()["scenario"] is None
+
+
+class TestCustomScenarios:
+    def test_custom_templates_exist(self):
+        tmpls = get_custom_templates()
+        assert len(tmpls) >= 3
+        keys = [t["key"] for t in tmpls]
+        assert "deepwater_gas_washout" in keys
+        assert "narrow_margin_losses" in keys
+
+    def test_save_and_retrieve_custom_scenario(self):
+        key = "test_custom_deepwater_influx"
+        delete_custom_scenario(key)
+        data = {
+            "key": key,
+            "name": "Custom Deepwater Test",
+            "objective": "Test custom scenario persistence and execution",
+            "briefing": "Testing custom briefing text",
+            "bop": "subsea",
+            "trajectory": "vertical",
+            "start": "shut_in",
+            "mud_weight_ppg": 13.5,
+            "sidpp_psi": 550.0,
+            "sicp_psi": 800.0,
+            "pit_gain_bbl": 32.0,
+            "shoe_md_ft": 9500.0,
+            "frac_gradient_ppg": 15.5,
+            "require_kill": True,
+            "faults": [
+                {
+                    "kind": "choke_plugged",
+                    "at_strokes": 500,
+                    "message": "Choke plugged with shale",
+                    "severity": "critical",
+                }
+            ],
+        }
+        scen = save_custom_scenario(data)
+        assert scen.key == key
+        assert scen.is_custom
+
+        retrieved = get_scenario(key)
+        assert retrieved.name == "Custom Deepwater Test"
+        assert retrieved.mud_weight_ppg == 13.5
+        assert retrieved.sidpp_psi == 550.0
+
+        # Create session from custom scenario
+        session = Session.for_scenario(key)
+        assert session.scenario.key == key
+        assert session.simulator.well.mud_weight_ppg == 13.5
+        assert session.simulator.well.sidpp_psi == 550.0
+        assert session.simulator.well.sicp_psi == 800.0
+
+        # Check listed in scenario_list and custom_scenario_list
+        all_scens = scenario_list()
+        assert any(s["key"] == key and s["is_custom"] for s in all_scens)
+        custom_scens = custom_scenario_list()
+        assert any(s["key"] == key for s in custom_scens)
+
+        # Cleanup
+        deleted = delete_custom_scenario(key)
+        assert deleted
+        with pytest.raises(KeyError):
+            get_scenario(key)
+
+    def test_conflict_with_builtin_scenario_rejected(self):
+        with pytest.raises(ValueError, match="conflicts with a built-in standard scenario"):
+            save_custom_scenario({
+                "key": "drillers",
+                "name": "Invalid Override",
+                "objective": "Should fail",
+            })

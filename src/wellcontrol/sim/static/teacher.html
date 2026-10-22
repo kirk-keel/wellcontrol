@@ -182,6 +182,32 @@
     background: rgba(232, 118, 15, 0.08); border: 1px solid var(--accent);
     border-radius: 6px; padding: 10px 14px; line-height: 1.5; font-size: 12px;
   }
+
+  /* Scenario Builder Styles */
+  .modal.xlarge { max-width: 1100px; width: 95vw; }
+  .builder-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 860px) { .builder-grid { grid-template-columns: 1fr; } }
+  .builder-card {
+    background: #171d24; border: 1px solid #283340; border-radius: 6px; padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .builder-card-title {
+    font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;
+    letter-spacing: .08em; border-bottom: 1px solid #283340; padding-bottom: 6px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .form-row { display: flex; gap: 10px; }
+  .form-row > * { flex: 1; }
+  .form-label { font-size: 11px; font-weight: 600; color: #cbd5e1; margin-bottom: 3px; display: block; }
+  .form-input { width: 100%; padding: 6px 8px; background: #0f141a; border: 1px solid #2e3a47; border-radius: 4px; color: #fff; font-size: 12px; }
+  .fault-row {
+    background: #10151c; border: 1px solid #242f3d; border-radius: 4px; padding: 8px 10px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;
+  }
+  .custom-scenario-item {
+    background: #121820; border: 1px solid #253342; border-radius: 6px; padding: 10px 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
 </style>
 </head>
 <body>
@@ -190,6 +216,7 @@
   <h1>🎓 WELL CONTROL SIMULATOR <span>INSTRUCTOR MASTER STATION</span></h1>
   <span class="badge info" id="active-count">0 Students Active</span>
   <div class="grow"></div>
+  <button id="btn-builder" style="background:linear-gradient(#2563eb,#1d4ed8);color:#fff;border-color:#3b82f6" title="Visual Scenario & Custom Well Program Builder">🛠️ Scenario Builder</button>
   <button id="btn-gradebook">📊 Cohort Gradebook</button>
   <button class="danger" id="btn-master-freeze">⏸ Master Freeze All</button>
   <button class="success" id="btn-master-resume">▶ Resume All</button>
@@ -415,6 +442,172 @@
   </div>
 </div>
 
+<!-- ========================= SCENARIO BUILDER MODAL ========================= -->
+<div class="modal-overlay" id="modal-builder">
+  <div class="modal xlarge">
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">🛠️</span>
+        <div>
+          <h2 style="margin:0;font-size:15px">Visual Well Program & Scenario Builder</h2>
+          <div style="font-size:11px;color:var(--ink-dim)">Configure custom casing programs, LOT gradients, gas kicks, and scripted faults</div>
+        </div>
+      </div>
+      <button class="badge dim" onclick="closeModal('modal-builder')">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Blueprint template loader bar -->
+      <div style="display:flex;align-items:center;justify-content:space-between;background:#151c24;padding:8px 12px;border-radius:6px;border:1px solid #283340;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;font-weight:700;color:#60a5fa">📐 Load Blueprint Template:</span>
+          <select id="sb-template-select" style="padding:4px 8px;font-size:12px;background:#1e2631">
+            <option value="">— Select Template Blueprint —</option>
+          </select>
+          <button id="sb-btn-apply-template" style="padding:4px 10px;font-size:12px">Apply</button>
+        </div>
+        <button id="sb-btn-clear" style="padding:4px 10px;font-size:12px;background:#2b1d1d;color:#fca5a5;border-color:#7f1d1d">Clear / Reset Form</button>
+      </div>
+
+      <!-- Main 2-column form -->
+      <div class="builder-grid">
+        <!-- Col 1: Identity & Well Architecture -->
+        <div class="builder-card">
+          <div class="builder-card-title">
+            <span>1. Exercise Identity & Architecture</span>
+            <span class="badge info">Setup</span>
+          </div>
+
+          <div>
+            <label class="form-label">Scenario Title / Name *</label>
+            <input type="text" id="sb-name" class="form-input" placeholder="e.g. Deepwater HPHT Gas Influx (Block 42)">
+          </div>
+
+          <div class="form-row">
+            <div>
+              <label class="form-label">Key / Slug (ID) *</label>
+              <input type="text" id="sb-key" class="form-input mono" placeholder="e.g. deepwater_hpht_42">
+            </div>
+            <div>
+              <label class="form-label">Starting State</label>
+              <select id="sb-start" class="form-input">
+                <option value="shut_in">Shut-In on Kick (Constant BHP Kill)</option>
+                <option value="drilling">Drilling Ahead (Kick Detection Drill)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div>
+              <label class="form-label">BOP Location</label>
+              <select id="sb-bop" class="form-input">
+                <option value="surface">Surface Stack (Land / Jackup)</option>
+                <option value="subsea">Deepwater Subsea Stack</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Well Trajectory</label>
+              <select id="sb-trajectory" class="form-input">
+                <option value="vertical">Vertical</option>
+                <option value="deviated">Deviated (S-Type)</option>
+                <option value="horizontal">Horizontal Lateral</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="form-label">Trainee Objective (1 Sentence) *</label>
+            <input type="text" id="sb-obj" class="form-input" placeholder="e.g. Circulate influx out at constant BHP without exceeding shoe fracture pressure.">
+          </div>
+
+          <div>
+            <label class="form-label">Narrative Briefing</label>
+            <textarea id="sb-briefing" class="form-input" rows="3" placeholder="Context provided to student before starting exercise..."></textarea>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+            <input type="checkbox" id="sb-require-kill" style="cursor:pointer">
+            <label for="sb-require-kill" style="font-size:12px;font-weight:600;cursor:pointer">Require Complete Well Kill to Pass (IADC/IWCF Standard)</label>
+          </div>
+        </div>
+
+        <!-- Col 2: Geomechanics & Kick Parameters -->
+        <div class="builder-card">
+          <div class="builder-card-title">
+            <span>2. Geomechanics & Influx Hydraulics</span>
+            <span class="badge warning">Downhole Physics</span>
+          </div>
+
+          <div class="form-row">
+            <div>
+              <label class="form-label">Active Mud Weight (ppg)</label>
+              <input type="number" step="0.1" id="sb-mw" class="form-input" placeholder="e.g. 12.0">
+            </div>
+            <div>
+              <label class="form-label">Casing Shoe Depth (ft MD)</label>
+              <input type="number" step="100" id="sb-shoe-depth" class="form-input" placeholder="e.g. 8500">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div>
+              <label class="form-label">Shoe Frac Limit (ppg EMW / LOT)</label>
+              <input type="number" step="0.1" id="sb-frac-grad" class="form-input" placeholder="e.g. 14.5">
+            </div>
+            <div>
+              <label class="form-label">Bit Off Bottom (ft, Stripping)</label>
+              <input type="number" step="100" id="sb-bit-off" class="form-input" placeholder="0 = on bottom" value="0">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div>
+              <label class="form-label">Pit Gain Influx (bbl)</label>
+              <input type="number" step="1" id="sb-pit-gain" class="form-input" placeholder="e.g. 25">
+            </div>
+            <div>
+              <label class="form-label">Kick Arrives After (sec, Drilling)</label>
+              <input type="number" step="10" id="sb-kick-after" class="form-input" placeholder="e.g. 120" value="120">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div>
+              <label class="form-label">Stabilized SIDPP (psi)</label>
+              <input type="number" step="10" id="sb-sidpp" class="form-input" placeholder="e.g. 450">
+            </div>
+            <div>
+              <label class="form-label">Stabilized SICP (psi)</label>
+              <input type="number" step="10" id="sb-sicp" class="form-input" placeholder="e.g. 680">
+            </div>
+          </div>
+
+          <!-- Dynamic Scripted Faults -->
+          <div style="margin-top:6px;border-top:1px solid #283340;padding-top:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <span class="form-label" style="margin:0;color:#f59e0b">⚡ Scripted Fault Triggers (Optional)</span>
+              <button id="sb-btn-add-fault" style="padding:2px 8px;font-size:11px;background:#233040;border-color:#384d66">+ Add Fault</button>
+            </div>
+            <div id="sb-faults-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Saved Custom Scenarios Catalog -->
+      <div class="builder-card" style="margin-top:6px">
+        <div class="builder-card-title">
+          <span>📁 Saved Custom Scenarios Catalog</span>
+          <span class="badge dim" id="sb-custom-count">0 Saved</span>
+        </div>
+        <div id="sb-custom-list" style="display:flex;flex-direction:column;gap:8px;max-height:200px;overflow-y:auto"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeModal('modal-builder')">Close</button>
+      <button class="primary" id="sb-btn-save">💾 Save & Register Scenario</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = (id) => document.getElementById(id);
 let sessions = [];
@@ -449,7 +642,7 @@ async function loadScenarios() {
     const data = await api("/api/scenarios");
     const sel = $("new-scenario-select");
     if (sel) {
-      sel.innerHTML = data.scenarios.map(s => `<option value="${s.key}">${s.name}</option>`).join("");
+      sel.innerHTML = data.scenarios.map(s => `<option value="${s.key}">${s.is_custom ? '🛠️ [Custom] ' : ''}${s.name}</option>`).join("");
     }
   } catch (e) {
     console.error("Failed to load scenarios:", e);
@@ -930,7 +1123,225 @@ if ($("wb-scrub-live")) {
   };
 }
 
+/* ==================== Scenario & Well Program Builder ==================== */
+let scenarioTemplates = [];
+let customScenarios = [];
+
+async function openBuilderModal() {
+  await loadBuilderTemplates();
+  await loadCustomScenariosCatalog();
+  openModal("modal-builder");
+}
+
+async function loadBuilderTemplates() {
+  try {
+    const res = await api("/api/scenarios/templates");
+    scenarioTemplates = res.templates || [];
+    const select = $("sb-template-select");
+    if (select) {
+      select.innerHTML = `<option value="">— Select Template Blueprint —</option>` +
+        scenarioTemplates.map(t => `<option value="${t.key}">${t.name}</option>`).join("");
+    }
+  } catch (err) {
+    console.warn("Could not load templates:", err);
+  }
+}
+
+async function loadCustomScenariosCatalog() {
+  try {
+    const res = await api("/api/scenarios/custom");
+    customScenarios = res.custom_scenarios || [];
+    $("sb-custom-count").textContent = `${customScenarios.length} Saved`;
+    const listEl = $("sb-custom-list");
+    if (!listEl) return;
+    if (customScenarios.length === 0) {
+      listEl.innerHTML = `<div style="color:var(--ink-dim);font-size:12px;padding:10px 0;text-align:center">No custom scenarios saved yet. Use the form above or apply a blueprint template to create one!</div>`;
+      return;
+    }
+    listEl.innerHTML = customScenarios.map(s => {
+      const sJson = JSON.stringify(s).replace(/"/g, '&quot;');
+      return `
+      <div class="custom-scenario-item">
+        <div style="flex:1">
+          <div style="font-weight:700;color:#fff;font-size:13px">${s.name} <span class="badge info mono">${s.key}</span></div>
+          <div style="color:var(--ink-dim);font-size:11px;margin-top:2px">${s.objective}</div>
+          <div style="color:#94a3b8;font-size:11px;margin-top:4px">
+            MW: <b>${s.mud_weight_ppg || 12.0} ppg</b> • Shoe: <b>${s.shoe_md_ft || 'Default'} ft</b> (${s.frac_gradient_ppg || 14.0} ppg) • Kick: <b>${s.pit_gain_bbl || 20} bbl</b> (${s.sidpp_psi || 400}/${s.sicp_psi || 550} psi)
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <button style="padding:4px 8px;font-size:11px;background:#166534;border-color:#22c55e;color:#fff" onclick="launchCustomScenario('${s.key}', '${s.name.replace(/'/g, "\\'")}')" title="Launch Student Session with this scenario">🚀 Launch</button>
+          <button style="padding:4px 8px;font-size:11px;background:#1e293b;border-color:#334155" onclick="populateBuilderFormFromObject(${sJson})">✏️ Edit</button>
+          <button style="padding:4px 8px;font-size:11px;background:#7f1d1d;border-color:#b91c1c;color:#fff" onclick="deleteCustomScenarioAction('${s.key}')">🗑️</button>
+        </div>
+      </div>
+    `;
+    }).join("");
+  } catch (err) {
+    console.warn("Could not load custom scenarios:", err);
+  }
+}
+
+function clearBuilderForm() {
+  $("sb-name").value = "";
+  $("sb-key").value = "";
+  $("sb-obj").value = "";
+  $("sb-briefing").value = "";
+  $("sb-start").value = "shut_in";
+  $("sb-bop").value = "surface";
+  $("sb-trajectory").value = "vertical";
+  $("sb-require-kill").checked = false;
+  $("sb-mw").value = "";
+  $("sb-shoe-depth").value = "";
+  $("sb-frac-grad").value = "";
+  $("sb-bit-off").value = "0";
+  $("sb-pit-gain").value = "";
+  $("sb-kick-after").value = "120";
+  $("sb-sidpp").value = "";
+  $("sb-sicp").value = "";
+  $("sb-faults-list").innerHTML = "";
+}
+
+function populateBuilderFormFromObject(s) {
+  $("sb-name").value = s.name || "";
+  $("sb-key").value = s.key || "";
+  $("sb-obj").value = s.objective || "";
+  $("sb-briefing").value = s.briefing || "";
+  $("sb-start").value = s.start || "shut_in";
+  $("sb-bop").value = s.bop || "surface";
+  $("sb-trajectory").value = s.trajectory || "vertical";
+  $("sb-require-kill").checked = !!s.require_kill;
+  $("sb-mw").value = s.mud_weight_ppg !== null && s.mud_weight_ppg !== undefined ? s.mud_weight_ppg : "";
+  $("sb-shoe-depth").value = s.shoe_md_ft || "";
+  $("sb-frac-grad").value = s.frac_gradient_ppg || "";
+  $("sb-bit-off").value = s.bit_off_bottom_ft || "0";
+  $("sb-pit-gain").value = s.pit_gain_bbl || "";
+  $("sb-kick-after").value = s.kick_after_s || "120";
+  $("sb-sidpp").value = s.sidpp_psi || "";
+  $("sb-sicp").value = s.sicp_psi || "";
+
+  $("sb-faults-list").innerHTML = "";
+  if (Array.isArray(s.faults)) {
+    s.faults.forEach(f => addBuilderFaultRow(f));
+  }
+}
+
+function addBuilderFaultRow(fault = {}) {
+  const container = $("sb-faults-list");
+  if (!container) return;
+  const div = document.createElement("div");
+  div.className = "fault-row";
+  div.innerHTML = `
+    <select class="sb-fault-kind form-input" style="width:130px">
+      <option value="choke_plugged" ${fault.kind === 'choke_plugged' ? 'selected' : ''}>Choke Plug</option>
+      <option value="pump_failure" ${fault.kind === 'pump_failure' ? 'selected' : ''}>Pump Breakdown</option>
+      <option value="choke_washout" ${fault.kind === 'choke_washout' ? 'selected' : ''}>Choke Washout</option>
+      <option value="accumulator_leak" ${fault.kind === 'accumulator_leak' ? 'selected' : ''}>Accumulator Leak</option>
+      <option value="weak_shoe" ${fault.kind === 'weak_shoe' ? 'selected' : ''}>Weak Shoe</option>
+      <option value="mud_weight_drop" ${fault.kind === 'mud_weight_drop' ? 'selected' : ''}>MW Drop</option>
+    </select>
+    <select class="sb-fault-trigger-type form-input" style="width:105px">
+      <option value="strokes" ${fault.at_strokes ? 'selected' : ''}>At Strokes</option>
+      <option value="seconds" ${fault.at_seconds ? 'selected' : ''}>At Seconds</option>
+      <option value="event" ${fault.after_event ? 'selected' : ''}>On Event</option>
+    </select>
+    <input type="text" class="sb-fault-trigger-val form-input" style="width:80px" placeholder="e.g. 1000" value="${fault.at_strokes || fault.at_seconds || fault.after_event || 1000}">
+    <input type="text" class="sb-fault-msg form-input" style="flex:1;min-width:140px" placeholder="Alert message..." value="${fault.message || ''}">
+    <button style="padding:4px 8px;font-size:11px;background:#7f1d1d;color:#fff;border-color:#b91c1c" onclick="this.parentElement.remove()">✕</button>
+  `;
+  container.appendChild(div);
+}
+
+async function saveCustomScenarioFromBuilder() {
+  const name = $("sb-name").value.trim();
+  const rawKey = $("sb-key").value.trim().toLowerCase().replace(/[\s-]/g, "_");
+  const obj = $("sb-obj").value.trim();
+  if (!name || !rawKey || !obj) {
+    alert("Please enter a Scenario Title, Key (ID), and Objective.");
+    return;
+  }
+
+  // Gather faults
+  const faultRows = document.querySelectorAll("#sb-faults-list .fault-row");
+  const faults = [];
+  faultRows.forEach(row => {
+    const kind = row.querySelector(".sb-fault-kind").value;
+    const triggerType = row.querySelector(".sb-fault-trigger-type").value;
+    const triggerVal = row.querySelector(".sb-fault-trigger-val").value.trim();
+    const msg = row.querySelector(".sb-fault-msg").value.trim();
+
+    const f = { kind, message: msg, severity: "critical" };
+    if (triggerType === "strokes") f.at_strokes = Number(triggerVal) || 1000;
+    else if (triggerType === "seconds") f.at_seconds = Number(triggerVal) || 300;
+    else if (triggerType === "event") f.after_event = triggerVal || "gas_at_surface";
+    faults.push(f);
+  });
+
+  const payload = {
+    key: rawKey,
+    name: name,
+    objective: obj,
+    briefing: $("sb-briefing").value.trim(),
+    bop: $("sb-bop").value,
+    trajectory: $("sb-trajectory").value,
+    start: $("sb-start").value,
+    require_kill: $("sb-require-kill").checked,
+    bit_off_bottom_ft: Number($("sb-bit-off").value) || 0.0,
+    mud_weight_ppg: $("sb-mw").value ? Number($("sb-mw").value) : null,
+    shoe_md_ft: $("sb-shoe-depth").value ? Number($("sb-shoe-depth").value) : null,
+    frac_gradient_ppg: $("sb-frac-grad").value ? Number($("sb-frac-grad").value) : null,
+    pit_gain_bbl: $("sb-pit-gain").value ? Number($("sb-pit-gain").value) : null,
+    kick_after_s: $("sb-kick-after").value ? Number($("sb-kick-after").value) : 120.0,
+    sidpp_psi: $("sb-sidpp").value ? Number($("sb-sidpp").value) : null,
+    sicp_psi: $("sb-sicp").value ? Number($("sb-sicp").value) : null,
+    faults: faults,
+  };
+
+  try {
+    const res = await api("/api/scenarios/custom", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    alert(`Scenario '${res.scenario.name}' successfully saved and deployed!`);
+    await loadCustomScenariosCatalog();
+    await loadScenarios(); // Refresh dropdowns across app
+  } catch (err) {
+    alert("Error saving scenario: " + err.message);
+  }
+}
+
+async function deleteCustomScenarioAction(key) {
+  if (!confirm(`Are you sure you want to delete custom scenario '${key}'?`)) return;
+  try {
+    await api(`/api/scenarios/custom/${key}`, { method: "DELETE" });
+    await loadCustomScenariosCatalog();
+    await loadScenarios();
+  } catch (err) {
+    alert("Error deleting scenario: " + err.message);
+  }
+}
+
+async function launchCustomScenario(key, name) {
+  closeModal("modal-builder");
+  const studentName = prompt(`Enter student name for new session on '${name}':`, `Trainee - ${name.slice(0, 15)}`);
+  if (!studentName) return;
+  try {
+    const created = await api("/api/sessions", {
+      method: "POST",
+      body: JSON.stringify({
+        scenario: key,
+        student_name: studentName.trim()
+      })
+    });
+    fetchTeacherSessions();
+    window.open(`/?session=${created.session_id}`, `_blank`);
+  } catch (err) {
+    alert("Error launching session: " + err.message);
+  }
+}
+
 /* Event listeners */
+$("btn-builder").onclick = openBuilderModal;
 $("btn-gradebook").onclick = loadGradebook;
 $("btn-master-freeze").onclick = freezeAll;
 $("btn-master-resume").onclick = resumeAll;
@@ -940,6 +1351,15 @@ $("btn-refresh").onclick = fetchTeacherSessions;
 $("btn-new-student").onclick = openNewStudentModal;
 $("btn-create-student").onclick = createNewStudent;
 $("btn-submit-fault").onclick = submitFault;
+
+$("sb-btn-apply-template").onclick = () => {
+  const key = $("sb-template-select").value;
+  const tmpl = scenarioTemplates.find(t => t.key === key);
+  if (tmpl) populateBuilderFormFromObject(tmpl);
+};
+$("sb-btn-clear").onclick = clearBuilderForm;
+$("sb-btn-add-fault").onclick = () => addBuilderFaultRow();
+$("sb-btn-save").onclick = saveCustomScenarioFromBuilder;
 
 $("poll-rate").onchange = () => {
   clearInterval(pollTimer);

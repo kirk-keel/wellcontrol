@@ -332,6 +332,12 @@ Each stage is useful on its own and de-risks the next.
     workstation screens (Choke, Driller, Manifolds P&ID, BOP Stack, Wellbore)
     or auto-tile a 3-screen rig suite with live bidirectional cross-window
     synchronization via `BroadcastChannel`.
+12. ~~**Visual Scenario & Custom Well Program Builder.**~~ **Done.** In-browser
+    well program designer in `/teacher`. Instructors can configure custom well
+    trajectories, casing shoe depths, LOT fracture gradients, mud weights,
+    initial kick volumes/pressures (SIDPP/SICP), and scripted in-flight fault
+    schedules (choke plug, choke washout, pump breakdown, accumulator leak),
+    persisted to disk (`data/custom_scenarios/*.json`) and instantly playable.
 
 Stage 1 is where the real risk is. If the engine is right, everything else is
 presentation.

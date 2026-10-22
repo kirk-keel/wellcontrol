@@ -83,6 +83,7 @@ Open `http://127.0.0.1:8000` (or double-click **`Launch Choke Panel.bat`** on Wi
 10. **Procedural Rig Audio Engine** — 100% offline Web Audio synthesis of triplex mud pump thumps, choke fluid/gas shearing hiss, BOP mechanical actuation clunks, and alarm sirens.
 11. **Crew Resource Management (CRM) Mode (`/crew`)** — Multi-student collaborative team simulator supporting IADC WellSharp & IWCF Level 4 crew training. Distributes operational authority across dedicated rig-floor stations (Driller, Choke Operator, Toolpusher, Mud Engineer, Observer) with real-time WebSocket synchronization, role permission gating, tactical VHF intercom radio callouts, and live multi-user telemetry.
 12. **Multi-Monitor Detachable Cockpit Suite** — One-click window detachment for physical dual/triple-monitor simulator setups. Pop out individual workstations (Remote Choke, Driller's Doghouse, Manifolds P&ID, BOP Stack, Wellbore Schematic) or launch an auto-tiled 3-screen rig suite with sub-millisecond cross-window state synchronization via `BroadcastChannel`.
+13. **Visual Scenario & Custom Well Program Builder** — Graphical curriculum designer in `/teacher` allowing instructors to define custom casing depths, shoe fracture gradients (LOT), mud programs, initial shut-in pressures (SIDPP/SICP), and scripted in-flight faults (choke plug/washout, pump breakdown, accumulator leak) saved to disk and instantly deployed to trainees.
 
 ## Model Context Protocol (MCP) Server for AI Agents
 

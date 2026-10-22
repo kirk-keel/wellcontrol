@@ -520,6 +520,79 @@ class TestMultiMonitorCockpit:
         assert "popOutScreen" in text
 
 
+class TestCustomScenarioApi:
+    """REST endpoints for custom well program & scenario builder."""
+
+    def test_get_templates(self, client):
+        res = client.get("/api/scenarios/templates")
+        assert res.status_code == 200
+        tmpls = res.json()["templates"]
+        assert len(tmpls) >= 3
+
+    def test_create_list_and_delete_custom_scenario(self, client):
+        key = "api_test_scenario_42"
+        # Cleanup if exists
+        client.delete(f"/api/scenarios/custom/{key}")
+
+        create_res = client.post(
+            "/api/scenarios/custom",
+            json={
+                "key": key,
+                "name": "API Test Well 42",
+                "objective": "Verify scenario creation via REST API",
+                "briefing": "API test briefing",
+                "bop": "surface",
+                "trajectory": "deviated",
+                "start": "shut_in",
+                "mud_weight_ppg": 11.8,
+                "sidpp_psi": 430.0,
+                "sicp_psi": 610.0,
+                "pit_gain_bbl": 22.0,
+                "require_kill": True,
+                "faults": [
+                    {
+                        "kind": "choke_plugged",
+                        "at_strokes": 600,
+                        "message": "Choke plugged",
+                        "severity": "critical",
+                    }
+                ],
+            },
+        )
+        assert create_res.status_code == 201
+        data = create_res.json()["scenario"]
+        assert data["key"] == key
+        assert data["mud_weight_ppg"] == 11.8
+        assert data["is_custom"] is True
+
+        # List custom scenarios
+        list_res = client.get("/api/scenarios/custom")
+        assert list_res.status_code == 200
+        customs = list_res.json()["custom_scenarios"]
+        assert any(s["key"] == key for s in customs)
+
+        # Create session on the custom scenario
+        session_res = client.post("/api/sessions", json={"scenario": key})
+        assert session_res.status_code == 201
+        sid = session_res.json()["session_id"]
+        debrief = client.get(f"/api/sessions/{sid}/debrief").json()
+        assert debrief["scenario"]["key"] == key
+
+        # Delete custom scenario
+        del_res = client.delete(f"/api/scenarios/custom/{key}")
+        assert del_res.status_code == 200
+        assert del_res.json()["deleted"] is True
+
+    def test_teacher_html_has_scenario_builder(self, client):
+        res = client.get("/teacher")
+        assert res.status_code == 200
+        text = res.text
+        assert "btn-builder" in text
+        assert "modal-builder" in text
+        assert "sb-template-select" in text
+        assert "sb-btn-save" in text
+
+
 class TestWhatTheStudentCanSee:
     """A rig has no bottomhole gauge; nor does the panel until it is earned."""
 
