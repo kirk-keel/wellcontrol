@@ -405,6 +405,7 @@
               <th style="padding:8px;text-align:center">Well Killed</th>
               <th style="padding:8px;text-align:right">Shoe Margin</th>
               <th style="padding:8px;text-align:right">Max BHP Departure</th>
+              <th style="padding:8px;text-align:center">Certified Kill Plot</th>
             </tr>
           </thead>
           <tbody id="gradebook-tbody">
@@ -779,6 +780,9 @@ function renderSessions() {
             <a href="/crew?session=${s.session_id}" target="_blank" style="text-decoration:none">
               <button style="background:#1d4ed8;color:#fff;border-color:#3b82f6" title="Join as Collaborative Crew Member or Coach">👥 Crew</button>
             </a>
+            <a href="/api/sessions/${s.session_id}/kill-plot.png" target="_blank" style="text-decoration:none">
+              <button style="background:#1e293b;color:#38bdf8;border-color:#38bdf8" title="View official certified kill plot with Student, Instructor, Complication, Well & Date">📈 Plot</button>
+            </a>
             <button onclick="endSession('${s.session_id}')" title="Terminate session" style="color:#ef4444;background:transparent;border-color:transparent;padding:6px 8px">✕</button>
           </div>
         </div>
@@ -1066,6 +1070,11 @@ async function loadGradebook() {
           <td style="padding:8px;text-align:center">${e.well_killed ? '✅ Yes' : '❌ No'}</td>
           <td style="padding:8px;text-align:right" class="mono">${e.frac_margin_psi !== null ? e.frac_margin_psi + ' psi' : '—'}</td>
           <td style="padding:8px;text-align:right" class="mono">${e.max_bhp_excursion_psi} psi</td>
+          <td style="padding:8px;text-align:center">
+            <a href="/api/sessions/${e.session_id}/kill-plot.png" target="_blank" style="text-decoration:none">
+              <button style="font-size:11px;padding:3px 8px;background:#1e293b;color:#38bdf8;border:1px solid #38bdf8;border-radius:4px;cursor:pointer" title="View official certified kill plot">📈 Plot PNG</button>
+            </a>
+          </td>
         </tr>
       `).join("");
     }

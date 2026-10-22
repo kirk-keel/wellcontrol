@@ -30,6 +30,7 @@ from . import (
     killsheet,
     methods,
     mpd,
+    plotting,
     rheology,
     rounding,
     stripping,
@@ -65,6 +66,7 @@ from .methods import (
     list_methods,
     plan_kill,
 )
+from .plotting import plot_kill, plot_session_kill, save_kill_plot
 from .rheology import BinghamPlastic, PowerLaw
 from .subsea import SubseaGeometry, riser_margin_ppg
 from .survey import Survey, SurveyStation
@@ -89,6 +91,7 @@ __all__ = [
     "rounding",
     "stripping",
     "methods",
+    "plotting",
     "examples",
     # common types
     "Survey",
@@ -124,4 +127,7 @@ __all__ = [
     "get_method",
     "list_methods",
     "applicability_matrix",
+    "plot_kill",
+    "plot_session_kill",
+    "save_kill_plot",
 ]

@@ -846,3 +846,115 @@ class TestEdrTrends:
         assert 'id="btn-goto-edr"' in text
         assert 'data-pop="edr"' in text
         assert "Electronic Drilling Recorder (EDR Trends)" in text
+
+
+class TestKillPlotCertification:
+    """Official Kill Plot & Certification Audit Record with Title Block."""
+
+    def test_session_metadata_crud(self, client, session_id):
+        # Fetch default metadata
+        r = client.get(f"/api/sessions/{session_id}/metadata")
+        assert r.status_code == 200
+        meta = r.json()
+        assert "student_name" in meta
+        assert "instructor_name" in meta
+        assert "well_name" in meta
+        assert "complication" in meta
+        assert "date" in meta
+
+        # Update metadata
+        payload = {
+            "student_name": "Jane Doe",
+            "instructor_name": "Capt. Kirk",
+            "well_name": "Discovery Deepwater #4",
+            "complication": "Choke plugged @ 1,200 strokes",
+            "date": "2026-10-22 17:55",
+        }
+        r_up = client.post(f"/api/sessions/{session_id}/metadata", json=payload)
+        assert r_up.status_code == 200
+        updated = r_up.json()
+        assert updated["student_name"] == "Jane Doe"
+        assert updated["instructor_name"] == "Capt. Kirk"
+        assert updated["well_name"] == "Discovery Deepwater #4"
+        assert updated["complication"] == "Choke plugged @ 1,200 strokes"
+        assert updated["date"] == "2026-10-22 17:55"
+
+    def test_session_kill_plot_png_and_svg_endpoints(self, client, session_id):
+        # Trigger simulation advance so trace exists
+        client.get(f"/api/sessions/{session_id}")
+
+        # PNG plot
+        r_png = client.get(
+            f"/api/sessions/{session_id}/kill-plot.png"
+            f"?student_name=Jane+Doe&instructor_name=Capt.+Kirk"
+            f"&well_name=Discovery+Deepwater&complication=Choke+Plug&date=2026-10-22"
+        )
+        assert r_png.status_code == 200
+        assert r_png.headers["content-type"] == "image/png"
+        assert len(r_png.content) > 10_000
+
+        # SVG plot
+        r_svg = client.get(f"/api/sessions/{session_id}/kill-plot.svg")
+        assert r_svg.status_code == 200
+        assert "image/svg+xml" in r_svg.headers["content-type"]
+        assert b"<svg" in r_svg.content
+
+    def test_method_kill_plot_png_endpoint(self, client):
+        r = client.get(
+            "/api/methods/drillers/kill-plot.png"
+            "?student_name=Alex+Rivera&instructor_name=Lead+Assessor"
+            "&well_name=North+Sea+Alpha&complication=None+(Planned)"
+        )
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "image/png"
+        assert len(r.content) > 10_000
+
+    def test_python_plotting_functions_with_title_block(self):
+        import io
+        from wellcontrol.plotting import plot_kill, plot_session_kill, save_kill_plot
+        from wellcontrol.sim.session import Session
+        from wellcontrol.methods.circulating import DrillersMethod
+        from wellcontrol.examples import well_state
+        from wellcontrol.wellconfig import WellConfiguration
+
+        # Test plan plot
+        cfg = WellConfiguration.standard()[0]
+        well = well_state(cfg)
+        plan = DrillersMethod().plan(well)
+        buf_plan = io.BytesIO()
+        save_kill_plot(
+            plan,
+            buf_plan,
+            student_name="Test Student",
+            instructor_name="Test Assessor",
+            complication="None (Clean Plan)",
+            well_name="Test Well #1",
+            date="2026-10-22",
+        )
+        assert len(buf_plan.getvalue()) > 10_000
+
+        # Test session plot
+        session = Session.for_configuration("surface", "vertical")
+        session.student_name = "Session Trainee"
+        session.simulator.run(30, dt=0.1)
+        buf_session = io.BytesIO()
+        save_kill_plot(session, buf_session)
+        assert len(buf_session.getvalue()) > 10_000
+
+    def test_kill_plot_ui_elements_in_html(self, client):
+        # Student choke panel
+        text = client.get("/").text
+        assert "card-kill-plot-record" in text
+        assert "meta-student-name" in text
+        assert "meta-instructor-name" in text
+        assert "meta-well-name" in text
+        assert "meta-complication" in text
+        assert "meta-date" in text
+        assert "btn-save-plot-meta" in text
+        assert "btn-render-plot-preview" in text
+        assert "kill-plot-img" in text
+
+        # Teacher console
+        t_text = client.get("/teacher").text
+        assert "kill-plot.png" in t_text
+        assert "Certified Kill Plot" in t_text

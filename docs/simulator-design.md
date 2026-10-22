@@ -164,7 +164,7 @@ The student switches between panels; an instructor can see all of them.
 | **Kill sheet** | The plan the student made, target vs actual, live DP schedule | — |
 | **EDR Trends** | Customizable multi-pen trend recorder (Pason/Totco style): SPP, SICP, SPM, pit gain, Δflow, hookload, trip tank, choke %, downhole pressures; split tracks & overlay; time window zoom; cursor scrub | Pen toggles, presets (Drilling, Kick, Kill, Tripping), mode & span selectors, CSV telemetry export |
 | **Guide & Coach** | Step-by-step checklist, live operation status, method rules | — |
-| **Debrief** | BHP trace vs target, event log, verdict | Re-score against strict/custom rules |
+| **Debrief** | BHP trace vs target, event log, verdict, certified kill plot with metadata title block (student, instructor, complication, well, date) | Re-score against strict/custom rules, download certified PNG/SVG plot |
 | **Teacher Console** (`/teacher`) | Multi-student live grid, BHP, shoe margin, alarms | Master freeze/resume, live fault injector, whiteboard mode |
 
 The choke panel is where the kill is executed and deserves the most care: it

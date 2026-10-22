@@ -33,6 +33,7 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Callable
 
 from .. import examples
@@ -74,6 +75,12 @@ class Session:
     clock: Callable[[], float] = time.monotonic
     session_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     student_name: str = "Student"
+    instructor_name: str = "Lead Assessor"
+    well_name: str = ""
+    complication: str = ""
+    created_at: str = field(
+        default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M")
+    )
     is_frozen: bool = False
     _unfrozen_speed: float = 1.0
     #: The exercise this session is running, if it came from one.
@@ -83,6 +90,35 @@ class Session:
     #: Wall-clock reading at the last advance.
     _last_tick: float | None = field(default=None, repr=False)
     _auto_slowed: bool = field(default=False, repr=False)
+
+    def get_well_name(self) -> str:
+        """The identifier or name of the well."""
+        if self.well_name:
+            return self.well_name
+        if self.scenario and hasattr(self.scenario, "name") and self.scenario.name:
+            return self.scenario.name
+        return "Reference Well #1"
+
+    def get_complication(self) -> str:
+        """Complication or scenario fault affecting this kill operation."""
+        if self.complication:
+            return self.complication
+        failures = [
+            e.message
+            for e in self.simulator.state.event_log.events
+            if e.kind
+            in (
+                EventKind.EQUIPMENT_FAILURE,
+                EventKind.GAS_BREAKOUT,
+                EventKind.PUMP_DEADHEADED,
+                EventKind.SHOE_FRACTURED,
+            )
+        ]
+        if failures:
+            return "; ".join(failures[:2])
+        if self.scenario and getattr(self.scenario, "has_faults", False):
+            return "Equipment faults active (watch gauges)"
+        return "None (Standard Procedure)"
 
     # -- construction --------------------------------------------------------
 
@@ -913,6 +949,10 @@ class SessionStore:
         self,
         scenario: str | None = None,
         student_name: str | None = None,
+        instructor_name: str | None = None,
+        well_name: str | None = None,
+        complication: str | None = None,
+        date: str | None = None,
         **kwargs,
     ) -> Session:
         session = (
@@ -923,6 +963,14 @@ class SessionStore:
             session.student_name = student_name
         else:
             session.student_name = f"Student {len(self._sessions) + 1}"
+        if instructor_name:
+            session.instructor_name = instructor_name
+        if well_name:
+            session.well_name = well_name
+        if complication:
+            session.complication = complication
+        if date:
+            session.created_at = date
         self._sessions[session.session_id] = session
         return session
 

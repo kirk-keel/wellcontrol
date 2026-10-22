@@ -888,6 +888,69 @@
         <div id="ai-coaching-list" style="display:flex;flex-direction:column;gap:6px;font-size:12px"></div>
       </div>
     </div>
+
+    <!-- Official Certified Kill Plot & Audit Record Card -->
+    <div class="card" id="card-kill-plot-record" style="grid-column: 1 / -1; margin-top: 14px; background: #0c1017; border: 1px solid #1e293b; border-radius: 6px; padding: 14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;border-bottom:1px solid #1e293b;padding-bottom:10px">
+        <div>
+          <h2 style="margin:0;font-size:15px;color:#f8fafc">📈 Certified Well Control Kill Plot & Audit Record</h2>
+          <div style="font-size:12px;color:#94a3b8;margin-top:2px">
+            Official diagnostic plot stamped with Student, Assessor, Complication, Well Name & Date (IADC / IWCF compliant).
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button id="btn-save-plot-meta" style="font-size:11px;padding:5px 11px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:4px;cursor:pointer">💾 Save Metadata</button>
+          <button id="btn-render-plot-preview" style="font-size:11px;padding:5px 12px;background:#0284c7;color:#fff;border:1px solid #38bdf8;border-radius:4px;cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+            🔄 Render Plot
+          </button>
+          <a id="link-download-plot-png" href="#" target="_blank" style="text-decoration:none">
+            <button style="font-size:11px;padding:5px 11px;background:#1e293b;color:#38bdf8;border:1px solid #38bdf8;border-radius:4px;cursor:pointer">
+              📥 Download PNG
+            </button>
+          </a>
+          <a id="link-download-plot-svg" href="#" target="_blank" style="text-decoration:none">
+            <button style="font-size:11px;padding:5px 11px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:4px;cursor:pointer">
+              📐 Vector (SVG)
+            </button>
+          </a>
+        </div>
+      </div>
+
+      <!-- 5 Required Metadata Fields -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:10px;margin-bottom:14px">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px">👤 STUDENT NAME</label>
+          <input type="text" id="meta-student-name" placeholder="Student Trainee Name" style="width:100%;padding:6px 10px;background:#141a24;border:1px solid #334155;border-radius:4px;color:#f8fafc;font-size:12px">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px">🎓 INSTRUCTOR / ASSESSOR</label>
+          <input type="text" id="meta-instructor-name" placeholder="Lead Assessor Name" style="width:100%;padding:6px 10px;background:#141a24;border:1px solid #334155;border-radius:4px;color:#f8fafc;font-size:12px">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px">🛢️ WELL NAME / PROGRAM</label>
+          <input type="text" id="meta-well-name" placeholder="Well Name / Field Identification" style="width:100%;padding:6px 10px;background:#141a24;border:1px solid #334155;border-radius:4px;color:#f8fafc;font-size:12px">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px">⚠️ COMPLICATION / INCIDENT</label>
+          <input type="text" id="meta-complication" placeholder="e.g. Choke plugged, OBM Breakout, or None" style="width:100%;padding:6px 10px;background:#141a24;border:1px solid #334155;border-radius:4px;color:#f8fafc;font-size:12px">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:4px">📅 DATE & TIME</label>
+          <input type="text" id="meta-date" placeholder="YYYY-MM-DD HH:MM" style="width:100%;padding:6px 10px;background:#141a24;border:1px solid #334155;border-radius:4px;color:#f8fafc;font-size:12px">
+        </div>
+      </div>
+
+      <!-- High-Res Plot Image Preview -->
+      <div style="background:#06080c;border:1px solid #1e293b;border-radius:6px;overflow:hidden;text-align:center;padding:12px">
+        <img id="kill-plot-img" src="" alt="Certified Kill Plot" style="max-width:100%;height:auto;border-radius:4px;display:none;box-shadow:0 4px 20px rgba(0,0,0,0.8)">
+        <div id="kill-plot-placeholder" style="padding:32px 16px;color:#64748b;font-size:13px">
+          <div>Plots the complete multi-panel diagnostic trace with drill pipe, casing, planned schedule, MAASP, shoe fracture margin, influx volume & controls.</div>
+          <button id="btn-show-plot" style="margin-top:10px;font-size:12px;padding:6px 16px;background:#1e293b;color:#38bdf8;border:1px solid #38bdf8;border-radius:4px;cursor:pointer">
+            📈 View Certified Kill Plot
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -2587,6 +2650,68 @@ async function loadDebrief() {
   } catch (err) {
     console.warn("AI Debrief load error:", err);
   }
+  loadKillPlotMetadata();
+}
+
+/* -------------------------- certified kill plot ----------------------- */
+async function loadKillPlotMetadata() {
+  if (!sessionId) return;
+  try {
+    const meta = await api(`/api/sessions/${sessionId}/metadata`);
+    if ($("meta-student-name")) $("meta-student-name").value = meta.student_name || "";
+    if ($("meta-instructor-name")) $("meta-instructor-name").value = meta.instructor_name || "";
+    if ($("meta-well-name")) $("meta-well-name").value = meta.well_name || "";
+    if ($("meta-complication")) $("meta-complication").value = meta.complication || "";
+    if ($("meta-date")) $("meta-date").value = meta.date || "";
+
+    const pngUrl = `/api/sessions/${sessionId}/kill-plot.png`;
+    const svgUrl = `/api/sessions/${sessionId}/kill-plot.svg`;
+    if ($("link-download-plot-png")) $("link-download-plot-png").href = pngUrl;
+    if ($("link-download-plot-svg")) $("link-download-plot-svg").href = svgUrl;
+  } catch (err) {
+    console.warn("Failed to load plot metadata:", err);
+  }
+}
+
+async function saveKillPlotMetadata() {
+  if (!sessionId) return;
+  try {
+    const payload = {
+      student_name: $("meta-student-name") ? $("meta-student-name").value : undefined,
+      instructor_name: $("meta-instructor-name") ? $("meta-instructor-name").value : undefined,
+      well_name: $("meta-well-name") ? $("meta-well-name").value : undefined,
+      complication: $("meta-complication") ? $("meta-complication").value : undefined,
+      date: $("meta-date") ? $("meta-date").value : undefined,
+    };
+    await api(`/api/sessions/${sessionId}/metadata`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    renderKillPlotImage();
+  } catch (err) {
+    alert("Failed to save metadata: " + err.message);
+  }
+}
+
+function renderKillPlotImage() {
+  if (!sessionId) return;
+  const img = $("kill-plot-img");
+  const placeholder = $("kill-plot-placeholder");
+  if (!img) return;
+
+  const s = encodeURIComponent($("meta-student-name") ? $("meta-student-name").value : "");
+  const i = encodeURIComponent($("meta-instructor-name") ? $("meta-instructor-name").value : "");
+  const w = encodeURIComponent($("meta-well-name") ? $("meta-well-name").value : "");
+  const c = encodeURIComponent($("meta-complication") ? $("meta-complication").value : "");
+  const d = encodeURIComponent($("meta-date") ? $("meta-date").value : "");
+
+  const url = `/api/sessions/${sessionId}/kill-plot.png?student_name=${s}&instructor_name=${i}&well_name=${w}&complication=${c}&date=${d}&t=${Date.now()}`;
+  img.src = url;
+  img.style.display = "block";
+  if (placeholder) placeholder.style.display = "none";
+
+  if ($("link-download-plot-png")) $("link-download-plot-png").href = url;
+  if ($("link-download-plot-svg")) $("link-download-plot-svg").href = `/api/sessions/${sessionId}/kill-plot.svg?student_name=${s}&instructor_name=${i}&well_name=${w}&complication=${c}&date=${d}`;
 }
 
 /* --------------------------------- guide ------------------------------- */
@@ -2984,6 +3109,10 @@ $("speed").addEventListener("change", () => send("speed", {speed: Number($("spee
 $("restart").onclick = () => start();
 $("scenario").addEventListener("change", () => start());
 $("db-require").addEventListener("change", loadDebrief);
+
+if ($("btn-save-plot-meta")) $("btn-save-plot-meta").onclick = saveKillPlotMetadata;
+if ($("btn-render-plot-preview")) $("btn-render-plot-preview").onclick = saveKillPlotMetadata;
+if ($("btn-show-plot")) $("btn-show-plot").onclick = renderKillPlotImage;
 
 $("tabs").addEventListener("click", e => {
   const b = e.target.closest("button[data-screen]"); if (!b) return;

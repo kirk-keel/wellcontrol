@@ -24,6 +24,7 @@ core library imports this module, so the dependency-free suite is unaffected.
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,10 @@ from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDiscon
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from ..examples import well_state
+from ..methods import get_method
+from ..plotting import plot_kill, plot_session_kill, save_kill_plot
+from ..wellconfig import WellConfiguration
 from .crew import CrewManager, CrewMember, CrewRole, STANDARD_CALLOUTS, can_operate
 from .session import SESSION_SPEEDS_DOC, SPEEDS, Session, SessionStore
 
@@ -66,6 +71,18 @@ class NewSession(BaseModel):
         default=None,
         description="Optional name or callsign for the student session.",
     )
+    instructor_name: str | None = Field(
+        default=None,
+        description="Optional assessor or instructor name.",
+    )
+    well_name: str | None = Field(
+        default=None,
+        description="Optional well name or well program identifier.",
+    )
+    complication: str | None = Field(
+        default=None,
+        description="Optional incident or complication note.",
+    )
     bop: str = Field(default="surface", description="surface or subsea")
     trajectory: str = Field(
         default="vertical", description="vertical, deviated or horizontal"
@@ -79,6 +96,14 @@ class NewSession(BaseModel):
             "has to spot it and shut in themselves."
         ),
     )
+
+
+class SessionMetadataUpdate(BaseModel):
+    student_name: str | None = None
+    instructor_name: str | None = None
+    well_name: str | None = None
+    complication: str | None = None
+    date: str | None = None
 
 
 class ChokeCommand(BaseModel):
@@ -251,6 +276,9 @@ def create_session(body: NewSession) -> dict:
         session = store.create(
             scenario=body.scenario,
             student_name=body.student_name,
+            instructor_name=body.instructor_name,
+            well_name=body.well_name,
+            complication=body.complication,
             **({} if body.scenario else {
                 "bop": body.bop,
                 "trajectory": body.trajectory,
@@ -379,6 +407,159 @@ def debrief(session_id: str, require_kill: bool | None = None) -> dict:
 def ai_debrief(session_id: str) -> dict:
     """AI-powered qualitative assessment, score, and instructor coaching notes."""
     return _session(session_id).ai_debrief()
+
+
+@app.get("/api/sessions/{session_id}/metadata")
+def get_session_metadata(session_id: str) -> dict:
+    """Student and certification audit metadata for the kill plot."""
+    session = _session(session_id)
+    return {
+        "session_id": session.session_id,
+        "student_name": session.student_name,
+        "instructor_name": getattr(session, "instructor_name", "Lead Assessor"),
+        "well_name": session.get_well_name(),
+        "complication": session.get_complication(),
+        "date": getattr(session, "created_at", None),
+    }
+
+
+@app.post("/api/sessions/{session_id}/metadata")
+def update_session_metadata(session_id: str, body: SessionMetadataUpdate) -> dict:
+    """Update certification metadata (student name, instructor name, well name, complication, date)."""
+    session = _session(session_id)
+    if body.student_name is not None:
+        session.student_name = body.student_name
+    if body.instructor_name is not None:
+        session.instructor_name = body.instructor_name
+    if body.well_name is not None:
+        session.well_name = body.well_name
+    if body.complication is not None:
+        session.complication = body.complication
+    if body.date is not None:
+        session.created_at = body.date
+    return {
+        "session_id": session.session_id,
+        "student_name": session.student_name,
+        "instructor_name": getattr(session, "instructor_name", "Lead Assessor"),
+        "well_name": session.get_well_name(),
+        "complication": session.get_complication(),
+        "date": getattr(session, "created_at", None),
+    }
+
+
+@app.get("/api/sessions/{session_id}/kill-plot.png")
+def session_kill_plot_png(
+    session_id: str,
+    theme: str = "light",
+    student_name: str | None = None,
+    instructor_name: str | None = None,
+    well_name: str | None = None,
+    complication: str | None = None,
+    date: str | None = None,
+    status: str | None = None,
+    x_axis: str = "strokes",
+):
+    """Render high-resolution PNG kill plot stamped with certification audit title block."""
+    session = _session(session_id)
+    buf = io.BytesIO()
+    save_kill_plot(
+        session,
+        buf,
+        format="png",
+        theme=theme,
+        student_name=student_name or session.student_name,
+        instructor_name=instructor_name or getattr(session, "instructor_name", "Lead Assessor"),
+        well_name=well_name or session.get_well_name(),
+        complication=complication or session.get_complication(),
+        date=date or getattr(session, "created_at", None),
+        status=status,
+        x_axis=x_axis,
+    )
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/png",
+        headers={"Content-Disposition": f'inline; filename="kill_plot_{session_id}.png"'},
+    )
+
+
+@app.get("/api/sessions/{session_id}/kill-plot.svg")
+def session_kill_plot_svg(
+    session_id: str,
+    theme: str = "light",
+    student_name: str | None = None,
+    instructor_name: str | None = None,
+    well_name: str | None = None,
+    complication: str | None = None,
+    date: str | None = None,
+    status: str | None = None,
+    x_axis: str = "strokes",
+):
+    """Render vector SVG kill plot stamped with certification audit title block."""
+    session = _session(session_id)
+    buf = io.BytesIO()
+    save_kill_plot(
+        session,
+        buf,
+        format="svg",
+        theme=theme,
+        student_name=student_name or session.student_name,
+        instructor_name=instructor_name or getattr(session, "instructor_name", "Lead Assessor"),
+        well_name=well_name or session.get_well_name(),
+        complication=complication or session.get_complication(),
+        date=date or getattr(session, "created_at", None),
+        status=status,
+        x_axis=x_axis,
+    )
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/svg+xml",
+        headers={"Content-Disposition": f'inline; filename="kill_plot_{session_id}.svg"'},
+    )
+
+
+@app.get("/api/methods/{method_key}/kill-plot.png")
+def method_kill_plot_png(
+    method_key: str,
+    theme: str = "light",
+    student_name: str = "Student Trainee",
+    instructor_name: str = "Lead Assessor",
+    well_name: str = "Reference Well #1",
+    complication: str = "Standard Planned Procedure",
+    date: str | None = None,
+    status: str = "VERIFIED PLAN",
+):
+    """Render PNG kill plot for theoretical methods (Driller's, W&W, Bullheading, Volumetric, Lube & Bleed)."""
+    try:
+        method = get_method(method_key)
+        cfg = WellConfiguration.standard()[0]
+        well = well_state(cfg)
+        plan = method.plan(well)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown method {method_key}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    buf = io.BytesIO()
+    save_kill_plot(
+        plan,
+        buf,
+        format="png",
+        theme=theme,
+        student_name=student_name,
+        instructor_name=instructor_name,
+        well_name=well_name,
+        complication=complication,
+        date=date,
+        status=status,
+    )
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/png",
+        headers={"Content-Disposition": f'inline; filename="kill_plot_{method_key}.png"'},
+    )
 
 
 @app.delete("/api/sessions/{session_id}", status_code=204)
