@@ -28,7 +28,7 @@ WORKDIR /app
 # install is seconds. Split it with a requirements file if that stops being true.
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
-RUN pip install --no-cache-dir ".[sim]"
+RUN pip install --no-cache-dir ".[sim,plots]"
 
 # Recordings and any future SQLite file land here; compose mounts a volume.
 RUN mkdir -p /data && useradd --create-home --uid 10001 wellcontrol \
