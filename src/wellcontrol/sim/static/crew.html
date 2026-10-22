@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crew CRM — Collaborative Well Control Simulator</title>
+<style>
+  :root {
+    --bg: #0d1217;
+    --panel: #161e27;
+    --panel-header: #1f2a36;
+    --border: #283645;
+    --ink: #f1f5f9;
+    --dim: #94a3b8;
+    --faint: #64748b;
+    --sunk: #070a0d;
+    --readout: #5df08a;
+    --dp: #38bdf8;
+    --csg: #fbbf24;
+    --bhp: #34d399;
+    --shoe: #a78bfa;
+    --danger: #ef4444;
+    --warn: #f59e0b;
+    --good: #10b981;
+    --driller: #3b82f6;
+    --choke: #f59e0b;
+    --toolpusher: #ef4444;
+    --mud: #10b981;
+    --observer: #8b5cf6;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.4 "Segoe UI", system-ui, sans-serif; }
+  .mono { font-family: Consolas, ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+  /* Header */
+  header {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 10px 16px; background: var(--panel); border-bottom: 2px solid var(--border);
+  }
+  .title { font-weight: 800; font-size: 15px; letter-spacing: 0.05em; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .pill {
+    padding: 3px 9px; border-radius: 4px; font-size: 11px; font-weight: 700;
+    background: #0f172a; border: 1px solid var(--border); color: var(--dim);
+  }
+  .pill.online { border-color: var(--good); color: var(--good); }
+  .pill.role { color: #fff; text-transform: uppercase; letter-spacing: 0.05em; }
+  .grow { flex: 1; }
+
+  /* Roster Bar */
+  .roster-bar {
+    display: flex; align-items: center; gap: 8px; overflow-x: auto;
+    padding: 6px 16px; background: #0a0e13; border-bottom: 1px solid var(--border);
+    font-size: 11px;
+  }
+  .roster-chip {
+    display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;
+    border-radius: 12px; background: #131b24; border: 1px solid #23303e; white-space: nowrap;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; }
+
+  /* Layout */
+  .app-grid {
+    display: grid; grid-template-columns: 1fr 340px; height: calc(100vh - 86px);
+  }
+  @media (max-width: 1024px) {
+    .app-grid { grid-template-columns: 1fr; height: auto; }
+  }
+
+  /* Left Area: Workstation */
+  .workstation {
+    padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 12px;
+  }
+  .card-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--dim); margin: 0 0 10px; display: flex; align-items: center; justify-content: space-between;
+  }
+
+  /* Gauges Grid */
+  .gauges-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  }
+  @media (max-width: 768px) { .gauges-grid { grid-template-columns: repeat(2, 1fr); } }
+  .gbox {
+    text-align: center; background: #0f1724; border: 1px solid var(--border); border-radius: 4px; padding: 8px 6px;
+  }
+  .gbox .lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--dim); margin-bottom: 3px; }
+  .gbox .val {
+    background: var(--sunk); border: 1px solid #1e293b; border-radius: 3px; padding: 6px 4px;
+    font: 700 24px/1.1 Consolas, monospace; color: var(--readout);
+  }
+  .gbox.dp .val { color: var(--dp); }
+  .gbox.csg .val { color: var(--csg); }
+  .gbox.alarm .val { color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+  .gbox .unit { font-size: 9.5px; color: var(--faint); margin-top: 3px; }
+
+  /* Right Sidebar: Tactical Intercom & Event Log */
+  .intercom-panel {
+    background: #0f161e; border-left: 1px solid var(--border); display: flex; flex-direction: column;
+    height: 100%;
+  }
+  .intercom-header {
+    padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--border);
+    font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .callout-chips {
+    padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
+    border-bottom: 1px solid var(--border); background: #131c26; max-height: 210px; overflow-y: auto;
+  }
+  .c-btn {
+    text-align: left; background: #1b2633; border: 1px solid #2e3e50; border-radius: 4px;
+    color: #e2e8f0; padding: 6px 10px; font-size: 11px; cursor: pointer; transition: all 0.15s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .c-btn:hover { background: #243344; border-color: #3b82f6; }
+  .c-btn .role-tag { font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 2px; }
+
+  .chat-log {
+    flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+  }
+  .chat-msg {
+    background: #151e29; border: 1px solid #243242; border-radius: 4px; padding: 7px 10px;
+    font-size: 11.5px; line-height: 1.35;
+  }
+  .chat-msg.standard { border-left: 3px solid var(--warn); }
+  .chat-msg.event { background: #111822; border-color: #1e293b; color: #94a3b8; font-style: italic; }
+  .chat-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; font-size: 10px; }
+  .chat-sender { font-weight: 700; }
+
+  .chat-input-bar {
+    padding: 10px 12px; background: var(--panel); border-top: 1px solid var(--border);
+    display: flex; gap: 8px;
+  }
+  .chat-input {
+    flex: 1; background: #090d12; border: 1px solid var(--border); border-radius: 4px;
+    color: #fff; padding: 6px 10px; font-size: 12px; outline: none;
+  }
+  .chat-input:focus { border-color: #3b82f6; }
+  .send-btn {
+    background: #2563eb; color: #fff; border: none; border-radius: 4px; padding: 6px 14px;
+    font-weight: 700; font-size: 12px; cursor: pointer;
+  }
+
+  /* Controls & Sliders */
+  .control-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  input[type="range"] { flex: 1; accent-color: #3b82f6; cursor: pointer; }
+  .btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+  button.action-btn {
+    background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 4px;
+    padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+  }
+  button.action-btn:hover { background: #334155; }
+  button.action-btn.active { background: #15803d; border-color: #22c55e; color: #fff; }
+  button.action-btn.danger { background: #b91c1c; border-color: #ef4444; color: #fff; }
+
+  /* Permission Lock Overlay */
+  .lock-banner {
+    background: rgba(15, 23, 42, 0.75); border: 1px dashed #475569; border-radius: 4px;
+    padding: 8px 12px; font-size: 11px; color: var(--dim); display: flex; align-items: center; gap: 6px;
+    margin-top: 8px;
+  }
+
+  /* Role Selection Modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center; z-index: 1000;
+  }
+  .modal-box {
+    background: #141c24; border: 2px solid var(--border); border-radius: 8px; width: 92%; max-width: 680px;
+    padding: 24px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.7);
+  }
+  .role-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 16px 0; }
+  @media (max-width: 640px) { .role-grid { grid-template-columns: 1fr; } }
+  .role-card {
+    background: #0f161e; border: 2px solid #233140; border-radius: 6px; padding: 12px;
+    cursor: pointer; transition: all 0.15s; text-align: left;
+  }
+  .role-card:hover { border-color: #38bdf8; background: #131d27; }
+  .role-card.selected { border-color: #3b82f6; background: #162433; }
+  .role-card-title { font-weight: 800; font-size: 13px; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; }
+  .role-card-desc { font-size: 11px; color: var(--dim); line-height: 1.35; }
+</style>
+</head>
+<body>
+
+<!-- Join Modal -->
+<div class="modal-overlay" id="join-modal">
+  <div class="modal-box">
+    <h2 style="margin:0 0 6px;font-size:18px">👥 Rig Crew Station Check-In</h2>
+    <div style="font-size:12px;color:var(--dim)">Join the real-time collaborative well control session. Select your station assignment:</div>
+
+    <div style="margin-top:14px">
+      <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--dim)">Your Name</label>
+      <input type="text" id="user-name" value="Trainee 1" style="width:100%;margin-top:4px;padding:8px 12px;background:#090d12;border:1px solid var(--border);border-radius:4px;color:#fff;font-size:13px">
+    </div>
+
+    <div class="role-grid">
+      <div class="role-card selected" data-role="driller">
+        <div class="role-card-title" style="color:var(--driller)">
+          <span>🕹️ DRILLER</span>
+          <span class="pill" style="border-color:var(--driller);color:var(--driller)">Pumps & Bit</span>
+        </div>
+        <div class="role-card-desc">Operates mud pumps, pipe stripping, monitors standpipe pressure, pit gain, and hookload.</div>
+      </div>
+
+      <div class="role-card" data-role="choke_operator">
+        <div class="role-card-title" style="color:var(--choke)">
+          <span>🎛️ CHOKE OPERATOR</span>
+          <span class="pill" style="border-color:var(--choke);color:var(--choke)">Choke & Manifold</span>
+        </div>
+        <div class="role-card-desc">Feathers hydraulic choke, aligns choke manifold, holds casing pressure constant during kill.</div>
+      </div>
+
+      <div class="role-card" data-role="toolpusher">
+        <div class="role-card-title" style="color:var(--toolpusher)">
+          <span>🛡️ TOOLPUSHER</span>
+          <span class="pill" style="border-color:var(--toolpusher);color:var(--toolpusher)">BOP & Safety</span>
+        </div>
+        <div class="role-card-desc">Actuates BOP stack elements, monitors shoe integrity, MAASP, and oversees well kill plan.</div>
+      </div>
+
+      <div class="role-card" data-role="mud_engineer">
+        <div class="role-card-title" style="color:var(--mud)">
+          <span>🧪 MUD ENGINEER</span>
+          <span class="pill" style="border-color:var(--mud);color:var(--mud)">Pits & Densities</span>
+        </div>
+        <div class="role-card-desc">Weights up active pits, mixes kill mud, monitors trip tank volumes and poor-boy MGS degasser.</div>
+      </div>
+    </div>
+
+    <button id="btn-confirm-join" style="width:100%;padding:10px;background:#2563eb;border:none;border-radius:4px;color:#fff;font-weight:700;font-size:14px;cursor:pointer">
+      🚀 Enter Rig Crew Console
+    </button>
+  </div>
+</div>
+
+<!-- Header -->
+<header>
+  <div class="title">
+    <span>👥 WELLCONTROL CRM</span>
+  </div>
+  <span class="pill online" id="ws-status">● Connected</span>
+  <span class="pill mono" id="clock">00:00:00</span>
+  <span class="pill role" id="my-role-badge">Driller</span>
+
+  <div class="grow"></div>
+
+  <button id="btn-audio" style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:5px 10px;font-size:11px;cursor:pointer">
+    🔊 Radio Chime ON
+  </button>
+  <button id="btn-switch-role" style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:4px;padding:5px 10px;font-size:11px;cursor:pointer">
+    🔄 Switch Role
+  </button>
+</header>
+
+<!-- Roster Bar -->
+<div class="roster-bar" id="roster-bar">
+  <span style="font-weight:700;color:var(--dim)">RIG CREW:</span>
+  <div id="roster-chips" style="display:inline-flex;gap:6px"></div>
+</div>
+
+<!-- Main App Grid -->
+<div class="app-grid">
+  <!-- Workstation Area -->
+  <div class="workstation">
+    <!-- Telemetry Gauges -->
+    <div class="gauges-grid">
+      <div class="gbox dp">
+        <div class="lbl">Standpipe Pressure</div>
+        <div class="val" id="g-spp">—</div>
+        <div class="unit">psi (Drill Pipe)</div>
+      </div>
+      <div class="gbox csg">
+        <div class="lbl">Casing Pressure</div>
+        <div class="val" id="g-csg">—</div>
+        <div class="unit">psi (Choke Gauge)</div>
+      </div>
+      <div class="gbox">
+        <div class="lbl">Mud Pump Rate</div>
+        <div class="val" id="g-spm">—</div>
+        <div class="unit">SPM</div>
+      </div>
+      <div class="gbox">
+        <div class="lbl">Choke Position</div>
+        <div class="val" id="g-chk">—</div>
+        <div class="unit">% open</div>
+      </div>
+    </div>
+
+    <!-- Secondary Instrumentation -->
+    <div class="card">
+      <div class="card-title">Rig Telemetry Overview</div>
+      <div style="display:grid;grid-template-columns:repeat(6, 1fr);gap:8px;font-size:11px">
+        <div><div style="color:var(--dim)">Pit Gain</div><b id="s-pit" class="mono">—</b></div>
+        <div><div style="color:var(--dim)">Flow Out</div><b id="s-out" class="mono">—</b></div>
+        <div><div style="color:var(--dim)">Hookload</div><b id="s-hook" class="mono">—</b></div>
+        <div><div style="color:var(--dim)">Trip Tank</div><b id="s-tt" class="mono">—</b></div>
+        <div><div style="color:var(--dim)">Bottomhole</div><b id="s-bhp" class="mono">—</b></div>
+        <div><div style="color:var(--dim)">Shoe Margin</div><b id="s-shoe" class="mono">—</b></div>
+      </div>
+    </div>
+
+    <!-- Station Specific Workstations -->
+
+    <!-- DRILLER PANEL -->
+    <div class="card" id="panel-driller">
+      <div class="card-title" style="color:var(--driller)">
+        <span>🕹️ Driller Station Controls</span>
+        <span class="pill" id="lock-driller-tag">Active Station</span>
+      </div>
+      <div class="control-row">
+        <label style="width:110px;font-weight:700">Mud Pump Rate</label>
+        <input type="range" id="pump-slider" min="0" max="80" step="1" value="0">
+        <div class="mono" id="pump-val" style="width:55px;font-weight:700">0 SPM</div>
+      </div>
+      <div class="btn-group">
+        <button class="action-btn" data-act="pump" data-spm="0">Stop Pump</button>
+        <button class="action-btn" data-act="pump" data-spm="30">Kill Rate (30 SPM)</button>
+        <button class="action-btn" data-act="pump" data-spm="60">Drilling (60 SPM)</button>
+      </div>
+
+      <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px">
+        <div style="font-weight:700;margin-bottom:6px">Drawworks & Pipe Movement</div>
+        <div class="btn-group">
+          <button class="action-btn" data-act="strip" data-fpm="-30">Pull Pipe Out (-30 ft/min)</button>
+          <button class="action-btn" data-act="strip" data-fpm="0">Stop Drawworks</button>
+          <button class="action-btn" data-act="strip" data-fpm="30">Run Pipe In (+30 ft/min)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHOKE OPERATOR PANEL -->
+    <div class="card" id="panel-choke">
+      <div class="card-title" style="color:var(--choke)">
+        <span>🎛️ Choke Operator Station Controls</span>
+        <span class="pill" id="lock-choke-tag">Active Station</span>
+      </div>
+      <div class="control-row">
+        <label style="width:110px;font-weight:700">Hydraulic Choke</label>
+        <input type="range" id="choke-slider" min="0" max="100" step="0.5" value="0">
+        <div class="mono" id="choke-val" style="width:55px;font-weight:700">0.0%</div>
+      </div>
+      <div class="btn-group">
+        <button class="action-btn" data-act="choke" data-pct="0">Fully Shut</button>
+        <button class="action-btn" data-act="choke-step" data-step="-2">&minus;2% (Close)</button>
+        <button class="action-btn" data-act="choke-step" data-step="+2">+2% (Open)</button>
+        <button class="action-btn" data-act="choke" data-pct="100">Fully Open</button>
+      </div>
+
+      <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px">
+        <div style="font-weight:700;margin-bottom:6px">Choke Manifold Routing</div>
+        <div class="btn-group">
+          <button class="action-btn" data-act="valve" data-name="choke_line_valve">Toggle Choke Line Valve</button>
+          <button class="action-btn" data-act="valve" data-name="choke_1">Toggle Choke 1</button>
+          <button class="action-btn" data-act="valve" data-name="choke_bypass">Toggle Choke Bypass</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOOLPUSHER PANEL -->
+    <div class="card" id="panel-toolpusher">
+      <div class="card-title" style="color:var(--toolpusher)">
+        <span>🛡️ Toolpusher & BOP Control Station</span>
+        <span class="pill" id="lock-toolpusher-tag">Active Station</span>
+      </div>
+      <div class="btn-group">
+        <button class="action-btn danger" data-act="bop" data-name="annular">Operate Annular Preventer</button>
+        <button class="action-btn danger" data-act="bop" data-name="upper_rams">Operate Upper Pipe Rams</button>
+        <button class="action-btn danger" data-act="bop" data-name="lower_rams">Operate Lower Pipe Rams</button>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:12px;font-size:11px">
+        <div>Koomey Accumulator: <b id="tp-acc" class="mono">—</b> psi</div>
+        <div>Manifold Pressure: <b id="tp-man" class="mono">—</b> psi</div>
+        <div>Fracture Margin: <b id="tp-margin" class="mono">—</b> psi</div>
+      </div>
+    </div>
+
+    <!-- MUD ENGINEER PANEL -->
+    <div class="card" id="panel-mud">
+      <div class="card-title" style="color:var(--mud)">
+        <span>🧪 Mud Engineer & Pit Management Station</span>
+        <span class="pill" id="lock-mud-tag">Active Station</span>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <div>Active Mud: <b id="me-active-mw" class="mono">—</b> ppg</div>
+        <div>Target Kill Mud: <b id="me-target-mw" class="mono">—</b> ppg</div>
+        <input type="number" id="mw-input" min="8" max="22" step="0.1" value="12.0" style="width:75px;padding:4px 8px;background:#090d12;border:1px solid var(--border);border-radius:4px;color:#fff">
+        <button class="action-btn" id="btn-weight-up">Weight Up Pit</button>
+        <button class="action-btn" id="btn-fill-kmw">Fill With Kill Mud</button>
+      </div>
+      <div class="btn-group" style="margin-top:10px">
+        <button class="action-btn" data-act="zero_pit">Zero Pit Totalizer</button>
+        <button class="action-btn" data-act="zero_tt">Zero Trip Tank</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Sidebar: Tactical Intercom & Chat -->
+  <div class="intercom-panel">
+    <div class="intercom-header">
+      <span>📻 Rig Intercom & CRM Callouts</span>
+      <span class="pill" style="font-size:9.5px">VHF CH-1</span>
+    </div>
+
+    <!-- Quick Callout Buttons -->
+    <div class="callout-chips" id="callout-chips"></div>
+
+    <!-- Chat Messages Log -->
+    <div class="chat-log" id="chat-log"></div>
+
+    <!-- Custom Chat Input -->
+    <div class="chat-input-bar">
+      <input type="text" id="chat-input" class="chat-input" placeholder="Type rig radio callout...">
+      <button id="btn-send-chat" class="send-btn">Transmit</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let sessionId = "";
+let myRole = "driller";
+let myName = "Trainee 1";
+let myMemberId = "";
+let ws = null;
+let currentGauges = {};
+let standardCallouts = [];
+let audioChime = true;
+
+// Web Audio Rig Radio Squelch & Chime
+let audioCtx = null;
+function playRadioChime() {
+  if (!audioChime) return;
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.12);
+  } catch (e) {}
+}
+
+// Role Cards Selection
+document.querySelectorAll(".role-card").forEach(c => {
+  c.onclick = () => {
+    document.querySelectorAll(".role-card").forEach(x => x.classList.remove("selected"));
+    c.classList.add("selected");
+    myRole = c.dataset.role;
+  };
+});
+
+// Setup Initial Session & Callouts
+async function initSession() {
+  const urlParams = new URLSearchParams(window.location.search);
+  sessionId = urlParams.get("session");
+  if (!sessionId) {
+    // Create new session if none provided
+    const res = await fetch("/api/sessions", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({scenario: "drillers"})
+    });
+    const data = await res.json();
+    sessionId = data.session_id;
+    history.replaceState(null, "", `?session=${sessionId}`);
+  }
+
+  // Fetch standard callouts
+  const cRes = await fetch("/api/crew/callouts/standard");
+  const cData = await cRes.json();
+  standardCallouts = cData.callouts || [];
+  renderStandardCallouts();
+}
+
+function renderStandardCallouts() {
+  const host = document.getElementById("callout-chips");
+  host.innerHTML = standardCallouts.map(c => `
+    <button class="c-btn" onclick="sendCallout('${c.text.replace(/'/g, "\\'")}', true)">
+      <span class="role-tag" style="background:#2563eb">${c.role.toUpperCase()}</span>
+      <span>${c.text}</span>
+    </button>
+  `).join("");
+}
+
+// Confirm Join Modal
+document.getElementById("btn-confirm-join").onclick = () => {
+  const nameInput = document.getElementById("user-name").value.trim();
+  if (nameInput) myName = nameInput;
+  document.getElementById("join-modal").style.display = "none";
+  document.getElementById("my-role-badge").textContent = myRole.replace("_", " ").toUpperCase();
+  applyRolePermissions();
+  connectWebSocket();
+};
+
+document.getElementById("btn-switch-role").onclick = () => {
+  document.getElementById("join-modal").style.display = "flex";
+};
+
+document.getElementById("btn-audio").onclick = () => {
+  audioChime = !audioChime;
+  document.getElementById("btn-audio").textContent = audioChime ? "🔊 Radio Chime ON" : "🔇 Radio Chime OFF";
+};
+
+// Role-Based UI Locks
+function applyRolePermissions() {
+  const roles = ["driller", "choke", "toolpusher", "mud"];
+  roles.forEach(r => {
+    const isMine = (myRole === r) || (r === "choke" && myRole === "choke_operator");
+    const p = document.getElementById(`panel-${r}`);
+    const tag = document.getElementById(`lock-${r}-tag`);
+    if (tag) tag.textContent = isMine ? "Active Station" : "Read-Only (Assigned)";
+    if (tag) tag.style.borderColor = isMine ? "#22c55e" : "#64748b";
+    if (tag) tag.style.color = isMine ? "#22c55e" : "#94a3b8";
+
+    // Disable inputs if not my station
+    if (p) {
+      p.querySelectorAll("button.action-btn, input").forEach(el => {
+        if (!isMine && myRole !== "observer") {
+          el.disabled = true;
+          el.style.opacity = "0.5";
+          el.style.cursor = "not-allowed";
+        } else {
+          el.disabled = false;
+          el.style.opacity = "1";
+          el.style.cursor = "pointer";
+        }
+      });
+    }
+  });
+}
+
+// WebSocket Connection
+function connectWebSocket() {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const wsUrl = `${protocol}//${window.location.host}/ws/crew/${sessionId}?role=${myRole}&name=${encodeURIComponent(myName)}`;
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    document.getElementById("ws-status").textContent = "● Connected";
+    document.getElementById("ws-status").className = "pill online";
+  };
+
+  ws.onclose = () => {
+    document.getElementById("ws-status").textContent = "○ Disconnected";
+    document.getElementById("ws-status").className = "pill";
+    setTimeout(connectWebSocket, 2000);
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      handleMessage(data);
+    } catch (e) {}
+  };
+}
+
+function handleMessage(data) {
+  if (data.type === "init") {
+    myMemberId = data.member.member_id;
+    updateRoster(data.roster);
+    (data.callouts || []).forEach(addCalloutToLog);
+    if (data.snapshot) updateGauges(data.snapshot.gauges);
+  } else if (data.type === "roster") {
+    updateRoster(data.roster);
+    if (data.event) addSystemEventToLog(data.event);
+  } else if (data.type === "callout") {
+    addCalloutToLog(data.callout);
+    playRadioChime();
+  } else if (data.type === "telemetry") {
+    if (data.snapshot) updateGauges(data.snapshot.gauges);
+    if (data.event) addSystemEventToLog(data.event);
+  } else if (data.type === "error") {
+    alert(data.message);
+  }
+}
+
+function updateRoster(members) {
+  const host = document.getElementById("roster-chips");
+  host.innerHTML = (members || []).map(m => `
+    <div class="roster-chip">
+      <span class="dot" style="background:${m.badge_color}"></span>
+      <span style="font-weight:700">${m.name}</span>
+      <span style="color:var(--dim)">(${m.role_title})</span>
+    </div>
+  `).join("");
+}
+
+function addCalloutToLog(c) {
+  const log = document.getElementById("chat-log");
+  const div = document.createElement("div");
+  div.className = `chat-msg ${c.is_standard ? "standard" : ""}`;
+  div.innerHTML = `
+    <div class="chat-meta">
+      <span class="chat-sender" style="color:${c.badge_color || '#38bdf8'}">${c.sender_name} (${c.role_title || c.role})</span>
+      <span class="mono" style="color:var(--faint)">${c.time_str || ""}</span>
+    </div>
+    <div>${c.message}</div>
+  `;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function addSystemEventToLog(text) {
+  const log = document.getElementById("chat-log");
+  const div = document.createElement("div");
+  div.className = "chat-msg event";
+  div.textContent = `ℹ️ ${text}`;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+// Action Dispatching
+function sendAction(action, params = {}) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({type: "action", action, params}));
+  }
+}
+
+function sendCallout(message, is_standard = false) {
+  if (!message.trim()) return;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({type: "callout", message, is_standard}));
+  }
+}
+
+// Chat Input
+document.getElementById("btn-send-chat").onclick = () => {
+  const input = document.getElementById("chat-input");
+  sendCallout(input.value, false);
+  input.value = "";
+};
+document.getElementById("chat-input").onkeydown = (e) => {
+  if (e.key === "Enter") {
+    document.getElementById("btn-send-chat").click();
+  }
+};
+
+// UI Control Handlers
+document.getElementById("pump-slider").oninput = (e) => {
+  document.getElementById("pump-val").textContent = `${e.target.value} SPM`;
+};
+document.getElementById("pump-slider").onchange = (e) => {
+  sendAction("pump", {spm: Number(e.target.value)});
+};
+
+document.getElementById("choke-slider").oninput = (e) => {
+  document.getElementById("choke-val").textContent = `${Number(e.target.value).toFixed(1)}%`;
+};
+document.getElementById("choke-slider").onchange = (e) => {
+  sendAction("choke", {percent: Number(e.target.value)});
+};
+
+document.querySelectorAll("button[data-act]").forEach(b => {
+  b.onclick = () => {
+    const act = b.dataset.act;
+    if (act === "pump") sendAction("pump", {spm: Number(b.dataset.spm)});
+    else if (act === "choke") sendAction("choke", {percent: Number(b.dataset.pct)});
+    else if (act === "choke-step") {
+      const cur = currentGauges.choke_percent || 0;
+      const nxt = Math.max(0, Math.min(100, cur + Number(b.dataset.step)));
+      sendAction("choke", {percent: nxt});
+    }
+    else if (act === "strip") sendAction("strip", {feet_per_min: Number(b.dataset.fpm)});
+    else if (act === "bop") sendAction("bop", {name: b.dataset.name, state: "closed"});
+    else if (act === "valve") sendAction("valve", {name: b.dataset.name, state: "open"});
+    else if (act === "zero_pit") sendAction("zero_pit");
+    else if (act === "zero_tt") sendAction("zero_tt");
+  };
+});
+
+document.getElementById("btn-weight-up").onclick = () => {
+  const val = Number(document.getElementById("mw-input").value);
+  sendAction("mud_weight", {ppg: val});
+};
+document.getElementById("btn-fill-kmw").onclick = () => {
+  sendAction("kill_mud");
+};
+
+// Telemetry Updates
+function updateGauges(g) {
+  if (!g) return;
+  currentGauges = g;
+
+  document.getElementById("clock").textContent = g.clock || "00:00:00";
+  document.getElementById("g-spp").textContent = Math.round(g.drill_pipe_psi || 0).toLocaleString();
+  document.getElementById("g-csg").textContent = Math.round(g.casing_psi || 0).toLocaleString();
+  document.getElementById("g-spm").textContent = Math.round(g.pump_spm || 0);
+  document.getElementById("g-chk").textContent = (g.choke_percent || 0).toFixed(1);
+
+  document.getElementById("s-pit").textContent = `${(g.pit_gain_bbl || 0).toFixed(1)} bbl`;
+  document.getElementById("s-out").textContent = `${(g.flow_out_bpm || 0).toFixed(1)} bpm`;
+  document.getElementById("s-hook").textContent = `${Math.round(g.hookload_klbf || 0)} klbf`;
+  document.getElementById("s-tt").textContent = `${(g.trip_tank_bbl || 0).toFixed(1)} bbl`;
+  document.getElementById("s-bhp").textContent = `${Math.round(g.bottomhole_psi || 0)} psi`;
+  document.getElementById("s-shoe").textContent = `${Math.round(g.shoe_margin_psi || 0)} psi`;
+
+  // Update slider positions if not being actively touched
+  if (document.activeElement !== document.getElementById("pump-slider")) {
+    document.getElementById("pump-slider").value = g.pump_spm || 0;
+    document.getElementById("pump-val").textContent = `${Math.round(g.pump_spm || 0)} SPM`;
+  }
+  if (document.activeElement !== document.getElementById("choke-slider")) {
+    document.getElementById("choke-slider").value = g.choke_percent || 0;
+    document.getElementById("choke-val").textContent = `${(g.choke_percent || 0).toFixed(1)}%`;
+  }
+
+  if (document.getElementById("tp-acc")) document.getElementById("tp-acc").textContent = Math.round(g.accumulator_psi || 3000);
+  if (document.getElementById("tp-man")) document.getElementById("tp-man").textContent = Math.round(g.manifold_psi || 3000);
+  if (document.getElementById("tp-margin")) document.getElementById("tp-margin").textContent = Math.round(g.shoe_margin_psi || 0);
+  if (document.getElementById("me-active-mw")) document.getElementById("me-active-mw").textContent = (g.active_mud_weight_ppg || 12).toFixed(1);
+  if (document.getElementById("me-target-mw")) document.getElementById("me-target-mw").textContent = (g.kill_mud_weight_ppg || 13.5).toFixed(1);
+}
+
+// Start
+initSession();
+</script>
+</body>
+</html>

@@ -583,6 +583,9 @@ function renderSessions() {
             <a href="/?session=${s.session_id}" target="_blank" style="text-decoration:none">
               <button class="primary" title="Open student console">🖥 View</button>
             </a>
+            <a href="/crew?session=${s.session_id}" target="_blank" style="text-decoration:none">
+              <button style="background:#1d4ed8;color:#fff;border-color:#3b82f6" title="Join as Collaborative Crew Member or Coach">👥 Crew</button>
+            </a>
             <button onclick="endSession('${s.session_id}')" title="Terminate session" style="color:#ef4444;background:transparent;border-color:transparent;padding:6px 8px">✕</button>
           </div>
         </div>

@@ -81,6 +81,7 @@ Open `http://127.0.0.1:8000` (or double-click **`Launch Choke Panel.bat`** on Wi
 8. **AI Intelligent Coach & Scoring** — Automated IADC/IWCF scoring (0–100, letter grade, category breakdowns, point deductions with physical justifications, strengths, and chronological timeline).
 9. **Instructor Master Station (`/teacher`)** — Live multi-student grid dashboard, remote master freeze / whiteboard mode, dynamic fault injection (pump failure, choke plug, accumulator leak, mud weight drop), cohort gradebook export (JSON & RFC 4180 CSV), and flight-recorder telemetry replay scrubbing.
 10. **Procedural Rig Audio Engine** — 100% offline Web Audio synthesis of triplex mud pump thumps, choke fluid/gas shearing hiss, BOP mechanical actuation clunks, and alarm sirens.
+11. **Crew Resource Management (CRM) Mode (`/crew`)** — Multi-student collaborative team simulator supporting IADC WellSharp & IWCF Level 4 crew training. Distributes operational authority across dedicated rig-floor stations (Driller, Choke Operator, Toolpusher, Mud Engineer, Observer) with real-time WebSocket synchronization, role permission gating, tactical VHF intercom radio callouts, and live multi-user telemetry.
 
 ## Model Context Protocol (MCP) Server for AI Agents
 

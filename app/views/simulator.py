@@ -19,33 +19,46 @@ st.markdown(
 
 # Backend status check
 simulator_url = "http://localhost:8000"
+crew_url = "http://localhost:8000/crew"
 teacher_url = "http://localhost:8000/teacher"
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.subheader("🖥️ Student Choke Panel")
+    st.subheader("🖥️ Student Panel")
     st.markdown(
         """
-        - **Real-Time Instruments**: Standpipe, Casing, SPM, Pit Gain, Hookload.
-        - **Full Rig Console**: Driller console, Choke manifold, BOP stack, P&ID.
-        - **Procedural Rig Audio**: Mud pump strokes, choke fluid/gas shearing, alarms.
-        - **Step-by-Step Guide**: Dynamic phase diagnosis and method checklists.
+        - **Instruments**: SPP, Casing, SPM, Pit Gain.
+        - **Full Rig Console**: Choke, BOP, P&ID synoptics.
+        - **Rig Audio**: Procedural pumps, choke hiss, sirens.
+        - **Step Guide**: Real-time checklists.
         """
     )
-    st.link_button("🚀 Open Student Choke Panel", simulator_url, type="primary")
+    st.link_button("🚀 Open Choke Panel", simulator_url, type="primary")
 
 with col2:
-    st.subheader("🎓 Instructor Master Station")
+    st.subheader("👥 Crew CRM Mode")
     st.markdown(
         """
-        - **Multi-Student Live Grid**: Monitor all active students in real time.
-        - **Live Fault Injector**: Trigger unexpected pump failures, choke plugs, or leaks.
-        - **Master Freeze & Whiteboard**: Pause student runs to review downhole mechanics.
-        - **AI Assessment & Gradebook**: Automated IADC/IWCF scoring and CSV export.
+        - **Multiplayer Roles**: Driller, Choke, Toolpusher, Mud.
+        - **Real-Time WebSockets**: Live shared well synchronization.
+        - **Tactical Intercom**: Standard IADC/IWCF radio callouts.
+        - **Team Discipline**: Role-authorized controls & locks.
         """
     )
-    st.link_button("🎓 Open Teacher Console", teacher_url, type="secondary")
+    st.link_button("👥 Open Crew Console", crew_url, type="primary")
+
+with col3:
+    st.subheader("🎓 Master Station")
+    st.markdown(
+        """
+        - **Live Grid**: Monitor all active students.
+        - **Fault Injector**: Trigger surprise rig faults.
+        - **Master Freeze**: Pause runs for coaching.
+        - **AI Gradebook**: IADC scoring and CSV export.
+        """
+    )
+    st.link_button("🎓 Open Teacher Station", teacher_url, type="secondary")
 
 st.divider()
 

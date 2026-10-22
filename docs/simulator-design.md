@@ -321,6 +321,12 @@ Each stage is useful on its own and de-risks the next.
    cascade baffles and liquid seal U-tube leg, triplex pumps with spherical pulsation
    dampeners, active agitated mud pits, calibrated trip tank with sight glass,
    surface and deepwater subsea BOP stacks with dual pods, and rock stratigraphy.
+10. ~~**Crew CRM & Collaborative Multiplayer Mode (`/crew`).**~~ **Done.**
+    Real-time multi-student team training conforming to IADC WellSharp and IWCF
+    Level 4 crew standards. Distributes operational control across dedicated
+    rig-floor stations (Driller, Choke Operator, Toolpusher, Mud Engineer, Observer)
+    with WebSocket state synchronization, role permission enforcement, tactical
+    rig walkie-talkie / intercom callouts, and audio squelch/chimes.
 
 Stage 1 is where the real risk is. If the engine is right, everything else is
 presentation.

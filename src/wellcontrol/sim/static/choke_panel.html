@@ -273,6 +273,9 @@
   <a href="/teacher" target="_blank" style="text-decoration:none">
     <button style="background:linear-gradient(#2b3744,#1b242e);color:#e2e8f0;border-color:#3e4c5b" title="Open Multi-Student Teacher Dashboard">🎓 Instructor Console ↗</button>
   </a>
+  <a id="link-crew" href="/crew" target="_blank" style="text-decoration:none">
+    <button style="background:linear-gradient(#2b3744,#1b242e);color:#e2e8f0;border-color:#3e4c5b" title="Open Multi-User Collaborative Rig Crew Console">👥 Crew CRM ↗</button>
+  </a>
   <button id="btn-audio" style="background:linear-gradient(#2b3744,#1b242e);color:#e2e8f0;border-color:#3e4c5b" title="Toggle Rig Acoustic Simulation (Procedural Audio)">🔇 Audio</button>
   <label class="lbl">Exercise</label>
   <select id="scenario"></select>
@@ -784,6 +787,7 @@ async function start() {
   });
   showBriefing($("scenario").value);
   sessionId = created.session_id;
+  if ($("link-crew")) $("link-crew").href = `/crew?session=${sessionId}`;
   nextEvent = 0; trace = []; schematicCache = null;
   $("log").innerHTML = "";
   await api(`/api/sessions/${sessionId}/speed`, {

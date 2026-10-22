@@ -26,10 +26,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from .crew import CrewManager, CrewMember, CrewRole, STANDARD_CALLOUTS, can_operate
 from .session import SESSION_SPEEDS_DOC, SPEEDS, Session, SessionStore
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -44,6 +45,7 @@ app = FastAPI(
 )
 
 store = SessionStore()
+crew_manager = CrewManager()
 
 
 # --------------------------------------------------------------------------
@@ -124,6 +126,13 @@ class StudentNameCommand(BaseModel):
     name: str = Field(min_length=1, max_length=60)
 
 
+class CalloutBody(BaseModel):
+    sender_name: str = Field(default="Trainee")
+    role: str = Field(default="driller")
+    message: str = Field(min_length=1, max_length=240)
+    is_standard: bool = Field(default=False)
+
+
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------
@@ -147,6 +156,11 @@ def choke_panel() -> FileResponse:
 @app.get("/teacher", include_in_schema=False)
 def teacher_console() -> FileResponse:
     return FileResponse(STATIC / "teacher.html")
+
+
+@app.get("/crew", include_in_schema=False)
+def crew_console() -> FileResponse:
+    return FileResponse(STATIC / "crew.html")
 
 
 @app.get("/api/speeds")
@@ -411,3 +425,187 @@ def teacher_gradebook_csv() -> Response:
         media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="wellcontrol_gradebook.csv"'},
     )
+
+
+# --------------------------------------------------------------------------
+# Crew CRM & Multi-User Collaboration
+# --------------------------------------------------------------------------
+
+def _execute_crew_action(session: Session, action: str, params: dict) -> str:
+    """Execute a validated crew member action on the shared session."""
+    if action == "pump":
+        spm = float(params.get("spm", 0.0))
+        session.set_pump(spm)
+        return f"Set pump rate to {spm:.0f} SPM"
+    elif action == "choke":
+        pct = float(params.get("percent", params.get("position", 0.0)))
+        session.set_choke(pct)
+        return f"Positioned choke to {pct:.1f}%"
+    elif action == "valve":
+        name = str(params.get("name", ""))
+        state = str(params.get("state", "open"))
+        session.set_valve(name, state)
+        return f"{state.title()} {name.replace('_', ' ')}"
+    elif action == "bop":
+        name = str(params.get("name", ""))
+        state = str(params.get("state", "closed"))
+        session.set_valve(name, state)
+        return f"{state.title()} BOP {name.replace('_', ' ')}"
+    elif action == "speed":
+        spd = float(params.get("speed", 1.0))
+        session.set_speed(spd)
+        return f"Set simulation speed to {spd:.0f}x"
+    elif action == "strip":
+        fpm = float(params.get("feet_per_min", 0.0))
+        session.strip(fpm)
+        direction = "Running in" if fpm > 0 else ("Pulling out" if fpm < 0 else "Stopped")
+        return f"Stripping: {direction} ({abs(fpm):.0f} ft/min)"
+    elif action == "mud_weight":
+        ppg = float(params.get("ppg", 0.0))
+        session.set_mud_weight(ppg)
+        return f"Weighted active pit to {ppg:.1f} ppg"
+    elif action == "kill_mud":
+        session.fill_with_kill_mud()
+        return "Filled active pits with calculated kill mud"
+    elif action == "zero_pit":
+        session.zero_pit_totalizer()
+        return "Reset pit volume totalizer"
+    elif action == "zero_tt":
+        session.zero_trip_tank()
+        return "Reset trip tank totalizer"
+    return f"Executed {action}"
+
+
+@app.get("/api/crew/roles")
+def crew_roles() -> dict:
+    """Available rig crew roles, titles, and badge colors."""
+    return {
+        "roles": [
+            {
+                "role": r.value,
+                "title": r.title,
+                "badge_color": r.badge_color,
+            }
+            for r in CrewRole
+        ]
+    }
+
+
+@app.get("/api/crew/callouts/standard")
+def standard_callouts() -> dict:
+    """Standard IADC/IWCF rig-floor CRM radio callouts."""
+    return {"callouts": STANDARD_CALLOUTS}
+
+
+@app.get("/api/crew/{session_id}/roster")
+def crew_roster(session_id: str) -> dict:
+    """Roster of active crew members in session room."""
+    _session(session_id)
+    room = crew_manager.get_or_create_room(session_id)
+    return {"session_id": session_id, "roster": room.roster()}
+
+
+@app.post("/api/crew/{session_id}/callout")
+def post_crew_callout(session_id: str, body: CalloutBody) -> dict:
+    """Broadcast an intercom radio callout to the crew."""
+    _session(session_id)
+    room = crew_manager.get_or_create_room(session_id)
+    try:
+        role = CrewRole(body.role)
+    except ValueError:
+        role = CrewRole.DRILLER
+    callout = room.post_callout(body.sender_name, role, body.message, body.is_standard)
+    return {"callout": callout.to_dict()}
+
+
+@app.get("/api/crew/{session_id}/callouts")
+def get_crew_callouts(session_id: str) -> dict:
+    """Recent intercom radio callouts history."""
+    _session(session_id)
+    room = crew_manager.get_or_create_room(session_id)
+    return {"callouts": [c.to_dict() for c in room.callouts]}
+
+
+@app.websocket("/ws/crew/{session_id}")
+async def crew_websocket(
+    websocket: WebSocket,
+    session_id: str,
+    role: str = "driller",
+    name: str = "Trainee",
+):
+    """Bi-directional real-time collaboration socket for crew members."""
+    try:
+        session = _session(session_id)
+    except HTTPException:
+        await websocket.close(code=4004, reason="Session not found")
+        return
+
+    try:
+        crew_role = CrewRole(role)
+    except ValueError:
+        crew_role = CrewRole.DRILLER
+
+    await websocket.accept()
+    room = crew_manager.get_or_create_room(session_id)
+    member = CrewMember(name=name, role=crew_role, websocket=websocket)
+    room.add_member(member)
+
+    # Broadcast roster update
+    await room.broadcast({
+        "type": "roster",
+        "roster": room.roster(),
+        "event": f"{member.name} joined as {member.role.title}",
+    })
+
+    # Initial state to client
+    await websocket.send_json({
+        "type": "init",
+        "member": member.to_dict(),
+        "roster": room.roster(),
+        "callouts": [c.to_dict() for c in room.callouts],
+        "snapshot": session.snapshot(),
+    })
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+            msg_type = data.get("type", "action")
+
+            if msg_type == "callout":
+                msg = str(data.get("message", "")).strip()
+                if msg:
+                    is_std = bool(data.get("is_standard", False))
+                    c = room.post_callout(member.name, member.role, msg, is_std)
+                    await room.broadcast({
+                        "type": "callout",
+                        "callout": c.to_dict(),
+                    })
+            elif msg_type == "action":
+                action = data.get("action", "")
+                params = data.get("params", {})
+                if not can_operate(member.role, action):
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": f"Action '{action}' is reserved for another rig role.",
+                    })
+                    continue
+
+                desc = _execute_crew_action(session, action, params)
+                snap = session.snapshot()
+                await room.broadcast({
+                    "type": "telemetry",
+                    "snapshot": snap,
+                    "event": f"[{member.role.title}] {member.name}: {desc}",
+                })
+            elif msg_type == "sync":
+                await websocket.send_json({
+                    "type": "telemetry",
+                    "snapshot": session.snapshot(),
+                })
+    except WebSocketDisconnect:
+        room.remove_member(member.member_id)
+        await room.broadcast({
+            "type": "roster",
+            "roster": room.roster(),
+            "event": f"{member.name} ({member.role.title}) left the console",
+        })
