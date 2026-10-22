@@ -70,7 +70,7 @@ Three layers, each depending only on the ones above it:
 
 1. **Physics primitives** — `units`, `survey`, `geometry`, `hydrostatics`, `rheology`, `kick`, `killsheet`, `tolerance`, `subsea`, `hpht`, `mpd`, `stripping`. Pure functions and dataclasses, no cross-layer imports.
 2. **Kill methods** — `methods/`. Composes the primitives into procedures.
-3. **Presentation** — `plotting.py` and `app/`. Consume `KillPlan`, never recompute physics.
+3. **Presentation** — `plotting.py` (with standardized certification title block `plot_kill`, `plot_session_kill`, `save_kill_plot`), `app/` (Streamlit planner), and `sim/static/` (FastAPI 9-screen rig console + `/teacher` instructor master station + `/crew` collaborative simulator). Consume `KillPlan` and `Session`, never recompute physics.
 
 ### App layout
 
