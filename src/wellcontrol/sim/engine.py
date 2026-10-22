@@ -1477,6 +1477,8 @@ class Simulator:
                 flow_in_bpm=state.flow_in_bpm,
                 flow_out_bpm=state.flow_out_bpm,
                 pit_gain_bbl=self.pits.gain_bbl,
+                hookload_klbf=round(self.hookload_lbf / 1000.0, 1),
+                trip_tank_bbl=round(self.trip_tank.change_bbl, 1),
             )
         )
 

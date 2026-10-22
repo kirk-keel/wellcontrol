@@ -759,16 +759,27 @@ class Session:
         they are on display, so a chart cannot leak what the gauges withhold.
         """
         visible = self.downhole_visible
-        samples = self.simulator.state.trace[-limit:]
+        samples = (
+            self.simulator.state.trace[-limit:]
+            if limit > 0
+            else self.simulator.state.trace
+        )
         rows = []
         for sample in samples:
+            flow_in = round(sample.flow_in_bpm, 2)
+            flow_out = round(sample.flow_out_bpm, 2)
             row = {
                 "time_s": round(sample.time_s, 1),
                 "casing_psi": round(sample.casing_psi),
                 "drill_pipe_psi": round(sample.standpipe_psi),
                 "pit_gain_bbl": round(sample.pit_gain_bbl, 1),
-                "flow_out_bpm": round(sample.flow_out_bpm, 2),
-                "flow_in_bpm": round(sample.flow_in_bpm, 2),
+                "flow_out_bpm": flow_out,
+                "flow_in_bpm": flow_in,
+                "diff_flow_bpm": round(flow_out - flow_in, 2),
+                "pump_spm": round(sample.pump_spm, 1),
+                "choke_percent": round(sample.choke_percent, 1),
+                "hookload_klbf": round(sample.hookload_klbf, 1),
+                "trip_tank_bbl": round(sample.trip_tank_bbl, 1),
             }
             if visible:
                 row["bottomhole_psi"] = round(sample.bottomhole_psi)

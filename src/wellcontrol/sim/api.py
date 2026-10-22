@@ -281,6 +281,12 @@ def snapshot(session_id: str, since_event: int = 0, trace_limit: int = 240) -> d
     )
 
 
+@app.get("/api/sessions/{session_id}/trace")
+def trace(session_id: str, limit: int = 1200) -> dict:
+    """Historical trace telemetry specifically for the EDR trend recorder."""
+    return {"trace": _session(session_id).trace(limit=limit)}
+
+
 @app.get("/api/sessions/{session_id}/lineup")
 def lineup(session_id: str) -> dict:
     return {"valves": _session(session_id).lineup()}

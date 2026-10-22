@@ -293,6 +293,8 @@ class TraceSample:
     flow_in_bpm: float
     flow_out_bpm: float
     pit_gain_bbl: float
+    hookload_klbf: float = 0.0
+    trip_tank_bbl: float = 0.0
 
 
 # --------------------------------------------------------------------------

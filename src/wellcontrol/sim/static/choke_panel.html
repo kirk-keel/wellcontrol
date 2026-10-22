@@ -294,6 +294,45 @@
   .mm-sub { font-size: 11px; color: #94a3b8; }
   .mm-divider { height: 1px; background: #2e3b4b; margin: 4px 0; }
 
+  /* ---- EDR Trend Screen ---- */
+  .edr-btn-group button {
+    background: #1e293b; color: #cbd5e1; border: 1px solid #334155;
+    border-radius: 4px; cursor: pointer; transition: all .15s ease;
+  }
+  .edr-btn-group button:hover {
+    background: #334155; color: #fff;
+  }
+  .edr-btn-group button.active {
+    background: #0284c7; color: #fff; border-color: #38bdf8;
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+  }
+  .edr-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
+    background: #141a23; border: 1px solid #283545; color: #64748b;
+    cursor: pointer; user-select: none; transition: all .15s ease;
+  }
+  .edr-chip:hover {
+    border-color: #475569; color: #cbd5e1;
+  }
+  .edr-chip.active {
+    background: #16202c; border-color: var(--chip-color, #38bdf8);
+    color: #f1f5f9; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  .edr-chip .chip-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: #475569;
+  }
+  .edr-chip.active .chip-dot {
+    background: var(--chip-color, #38bdf8);
+    box-shadow: 0 0 6px var(--chip-color, #38bdf8);
+  }
+  .edr-chip .chip-val {
+    font-family: monospace; font-size: 11px; color: #94a3b8; margin-left: 2px;
+  }
+  .edr-chip.active .chip-val {
+    color: #f8fafc; font-weight: 700;
+  }
+
   /* Popout mode standalone styling */
   body.is-popout {
     background: #0d1117;
@@ -382,6 +421,13 @@
           <div class="mm-sub">SPP, SPM, pit gain, flow out & hookload</div>
         </div>
       </button>
+      <button class="mm-item" data-pop="edr">
+        <span class="mm-icon">📈</span>
+        <div>
+          <div class="mm-title">Detach EDR Trend Recorder</div>
+          <div class="mm-sub">Customizable multi-pen drilling & kill trends</div>
+        </div>
+      </button>
       <button class="mm-item" data-pop="manifolds">
         <span class="mm-icon">🔀</span>
         <div>
@@ -451,6 +497,7 @@
 <nav id="tabs">
   <button data-screen="driller" class="active">Driller</button>
   <button data-screen="choke">Choke</button>
+  <button data-screen="edr">EDR Trends</button>
   <button data-screen="bop">BOP</button>
   <button data-screen="manifolds">Manifolds</button>
   <button data-screen="well">Well</button>
@@ -502,7 +549,10 @@
       </div>
 
       <div class="card">
-        <h2>Pit and flow history</h2>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <h2 style="margin:0">Pit and flow history</h2>
+          <button id="btn-goto-edr" style="font-size:11px;padding:3px 9px;background:#1e293b;color:#38bdf8;border:1px solid #38bdf8;border-radius:4px;cursor:pointer">📈 Customize EDR Trends</button>
+        </div>
         <canvas id="c-pits" class="strip"></canvas>
         <div class="legend">
           <span><i class="key" style="background:var(--csg)"></i>Pit gain (bbl)</span>
@@ -897,9 +947,72 @@
           <kbd style="background:#222;color:#fff;padding:2px 6px;border-radius:4px">Space</kbd><span>Toggle Pause / Run</span>
           <kbd style="background:#222;color:#fff;padding:2px 6px;border-radius:4px">[ / ]</kbd><span>Choke -1% / +1%</span>
           <kbd style="background:#222;color:#fff;padding:2px 6px;border-radius:4px">&larr; / &rarr;</kbd><span>Fine choke step</span>
-          <kbd style="background:#222;color:#fff;padding:2px 6px;border-radius:4px">1 - 8</kbd><span>Switch screens</span>
+          <kbd style="background:#222;color:#fff;padding:2px 6px;border-radius:4px">1 - 9</kbd><span>Switch screens</span>
         </div>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ EDR TRENDS ============================ -->
+<section class="screen" id="s-edr">
+  <div class="edr-container">
+    <!-- Top toolbar / control bar -->
+    <div class="card edr-toolbar" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#10151c;border:1px solid #1e293b;border-radius:6px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:14px;font-weight:700;letter-spacing:0.05em;color:#f8fafc">EDR RECORDER</span>
+          <span class="pill mono" id="edr-status" style="font-size:11px;background:#0f172a;border-color:#334155;color:#38bdf8">0 SAMPLES</span>
+        </div>
+        <div class="edr-btn-group" style="display:flex;gap:4px">
+          <span style="font-size:11px;color:#94a3b8;align-self:center;margin-right:4px">MODE:</span>
+          <button class="edr-mode-btn active" data-mode="split" style="font-size:11px;padding:4px 9px">Split Tracks</button>
+          <button class="edr-mode-btn" data-mode="overlay" style="font-size:11px;padding:4px 9px">Multi-Pen Overlay</button>
+        </div>
+        <div class="edr-btn-group" style="display:flex;gap:4px">
+          <span style="font-size:11px;color:#94a3b8;align-self:center;margin-right:4px">SPAN:</span>
+          <button class="edr-span-btn" data-span="60" style="font-size:11px;padding:4px 8px">1m</button>
+          <button class="edr-span-btn" data-span="300" style="font-size:11px;padding:4px 8px">5m</button>
+          <button class="edr-span-btn active" data-span="900" style="font-size:11px;padding:4px 8px">15m</button>
+          <button class="edr-span-btn" data-span="1800" style="font-size:11px;padding:4px 8px">30m</button>
+          <button class="edr-span-btn" data-span="0" style="font-size:11px;padding:4px 8px">Full Run</button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div class="edr-btn-group" style="display:flex;gap:4px">
+          <span style="font-size:11px;color:#94a3b8;align-self:center;margin-right:4px">PRESETS:</span>
+          <button class="edr-preset-btn" data-preset="drilling" style="font-size:11px;padding:4px 8px">Drilling</button>
+          <button class="edr-preset-btn" data-preset="kick" style="font-size:11px;padding:4px 8px">Kick/Flow Check</button>
+          <button class="edr-preset-btn" data-preset="kill" style="font-size:11px;padding:4px 8px">Kill Op</button>
+          <button class="edr-preset-btn" data-preset="tripping" style="font-size:11px;padding:4px 8px">Tripping</button>
+          <button class="edr-preset-btn" data-preset="all" style="font-size:11px;padding:4px 8px">All</button>
+        </div>
+        <button id="btn-edr-export" style="font-size:11px;padding:4px 10px;background:#1e293b;color:#38bdf8;border:1px solid #38bdf8;border-radius:4px;cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+          💾 Export CSV
+        </button>
+      </div>
+    </div>
+
+    <!-- Channel Pen Customizer Bar -->
+    <div class="card" style="padding:10px 14px;background:#0c1017;border:1px solid #1e293b;border-radius:6px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:11px;font-weight:700;color:#94a3b8;letter-spacing:0.06em">CUSTOMIZE ACTIVE DRILLER PENS (CLICK TO TOGGLE ON/OFF):</span>
+        <span id="edr-scrub-clock" style="font-size:12px;font-family:monospace;color:#38bdf8;font-weight:700">LIVE TELEMETRY</span>
+      </div>
+      <div id="edr-channel-chips" style="display:flex;flex-wrap:wrap;gap:8px">
+        <!-- Rendered dynamically with toggle chips -->
+      </div>
+    </div>
+
+    <!-- Main EDR Graph Canvas & Crosshair Tooltip -->
+    <div class="card" style="padding:0;background:#06080c;border:1px solid #1e293b;border-radius:6px;position:relative;overflow:hidden">
+      <canvas id="c-edr" style="width:100%;height:580px;display:block;cursor:crosshair"></canvas>
+      <div id="edr-tooltip" style="display:none;position:absolute;pointer-events:none;background:rgba(12,16,23,0.94);border:1px solid #38bdf8;border-radius:6px;padding:8px 12px;font-size:11px;font-family:monospace;color:#e2e8f0;box-shadow:0 8px 24px rgba(0,0,0,0.85);z-index:20;min-width:180px"></div>
+    </div>
+
+    <!-- Window Stats Readout Bar -->
+    <div class="card" style="margin-top:10px;padding:8px 14px;background:#0c1017;border:1px solid #1e293b;border-radius:6px;display:flex;flex-wrap:wrap;gap:16px;font-size:11px;color:#94a3b8" id="edr-stats-bar">
+      <!-- Min/Max/Avg summaries for active pens in the visible window -->
     </div>
   </div>
 </section>
@@ -970,7 +1083,7 @@ async function poll() {
   busy = true;
   try {
     const snap = await api(
-      `/api/sessions/${sessionId}?since_event=${nextEvent}&trace_limit=240`);
+      `/api/sessions/${sessionId}?since_event=${nextEvent}&trace_limit=720`);
     trace = snap.trace;
     nextEvent = snap.events.next_index;
     snap.events.events.forEach(addEvent);
@@ -993,6 +1106,7 @@ async function updateSheetThrottled() {
 function redraw() {
   if (screen === "choke") drawCharts();
   else if (screen === "driller") drawPits();
+  else if (screen === "edr") drawEdr();
   else if (screen === "bop") { drawBopPanel(); drawLineup(lineupCache); }
   else if (screen === "manifolds") {
     drawStandpipeManifold(); drawChokeKillManifold(); drawPid();
@@ -2802,7 +2916,7 @@ window.addEventListener("keydown", e => {
     $("choke").value = nextVal;
     $("choke-read").textContent = nextVal.toFixed(1);
     send("choke", {percent: nextVal});
-  } else if (e.key >= "1" && e.key <= "8") {
+  } else if (e.key >= "1" && e.key <= "9") {
     const tabBtns = document.querySelectorAll("#tabs button[data-screen]");
     const idx = Number(e.key) - 1;
     if (idx < tabBtns.length) tabBtns[idx].click();
@@ -2816,6 +2930,7 @@ window.addEventListener("keydown", e => {
 const SCREEN_TITLES = {
   driller: "Driller's Doghouse Console",
   choke: "Remote Hydraulic Choke Panel",
+  edr: "Electronic Drilling Recorder (EDR Trends)",
   bop: "BOP Control Stack & Accumulators",
   manifolds: "Standpipe & Choke Manifolds (P&ID)",
   well: "Live Wellbore & Stratigraphy Schematic",
@@ -3191,7 +3306,538 @@ if ($("popout-btn-close")) {
   $("popout-btn-close").onclick = () => window.close();
 }
 
+/* --------------------------------- EDR trends --------------------------------- */
+const EDR_CHANNELS = [
+  { key: "drill_pipe_psi", tag: "SPP", name: "Standpipe Pressure", unit: "psi", color: "#38bdf8", default: true, min: 0, max: 4000 },
+  { key: "casing_psi", tag: "SICP", name: "Casing Pressure", unit: "psi", color: "#f59e0b", default: true, min: 0, max: 2500 },
+  { key: "pump_spm", tag: "SPM", name: "Pump Speed", unit: "spm", color: "#a855f7", default: true, min: 0, max: 120 },
+  { key: "pit_gain_bbl", tag: "Pit Gain", name: "Pit Gain/Loss", unit: "bbl", color: "#ef4444", default: true, min: -10, max: 30 },
+  { key: "diff_flow_bpm", tag: "ΔFlow", name: "Diff Flow (Out-In)", unit: "bpm", color: "#10b981", default: true, min: -2, max: 4 },
+  { key: "flow_out_bpm", tag: "Flow Out", name: "Flowline Returns", unit: "bpm", color: "#06b6d4", default: false, min: 0, max: 15 },
+  { key: "flow_in_bpm", tag: "Flow In", name: "Pump Rate", unit: "bpm", color: "#3b82f6", default: false, min: 0, max: 15 },
+  { key: "hookload_klbf", tag: "Hookload", name: "Weight Indicator", unit: "klbf", color: "#eab308", default: true, min: 0, max: 450 },
+  { key: "trip_tank_bbl", tag: "Trip Tank", name: "Trip Tank Change", unit: "bbl", color: "#ec4899", default: false, min: -10, max: 20 },
+  { key: "choke_percent", tag: "Choke %", name: "Choke Position", unit: "%", color: "#f97316", default: false, min: 0, max: 100 },
+  { key: "bottomhole_psi", tag: "BHP", name: "Bottomhole Pressure", unit: "psi", color: "#22c55e", default: false, downholeOnly: true, min: 0, max: 6000 },
+  { key: "shoe_psi", tag: "Shoe P", name: "Shoe Pressure", unit: "psi", color: "#c084fc", default: false, downholeOnly: true, min: 0, max: 6000 },
+];
+
+const EDR_PRESETS = {
+  drilling: ["drill_pipe_psi", "pump_spm", "pit_gain_bbl", "diff_flow_bpm", "hookload_klbf"],
+  kick: ["pit_gain_bbl", "diff_flow_bpm", "flow_out_bpm", "flow_in_bpm", "casing_psi"],
+  kill: ["drill_pipe_psi", "casing_psi", "pump_spm", "choke_percent", "pit_gain_bbl"],
+  tripping: ["hookload_klbf", "trip_tank_bbl", "pit_gain_bbl"],
+  all: EDR_CHANNELS.map(c => c.key)
+};
+
+let edrMode = localStorage.getItem("wellcontrol_edr_mode") || "split";
+let edrSpan = Number(localStorage.getItem("wellcontrol_edr_span") || 900);
+let activeEdrChannels = new Set();
+
+try {
+  const saved = JSON.parse(localStorage.getItem("wellcontrol_edr_channels") || "null");
+  if (Array.isArray(saved) && saved.length > 0) {
+    saved.forEach(k => activeEdrChannels.add(k));
+  } else {
+    EDR_CHANNELS.filter(c => c.default).forEach(c => activeEdrChannels.add(c.key));
+  }
+} catch (e) {
+  EDR_CHANNELS.filter(c => c.default).forEach(c => activeEdrChannels.add(c.key));
+}
+
+let edrScrubX = null;
+
+function formatEdrValue(key, val) {
+  if (val === null || val === undefined || isNaN(val)) return "—";
+  if (key === "drill_pipe_psi" || key === "casing_psi" || key === "bottomhole_psi" || key === "shoe_psi") {
+    return Math.round(val).toLocaleString() + " psi";
+  }
+  if (key === "pump_spm") return Number(val).toFixed(0) + " spm";
+  if (key === "pit_gain_bbl" || key === "trip_tank_bbl") return Number(val).toFixed(1) + " bbl";
+  if (key === "diff_flow_bpm" || key === "flow_out_bpm" || key === "flow_in_bpm") return (val >= 0 ? "+" : "") + Number(val).toFixed(2) + " bpm";
+  if (key === "hookload_klbf") return Number(val).toFixed(0) + " klbf";
+  if (key === "choke_percent") return Number(val).toFixed(1) + "%";
+  return Number(val).toFixed(1);
+}
+
+function initEdrUI() {
+  const container = $("edr-channel-chips");
+  if (container) {
+    container.innerHTML = EDR_CHANNELS.map(ch => {
+      const active = activeEdrChannels.has(ch.key);
+      const isDownhole = ch.downholeOnly;
+      const hiddenStyle = isDownhole && !downholeVisible ? "display:none;" : "";
+      return `
+        <button class="edr-chip ${active ? 'active' : ''}" id="edr-chip-btn-${ch.key}" data-key="${ch.key}" style="--chip-color:${ch.color};${hiddenStyle}">
+          <span class="chip-dot"></span>
+          <span style="color:#f8fafc;font-weight:700">${ch.tag}</span>
+          <span style="color:#64748b;font-weight:normal">${ch.name}</span>
+          <span class="chip-val" id="edr-chip-${ch.key}">—</span>
+        </button>
+      `;
+    }).join("");
+
+    container.addEventListener("click", (e) => {
+      const btn = e.target.closest("button.edr-chip");
+      if (!btn) return;
+      const key = btn.dataset.key;
+      if (activeEdrChannels.has(key)) {
+        activeEdrChannels.delete(key);
+        btn.classList.remove("active");
+      } else {
+        activeEdrChannels.add(key);
+        btn.classList.add("active");
+      }
+      localStorage.setItem("wellcontrol_edr_channels", JSON.stringify([...activeEdrChannels]));
+      drawEdr();
+    });
+  }
+
+  document.querySelectorAll(".edr-preset-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const presetKey = btn.dataset.preset;
+      const keys = EDR_PRESETS[presetKey];
+      if (!keys) return;
+      activeEdrChannels.clear();
+      keys.forEach(k => activeEdrChannels.add(k));
+      localStorage.setItem("wellcontrol_edr_channels", JSON.stringify([...activeEdrChannels]));
+      EDR_CHANNELS.forEach(ch => {
+        const chipBtn = $(`edr-chip-btn-${ch.key}`);
+        if (chipBtn) chipBtn.classList.toggle("active", activeEdrChannels.has(ch.key));
+      });
+      drawEdr();
+    });
+  });
+
+  document.querySelectorAll(".edr-span-btn").forEach(btn => {
+    btn.classList.toggle("active", Number(btn.dataset.span) === edrSpan);
+    btn.addEventListener("click", () => {
+      edrSpan = Number(btn.dataset.span);
+      localStorage.setItem("wellcontrol_edr_span", edrSpan);
+      document.querySelectorAll(".edr-span-btn").forEach(b => b.classList.toggle("active", b === btn));
+      drawEdr();
+    });
+  });
+
+  document.querySelectorAll(".edr-mode-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.mode === edrMode);
+    btn.addEventListener("click", () => {
+      edrMode = btn.dataset.mode;
+      localStorage.setItem("wellcontrol_edr_mode", edrMode);
+      document.querySelectorAll(".edr-mode-btn").forEach(b => b.classList.toggle("active", b === btn));
+      drawEdr();
+    });
+  });
+
+  if ($("btn-edr-export")) {
+    $("btn-edr-export").onclick = exportEdrCsv;
+  }
+
+  if ($("btn-goto-edr")) {
+    $("btn-goto-edr").onclick = () => switchScreen("edr");
+  }
+
+  const edrCanvas = $("c-edr");
+  if (edrCanvas) {
+    edrCanvas.addEventListener("mousemove", (e) => {
+      const rect = edrCanvas.getBoundingClientRect();
+      edrScrubX = e.clientX - rect.left;
+      drawEdr();
+    });
+    edrCanvas.addEventListener("mouseleave", () => {
+      edrScrubX = null;
+      drawEdr();
+    });
+  }
+}
+
+function drawEdr() {
+  const c = $("c-edr");
+  if (!c) return;
+  const rect = c.getBoundingClientRect();
+  const w = rect.width || c.clientWidth || 900;
+  const h = rect.height || c.clientHeight || 580;
+  if (!w || !h) return;
+  const dpr = window.devicePixelRatio || 1;
+  c.width = w * dpr;
+  c.height = h * dpr;
+  const ctx = c.getContext("2d");
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+
+  if (!trace || trace.length === 0) {
+    ctx.fillStyle = "#64748b";
+    ctx.font = "14px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Awaiting telemetry stream... Run simulation to view EDR trends.", w / 2, h / 2);
+    return;
+  }
+
+  const lastTime = trace[trace.length - 1].time_s;
+  const startTime = edrSpan > 0 ? Math.max(0, lastTime - edrSpan) : 0;
+  const filtered = trace.filter(p => p.time_s >= startTime);
+  const data = filtered.length > 0 ? filtered : [trace[trace.length - 1]];
+
+  if ($("edr-status")) {
+    const spanText = edrSpan > 0 ? `${Math.round((lastTime - startTime)/60)}m` : "Full Run";
+    $("edr-status").textContent = `${trace.length} SAMPLES (${spanText} / ${clock(lastTime)})`;
+  }
+
+  const activeChannels = EDR_CHANNELS.filter(c => activeEdrChannels.has(c.key) && (!c.downholeOnly || downholeVisible));
+
+  EDR_CHANNELS.forEach(ch => {
+    if (ch.downholeOnly) {
+      const chipBtn = $(`edr-chip-btn-${ch.key}`);
+      if (chipBtn) chipBtn.style.display = downholeVisible ? "inline-flex" : "none";
+    }
+  });
+
+  if (activeChannels.length === 0) {
+    ctx.fillStyle = "#64748b";
+    ctx.font = "14px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("No trend pens selected. Click any channel above to enable trend lines.", w / 2, h / 2);
+    return;
+  }
+
+  const padL = 95;
+  const padR = 40;
+  const padT = 15;
+  const padB = 30;
+  const plotW = Math.max(10, w - padL - padR);
+
+  const timeSpan = Math.max(1, lastTime - startTime);
+  const getX = (t) => padL + Math.max(0, Math.min(1, (t - startTime) / timeSpan)) * plotW;
+
+  let scrubSample = null;
+  if (edrScrubX !== null && edrScrubX >= padL && edrScrubX <= padL + plotW) {
+    const scrubRatio = (edrScrubX - padL) / plotW;
+    const scrubTime = startTime + scrubRatio * timeSpan;
+    let bestDist = Infinity;
+    for (let i = 0; i < data.length; i++) {
+      const dist = Math.abs(data[i].time_s - scrubTime);
+      if (dist < bestDist) {
+        bestDist = dist;
+        scrubSample = data[i];
+      }
+    }
+  }
+
+  const displaySample = scrubSample || trace[trace.length - 1];
+  if ($("edr-scrub-clock")) {
+    if (scrubSample) {
+      $("edr-scrub-clock").textContent = `SCRUB: [${clock(scrubSample.time_s)}] (${(lastTime - scrubSample.time_s).toFixed(0)}s ago)`;
+      $("edr-scrub-clock").style.color = "#f59e0b";
+    } else {
+      $("edr-scrub-clock").textContent = `LIVE TELEMETRY (${clock(lastTime)})`;
+      $("edr-scrub-clock").style.color = "#38bdf8";
+    }
+  }
+  EDR_CHANNELS.forEach(ch => {
+    const chipVal = $(`edr-chip-${ch.key}`);
+    if (chipVal) {
+      chipVal.textContent = formatEdrValue(ch.key, displaySample[ch.key]);
+    }
+  });
+
+  const stats = [];
+
+  if (edrMode === "split") {
+    const numTracks = activeChannels.length;
+    const trackH = Math.max(35, (h - padT - padB) / numTracks);
+
+    activeChannels.forEach((ch, idx) => {
+      const topY = padT + idx * trackH;
+      const botY = topY + trackH - 4;
+      const trkH = botY - topY;
+
+      ctx.fillStyle = idx % 2 === 0 ? "#080c12" : "#0c1018";
+      ctx.fillRect(padL, topY, plotW, trkH);
+      ctx.strokeStyle = "#1e293b";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(padL, topY, plotW, trkH);
+
+      ctx.beginPath();
+      ctx.setLineDash([3, 4]);
+      ctx.strokeStyle = "#16202c";
+      ctx.moveTo(padL, topY + trkH / 2);
+      ctx.lineTo(padL + plotW, topY + trkH / 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      let lo = Infinity, hi = -Infinity, sum = 0, count = 0;
+      data.forEach(p => {
+        const v = p[ch.key];
+        if (v !== undefined && v !== null && !isNaN(v)) {
+          lo = Math.min(lo, v);
+          hi = Math.max(hi, v);
+          sum += v;
+          count++;
+        }
+      });
+      if (!isFinite(lo)) { lo = 0; hi = 100; }
+      const avg = count > 0 ? sum / count : lo;
+      stats.push({ tag: ch.tag, unit: ch.unit, lo, hi, avg, color: ch.color });
+
+      if (hi - lo < 0.1) {
+        hi = lo + (Math.abs(lo) * 0.2 || 10);
+        lo = lo - (Math.abs(lo) * 0.1 || 5);
+      }
+      const span = hi - lo;
+      lo -= span * 0.05;
+      hi += span * 0.05;
+
+      const getY = (val) => botY - Math.max(0, Math.min(1, (val - lo) / (hi - lo))) * trkH;
+
+      ctx.fillStyle = ch.color;
+      ctx.font = "bold 11px monospace";
+      ctx.textAlign = "right";
+      ctx.fillText(ch.tag, padL - 8, topY + 14);
+      ctx.fillStyle = "#64748b";
+      ctx.font = "9px system-ui, sans-serif";
+      ctx.fillText(ch.unit, padL - 8, topY + 25);
+      ctx.fillStyle = "#475569";
+      ctx.font = "9px monospace";
+      ctx.fillText(Math.round(hi).toLocaleString(), padL - 8, topY + 36);
+      ctx.fillText(Math.round(lo).toLocaleString(), padL - 8, botY - 2);
+
+      const curV = displaySample[ch.key];
+      ctx.fillStyle = ch.color;
+      ctx.font = "bold 11px monospace";
+      ctx.textAlign = "right";
+      ctx.fillText(formatEdrValue(ch.key, curV), padL + plotW - 6, topY + 14);
+
+      ctx.beginPath();
+      let started = false;
+      data.forEach(p => {
+        const val = p[ch.key];
+        if (val === undefined || val === null || isNaN(val)) return;
+        const x = getX(p.time_s);
+        const y = getY(val);
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else { ctx.lineTo(x, y); }
+      });
+      ctx.strokeStyle = ch.color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      if (scrubSample && scrubSample[ch.key] !== undefined) {
+        const sx = getX(scrubSample.time_s);
+        const sy = getY(scrubSample[ch.key]);
+        ctx.beginPath();
+        ctx.arc(sx, sy, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = ch.color;
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    });
+  } else {
+    const topY = padT;
+    const botY = h - padB;
+    const plotH = botY - topY;
+
+    ctx.fillStyle = "#080c12";
+    ctx.fillRect(padL, topY, plotW, plotH);
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(padL, topY, plotW, plotH);
+
+    ctx.beginPath();
+    ctx.setLineDash([3, 4]);
+    ctx.strokeStyle = "#16202c";
+    for (let g = 1; g <= 4; g++) {
+      const gy = topY + (plotH * g) / 5;
+      ctx.moveTo(padL, gy);
+      ctx.lineTo(padL + plotW, gy);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    activeChannels.forEach((ch, idx) => {
+      let lo = Infinity, hi = -Infinity, sum = 0, count = 0;
+      data.forEach(p => {
+        const v = p[ch.key];
+        if (v !== undefined && v !== null && !isNaN(v)) {
+          lo = Math.min(lo, v);
+          hi = Math.max(hi, v);
+          sum += v;
+          count++;
+        }
+      });
+      if (!isFinite(lo)) { lo = 0; hi = 100; }
+      const avg = count > 0 ? sum / count : lo;
+      stats.push({ tag: ch.tag, unit: ch.unit, lo, hi, avg, color: ch.color });
+
+      if (hi - lo < 0.1) {
+        hi = lo + (Math.abs(lo) * 0.2 || 10);
+        lo = lo - (Math.abs(lo) * 0.1 || 5);
+      }
+      const span = hi - lo;
+      lo -= span * 0.05;
+      hi += span * 0.05;
+
+      const getY = (val) => botY - Math.max(0, Math.min(1, (val - lo) / (hi - lo))) * plotH;
+
+      ctx.beginPath();
+      let started = false;
+      data.forEach(p => {
+        const val = p[ch.key];
+        if (val === undefined || val === null || isNaN(val)) return;
+        const x = getX(p.time_s);
+        const y = getY(val);
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else { ctx.lineTo(x, y); }
+      });
+      ctx.strokeStyle = ch.color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      const ly = topY + 16 + idx * 18;
+      if (ly < botY - 10) {
+        ctx.fillStyle = ch.color;
+        ctx.font = "bold 10px monospace";
+        ctx.textAlign = "right";
+        ctx.fillText(`${ch.tag} ${formatEdrValue(ch.key, displaySample[ch.key])}`, padL - 8, ly);
+      }
+
+      if (scrubSample && scrubSample[ch.key] !== undefined) {
+        const sx = getX(scrubSample.time_s);
+        const sy = getY(scrubSample[ch.key]);
+        ctx.beginPath();
+        ctx.arc(sx, sy, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = ch.color;
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    });
+  }
+
+  const numTimeTicks = Math.min(6, Math.max(3, Math.floor(plotW / 120)));
+  ctx.textAlign = "center";
+  ctx.font = "10px monospace";
+  ctx.fillStyle = "#64748b";
+  for (let i = 0; i <= numTimeTicks; i++) {
+    const ratio = i / numTimeTicks;
+    const t = startTime + ratio * timeSpan;
+    const tx = padL + ratio * plotW;
+
+    ctx.beginPath();
+    ctx.setLineDash([2, 4]);
+    ctx.strokeStyle = "#16202c";
+    ctx.moveTo(tx, padT);
+    ctx.lineTo(tx, h - padB);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillText(clock(t), tx, h - padB + 16);
+  }
+
+  if (scrubSample) {
+    const sx = getX(scrubSample.time_s);
+    ctx.beginPath();
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 1.5;
+    ctx.moveTo(sx, padT);
+    ctx.lineTo(sx, h - padB);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const tagText = clock(scrubSample.time_s);
+    const tw = ctx.measureText(tagText).width + 12;
+    ctx.fillStyle = "#0284c7";
+    ctx.fillRect(sx - tw / 2, h - padB + 4, tw, 18);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 10px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(tagText, sx, h - padB + 17);
+
+    const edrTooltip = $("edr-tooltip");
+    if (edrTooltip) {
+      let html = `<div style="font-weight:700;color:#38bdf8;margin-bottom:6px;border-bottom:1px solid #334155;padding-bottom:3px">SCRUB: ${clock(scrubSample.time_s)}</div>`;
+      activeChannels.forEach(ch => {
+        html += `<div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:2px">
+          <span style="color:${ch.color};font-weight:700">${ch.tag}:</span>
+          <span>${formatEdrValue(ch.key, scrubSample[ch.key])}</span>
+        </div>`;
+      });
+      edrTooltip.innerHTML = html;
+      edrTooltip.style.display = "block";
+      const tooltipX = Math.min(w - 200, Math.max(10, sx + 15));
+      const tooltipY = Math.min(h - 180, Math.max(10, 40));
+      edrTooltip.style.left = tooltipX + "px";
+      edrTooltip.style.top = tooltipY + "px";
+    }
+  } else {
+    const edrTooltip = $("edr-tooltip");
+    if (edrTooltip) edrTooltip.style.display = "none";
+  }
+
+  const statsBar = $("edr-stats-bar");
+  if (statsBar) {
+    statsBar.innerHTML = stats.map(s => `
+      <div style="display:inline-flex;align-items:center;gap:6px">
+        <span style="font-weight:700;color:${s.color}">${s.tag}:</span>
+        <span style="color:#64748b">Min:</span> <b style="color:#cbd5e1">${Math.round(s.lo)}</b>
+        <span style="color:#64748b">Max:</span> <b style="color:#cbd5e1">${Math.round(s.hi)}</b>
+        <span style="color:#64748b">Avg:</span> <b style="color:#cbd5e1">${Math.round(s.avg)}</b>
+        <span style="color:#475569">${s.unit}</span>
+      </div>
+    `).join("");
+  }
+}
+
+function exportEdrCsv() {
+  if (!trace || trace.length === 0) return;
+  const headers = ["time_s", "clock", "drill_pipe_psi", "casing_psi", "pump_spm", "pit_gain_bbl", "diff_flow_bpm", "flow_out_bpm", "flow_in_bpm", "hookload_klbf", "trip_tank_bbl", "choke_percent"];
+  if (downholeVisible) {
+    headers.push("bottomhole_psi", "shoe_psi", "influx_bbl");
+  }
+  const lines = [headers.join(",")];
+  trace.forEach(p => {
+    const min = Math.floor(p.time_s / 60);
+    const sec = Math.floor(p.time_s % 60);
+    const hr = Math.floor(min / 60);
+    const clk = `${String(hr).padStart(2,'0')}:${String(min%60).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    const diff = p.diff_flow_bpm !== undefined ? p.diff_flow_bpm : ((p.flow_out_bpm || 0) - (p.flow_in_bpm || 0)).toFixed(2);
+    const row = [
+      p.time_s,
+      clk,
+      p.drill_pipe_psi ?? 0,
+      p.casing_psi ?? 0,
+      p.pump_spm ?? 0,
+      p.pit_gain_bbl ?? 0,
+      diff,
+      p.flow_out_bpm ?? 0,
+      p.flow_in_bpm ?? 0,
+      p.hookload_klbf ?? 0,
+      p.trip_tank_bbl ?? 0,
+      p.choke_percent ?? 0
+    ];
+    if (downholeVisible) {
+      row.push(p.bottomhole_psi ?? 0, p.shoe_psi ?? 0, p.influx_bbl ?? 0);
+    }
+    lines.push(row.join(","));
+  });
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `edr_telemetry_${sessionId || "session"}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 async function init() {
+  initEdrUI();
   await loadScenarios();
   const urlParams = new URLSearchParams(window.location.search);
   const sessionParam = urlParams.get("session");

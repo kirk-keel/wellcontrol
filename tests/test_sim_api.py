@@ -785,3 +785,64 @@ class TestTeacherConsole:
         assert "text/csv" in r_csv.headers["content-type"]
         assert "Gradebook Test" in r_csv.text
         assert "student_name" in r_csv.text
+
+
+class TestEdrTrends:
+    """Electronic Drilling Recorder (EDR) customizable trends workstation."""
+
+    def test_trace_carries_customizable_edr_channels(self, client, session_id):
+        snap = client.get(f"/api/sessions/{session_id}").json()
+        assert "trace" in snap
+        assert len(snap["trace"]) >= 1
+        sample = snap["trace"][-1]
+        for key in (
+            "time_s",
+            "drill_pipe_psi",
+            "casing_psi",
+            "pit_gain_bbl",
+            "flow_out_bpm",
+            "flow_in_bpm",
+            "diff_flow_bpm",
+            "pump_spm",
+            "choke_percent",
+            "hookload_klbf",
+            "trip_tank_bbl",
+        ):
+            assert key in sample, f"Missing EDR channel key {key} in trace"
+
+    def test_session_trace_endpoint(self, client, session_id):
+        # Full trace endpoint
+        r = client.get(f"/api/sessions/{session_id}/trace")
+        assert r.status_code == 200
+        data = r.json()
+        assert "trace" in data
+        assert isinstance(data["trace"], list)
+        assert len(data["trace"]) >= 1
+
+        # Limited trace
+        r_lim = client.get(f"/api/sessions/{session_id}/trace?limit=1")
+        assert r_lim.status_code == 200
+        assert len(r_lim.json()["trace"]) <= 1
+
+    def test_edr_screen_ui_elements_present(self, client):
+        text = client.get("/").text
+        # Tab and screen section
+        assert 'data-screen="edr"' in text
+        assert 'id="s-edr"' in text
+        assert 'id="c-edr"' in text
+        assert 'id="edr-channel-chips"' in text
+        assert 'id="edr-stats-bar"' in text
+        assert 'id="btn-edr-export"' in text
+
+        # Mode toggles and presets
+        assert 'data-mode="split"' in text
+        assert 'data-mode="overlay"' in text
+        assert 'data-preset="drilling"' in text
+        assert 'data-preset="kick"' in text
+        assert 'data-preset="kill"' in text
+        assert 'data-preset="tripping"' in text
+
+        # Driller console link and popout integration
+        assert 'id="btn-goto-edr"' in text
+        assert 'data-pop="edr"' in text
+        assert "Electronic Drilling Recorder (EDR Trends)" in text
