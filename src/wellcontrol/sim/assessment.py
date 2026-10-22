@@ -102,6 +102,7 @@ class EventKind(Enum):
     KILL_MUD_AT_BIT = "kill_mud_at_bit"
     WELL_DEAD = "well_dead"
     EQUIPMENT_FAILURE = "equipment_failure"
+    INSTRUCTOR_ACTION = "instructor_action"
 
     @property
     def label(self) -> str:

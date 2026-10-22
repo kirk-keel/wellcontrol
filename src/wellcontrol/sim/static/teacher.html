@@ -1,0 +1,953 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Well Control Simulator — Teacher Master Console</title>
+<style>
+  :root {
+    --bg: #101418;
+    --panel: #181e24;
+    --panel-header: #212932;
+    --card: #1c232a;
+    --card-border: #2d3844;
+    --sunk: #0b0f13;
+    --edge: #333f4d;
+    --ink: #e2e8f0;
+    --ink-dim: #94a3b8;
+    --readout: #4bf07e;
+    --accent: #e8760f;
+    --accent-glow: rgba(232, 118, 15, 0.25);
+    --good: #22c55e;
+    --good-bg: rgba(34, 197, 94, 0.15);
+    --warning: #f59e0b;
+    --warning-bg: rgba(245, 158, 11, 0.15);
+    --critical: #ef4444;
+    --critical-bg: rgba(239, 68, 68, 0.18);
+    --info: #3b82f6;
+    --info-bg: rgba(59, 130, 246, 0.15);
+    --dp: #60a5fa;
+    --csg: #fbbf24;
+    --bhp: #34d399;
+    --shoe: #a78bfa;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.45 "Segoe UI", system-ui, sans-serif; }
+  .mono { font-family: Consolas, ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+  /* Header */
+  header {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 10px 20px; background: var(--panel-header);
+    border-bottom: 2px solid var(--accent);
+    position: sticky; top: 0; z-index: 100;
+  }
+  header h1 {
+    font-size: 15px; margin: 0; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--accent); display: flex; align-items: center; gap: 8px;
+  }
+  .grow { flex: 1 1 auto; }
+  .badge {
+    font-size: 11px; padding: 3px 8px; border-radius: 999px;
+    font-weight: 600; white-space: nowrap; border: 1px solid var(--edge);
+  }
+  .badge.good { background: var(--good-bg); color: var(--good); border-color: var(--good); }
+  .badge.warning { background: var(--warning-bg); color: var(--warning); border-color: var(--warning); }
+  .badge.critical { background: var(--critical-bg); color: var(--critical); border-color: var(--critical); }
+  .badge.info { background: var(--info-bg); color: var(--info); border-color: var(--info); }
+  .badge.dim { background: rgba(255,255,255,0.06); color: var(--ink-dim); }
+
+  /* Controls */
+  button, select, input {
+    background: #252e37; color: var(--ink); border: 1px solid var(--edge);
+    border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer;
+    font-family: inherit; font-weight: 600; transition: all .15s ease;
+  }
+  button:hover, select:hover { filter: brightness(1.15); border-color: var(--ink-dim); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); color: #fff; border-color: #d16405; }
+  button.danger { background: #991b1b; color: #fff; border-color: #ef4444; }
+  button.success { background: #166534; color: #fff; border-color: #22c55e; }
+  button.freeze-btn { background: #1e3a8a; color: #bfdbfe; border-color: #3b82f6; }
+  button.freeze-btn.frozen { background: #7c2d12; color: #fed7aa; border-color: #ea580c; }
+
+  /* Main Container */
+  main { padding: 18px 20px; max-width: 1700px; margin: 0 auto; }
+  .dashboard-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-bottom: 16px; flex-wrap: wrap; background: var(--panel);
+    padding: 12px 16px; border-radius: 8px; border: 1px solid var(--card-border);
+  }
+
+  /* Student Grid */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 16px;
+  }
+
+  /* Student Card */
+  .card {
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: border-color .15s ease;
+  }
+  .card:hover { border-color: var(--edge); }
+  .card.has-critical { border-color: var(--critical); box-shadow: 0 0 14px rgba(239,68,68,0.25); }
+  .card.is-frozen { border-color: #3b82f6; box-shadow: 0 0 14px rgba(59,130,246,0.2); }
+  .card.is-dead { border-color: var(--good); }
+
+  .card-header {
+    background: var(--panel-header); padding: 10px 14px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    border-bottom: 1px solid var(--card-border);
+  }
+  .card-title {
+    font-weight: 700; font-size: 14px; color: #fff; display: flex; align-items: center; gap: 6px;
+  }
+  .card-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+
+  /* Gauges & Windows */
+  .gauges-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  }
+  .gauge-box {
+    background: var(--sunk); border: 1px solid #1f2730; border-radius: 6px;
+    padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .gauge-box .lbl { font-size: 10px; text-transform: uppercase; color: var(--ink-dim); font-weight: 700; letter-spacing: .05em; }
+  .gauge-box .val { font-size: 18px; font-weight: 700; color: var(--readout); margin: 2px 0; }
+  .gauge-box .sub { font-size: 10px; color: var(--ink-dim); }
+
+  .mini-stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+    background: rgba(0,0,0,0.2); padding: 6px 8px; border-radius: 6px;
+  }
+  .mini-stat { display: flex; flex-direction: column; text-align: center; }
+  .mini-stat .k { font-size: 9px; color: var(--ink-dim); text-transform: uppercase; }
+  .mini-stat .v { font-size: 12px; font-weight: 700; color: #fff; margin-top: 1px; }
+
+  /* Alarms Area */
+  .alarms-list {
+    display: flex; flex-direction: column; gap: 4px; min-height: 24px;
+  }
+  .alarm-item {
+    font-size: 11px; padding: 4px 8px; border-radius: 4px;
+    font-weight: 600; display: flex; align-items: center; gap: 6px;
+  }
+  .alarm-item.critical { background: var(--critical-bg); color: #fca5a5; border-left: 3px solid var(--critical); }
+  .alarm-item.warning { background: var(--warning-bg); color: #fde68a; border-left: 3px solid var(--warning); }
+
+  /* Card Actions */
+  .card-actions {
+    background: var(--panel); padding: 8px 12px;
+    border-top: 1px solid var(--card-border);
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  }
+
+  /* Modals */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(4px); z-index: 1000;
+    display: none; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 10px; width: 100%; max-width: 600px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6); overflow: hidden;
+    display: flex; flex-direction: column; max-height: 90vh;
+  }
+  .modal.large { max-width: 960px; }
+  .modal-header {
+    background: var(--panel-header); padding: 12px 18px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--card-border);
+  }
+  .modal-header h2 { margin: 0; font-size: 15px; color: #fff; }
+  .modal-body { padding: 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+  .modal-footer {
+    background: var(--panel); padding: 12px 18px;
+    display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+    border-top: 1px solid var(--card-border);
+  }
+
+  /* Whiteboard layout */
+  .wb-grid { display: grid; grid-template-columns: 240px 1fr; gap: 16px; }
+  .wb-schematic-wrap {
+    background: var(--sunk); border: 1px solid var(--card-border);
+    border-radius: 6px; height: 380px; position: relative; overflow: hidden;
+  }
+  .wb-notes-box {
+    background: rgba(232, 118, 15, 0.08); border: 1px solid var(--accent);
+    border-radius: 6px; padding: 10px 14px; line-height: 1.5; font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎓 WELL CONTROL SIMULATOR <span>INSTRUCTOR MASTER STATION</span></h1>
+  <span class="badge info" id="active-count">0 Students Active</span>
+  <div class="grow"></div>
+  <button id="btn-gradebook">📊 Cohort Gradebook</button>
+  <button class="danger" id="btn-master-freeze">⏸ Master Freeze All</button>
+  <button class="success" id="btn-master-resume">▶ Resume All</button>
+  <button id="btn-spawn-demo">👥 Spawn Demo Class (5)</button>
+  <a href="/" target="_blank" style="text-decoration:none">
+    <button class="primary">Student Choke Panel ↗</button>
+  </a>
+</header>
+
+<main>
+  <div class="dashboard-bar">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-weight:700;color:#fff">Cohort Overview</span>
+      <span style="color:var(--ink-dim);font-size:12px" id="cohort-info">—</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-dim)">
+        Auto Refresh:
+        <select id="poll-rate">
+          <option value="1000">1 sec</option>
+          <option value="2000" selected>2 sec</option>
+          <option value="5000">5 sec</option>
+          <option value="0">Paused</option>
+        </select>
+      </label>
+      <button id="btn-refresh" title="Refresh Now">⟳ Refresh</button>
+      <button class="primary" id="btn-new-student">+ Add Student</button>
+    </div>
+  </div>
+
+  <div class="grid" id="student-grid">
+    <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--ink-dim)">
+      <div style="font-size: 32px; margin-bottom: 12px">🎓</div>
+      <div style="font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 6px">No Active Student Sessions Found</div>
+      <div style="font-size: 13px; margin-bottom: 18px">Click below to spawn a sample cohort across all well control scenarios, or launch a student session from the Choke Panel.</div>
+      <button class="primary" id="btn-spawn-first">👥 Spawn Demo Class Now</button>
+    </div>
+  </div>
+</main>
+
+<!-- ========================= FAULT INJECTOR MODAL ========================= -->
+<div class="modal-overlay" id="modal-fault">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="fault-modal-title">⚡ Live Fault Injector</h2>
+      <button class="badge dim" onclick="closeModal('modal-fault')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:12px;color:var(--ink-dim)">
+        Trigger an unscripted real-time equipment breakdown on <b id="fault-target-student" style="color:#fff">Student</b>. The well physics will dynamically react to the failure immediately.
+      </div>
+
+      <div>
+        <label style="font-weight:700;display:block;margin-bottom:6px">Select Equipment Fault</label>
+        <select id="fault-kind-select" style="width:100%;padding:8px">
+          <option value="pump_failure">💥 Mud Pump Failure (Fluid End Breakdown, Max SPM = 0)</option>
+          <option value="choke_plugged">🚫 Choke Plugged (Nozzle Blockage, Choke Flow = 0)</option>
+          <option value="choke_washout">🌊 Choke Washout (Orifice 4x Area, Pressure Loss)</option>
+          <option value="accumulator_leak">📉 Accumulator Leak (BOP Pressure Drops to 0 psi)</option>
+          <option value="weak_shoe">⚠️ Weak Casing Shoe (Formation Breakdown / Degradation)</option>
+          <option value="mud_weight_drop">💧 Pit Mud Dilution (Active Mud Weight Drops -2.0 ppg)</option>
+        </select>
+      </div>
+
+      <div>
+        <label style="font-weight:700;display:block;margin-bottom:6px">Custom Rig Report / Alert Message (Optional)</label>
+        <input type="text" id="fault-msg-input" placeholder="Leave empty for standard rig report message..." style="width:100%;padding:8px">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeModal('modal-fault')">Cancel</button>
+      <button class="danger" id="btn-submit-fault">⚡ Inject Fault Now</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========================= WHITEBOARD REVIEW MODAL ========================= -->
+<div class="modal-overlay" id="modal-whiteboard">
+  <div class="modal large">
+    <div class="modal-header">
+      <h2 id="wb-modal-title">🔍 Whiteboard & Downhole Review Mode</h2>
+      <button class="badge dim" onclick="closeModal('modal-whiteboard')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--panel);padding:10px 14px;border-radius:6px;border:1px solid var(--card-border)">
+        <div>
+          <span style="font-size:15px;font-weight:700;color:#fff" id="wb-student-name">—</span>
+          <span class="badge info" style="margin-left:8px" id="wb-scenario-name">—</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="badge warning" id="wb-freeze-badge">⏸ FROZEN FOR REVIEW</span>
+          <button class="success" id="wb-btn-resume">▶ Resume Simulation</button>
+        </div>
+      </div>
+
+      <div class="wb-grid">
+        <div>
+          <div style="font-weight:700;font-size:11px;color:var(--ink-dim);text-transform:uppercase;margin-bottom:6px">Well Schematic</div>
+          <div class="wb-schematic-wrap">
+            <canvas id="wb-canvas" width="238" height="378"></canvas>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="font-weight:700;font-size:11px;color:var(--ink-dim);text-transform:uppercase">Downhole Physical Balances</div>
+          <div class="gauges-row">
+            <div class="gauge-box">
+              <span class="lbl">Bottomhole Pressure</span>
+              <span class="val mono" id="wb-bhp">—</span>
+              <span class="sub" id="wb-overbalance">—</span>
+            </div>
+            <div class="gauge-box">
+              <span class="lbl">Casing Shoe Margin</span>
+              <span class="val mono" id="wb-shoe">—</span>
+              <span class="sub" id="wb-shoe-margin">—</span>
+            </div>
+          </div>
+
+          <div class="mini-stats">
+            <div class="mini-stat"><span class="k">Drill Pipe</span><span class="v mono" id="wb-dp">—</span></div>
+            <div class="mini-stat"><span class="k">Casing</span><span class="v mono" id="wb-csg">—</span></div>
+            <div class="mini-stat"><span class="k">Pump SPM</span><span class="v mono" id="wb-spm">—</span></div>
+            <div class="mini-stat"><span class="k">Choke %</span><span class="v mono" id="wb-choke">—</span></div>
+          </div>
+
+          <div style="font-weight:700;font-size:11px;color:var(--ink-dim);text-transform:uppercase;margin-top:4px">Instructor Teaching Callout</div>
+          <div class="wb-notes-box" id="wb-teaching-note">
+            Analyzing student well state...
+          </div>
+
+          <div style="font-weight:700;font-size:11px;color:var(--ink-dim);text-transform:uppercase;margin-top:6px;display:flex;justify-content:space-between">
+            <span>AI Instructor Evaluation & Score</span>
+            <span id="wb-ai-score-pill" class="badge good">—</span>
+          </div>
+          <div id="wb-ai-box" style="background:var(--sunk);border:1px solid #1f2730;border-radius:6px;padding:8px 12px;font-size:11px;line-height:1.5">
+            Loading AI evaluation...
+          </div>
+
+          <div style="font-weight:700;font-size:11px;color:var(--ink-dim);text-transform:uppercase;margin-top:4px">Student Event Timeline</div>
+          <div id="wb-events-list" style="max-height:120px;overflow-y:auto;background:var(--sunk);border:1px solid #1f2730;border-radius:6px;padding:6px 10px;font-size:11px">
+          </div>
+        </div>
+      </div>
+
+      <div style="background:var(--panel);padding:8px 14px;border-radius:6px;border:1px solid var(--card-border);display:flex;align-items:center;gap:12px;margin-top:4px">
+        <span style="font-weight:700;font-size:11px;color:var(--accent);text-transform:uppercase;white-space:nowrap">Flight Recorder:</span>
+        <input type="range" id="wb-scrub-slider" min="0" max="0" value="0" style="flex:1;cursor:pointer">
+        <span class="mono" id="wb-scrub-clock" style="font-size:12px;font-weight:700;min-width:65px;text-align:right">00:00:00</span>
+        <button id="wb-scrub-live" style="padding:3px 8px;font-size:11px">● Live</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <a id="wb-link-panel" href="#" target="_blank" style="text-decoration:none">
+        <button class="primary">Open Full Choke Panel ↗</button>
+      </a>
+      <button onclick="closeModal('modal-whiteboard')">Close Whiteboard</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========================= GRADEBOOK MODAL ========================= -->
+<div class="modal-overlay" id="modal-gradebook">
+  <div class="modal large">
+    <div class="modal-header">
+      <h2>📊 Cohort Performance & Gradebook</h2>
+      <button class="badge dim" onclick="closeModal('modal-gradebook')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div style="font-size:12px;color:var(--ink-dim)">
+          Official IADC/IWCF competency certification breakdown across all active cohort participants.
+        </div>
+        <a href="/api/teacher/gradebook.csv" target="_blank" style="text-decoration:none">
+          <button class="success">📥 Download CSV Gradebook</button>
+        </a>
+      </div>
+
+      <div style="overflow-x:auto;margin-top:10px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left">
+          <thead>
+            <tr style="border-bottom:2px solid var(--edge);color:var(--ink-dim)">
+              <th style="padding:8px">Student</th>
+              <th style="padding:8px">Scenario</th>
+              <th style="padding:8px;text-align:center">AI Score</th>
+              <th style="padding:8px;text-align:center">Grade</th>
+              <th style="padding:8px">IWCF Status</th>
+              <th style="padding:8px;text-align:center">Well Killed</th>
+              <th style="padding:8px;text-align:right">Shoe Margin</th>
+              <th style="padding:8px;text-align:right">Max BHP Departure</th>
+            </tr>
+          </thead>
+          <tbody id="gradebook-tbody">
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeModal('modal-gradebook')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========================= NEW STUDENT MODAL ========================= -->
+<div class="modal-overlay" id="modal-new">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>+ Add New Student Session</h2>
+      <button class="badge dim" onclick="closeModal('modal-new')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <label style="font-weight:700;display:block;margin-bottom:6px">Student Name / Call-sign</label>
+        <input type="text" id="new-student-name" placeholder="e.g. Student 5, Alex R." style="width:100%;padding:8px">
+      </div>
+      <div>
+        <label style="font-weight:700;display:block;margin-bottom:6px">Scenario / Exercise</label>
+        <select id="new-scenario-select" style="width:100%;padding:8px"></select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeModal('modal-new')">Cancel</button>
+      <button class="primary" id="btn-create-student">Create & Launch</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let sessions = [];
+let activeFaultSessionId = null;
+let activeWbSessionId = null;
+let pollTimer = null;
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  if (!r.ok) {
+    const text = await r.text();
+    throw new Error(text || r.statusText);
+  }
+  return r.status === 204 ? null : r.json();
+}
+
+function openModal(id) {
+  const el = $(id);
+  if (el) el.classList.add("open");
+}
+
+function closeModal(id) {
+  const el = $(id);
+  if (el) el.classList.remove("open");
+}
+
+async function loadScenarios() {
+  try {
+    const data = await api("/api/scenarios");
+    const sel = $("new-scenario-select");
+    if (sel) {
+      sel.innerHTML = data.scenarios.map(s => `<option value="${s.key}">${s.name}</option>`).join("");
+    }
+  } catch (e) {
+    console.error("Failed to load scenarios:", e);
+  }
+}
+
+async function fetchTeacherSessions() {
+  try {
+    const data = await api("/api/teacher/sessions");
+    sessions = data.sessions || [];
+    renderSessions();
+  } catch (e) {
+    console.error("Error fetching sessions:", e);
+  }
+}
+
+function getStatusBadge(s) {
+  if (s.well_is_dead) return `<span class="badge good">✓ WELL DEAD</span>`;
+  if (s.is_frozen) return `<span class="badge info">⏸ FROZEN</span>`;
+  if (s.speed === 0) return `<span class="badge dim">⏸ PAUSED</span>`;
+  switch (s.status) {
+    case "Drilling": return `<span class="badge info">⚙ DRILLING</span>`;
+    case "Circulating": return `<span class="badge good">⟳ CIRCULATING</span>`;
+    case "Shut-In": return `<span class="badge warning">⛔ SHUT-IN</span>`;
+    case "Bullheading": return `<span class="badge warning">⬇ BULLHEADING</span>`;
+    case "Lubricating": return `<span class="badge warning">🛢 LUBRICATING</span>`;
+    case "Reverse Circulating": return `<span class="badge good">⬆ REVERSE CIRC</span>`;
+    default: return `<span class="badge dim">${s.status.toUpperCase()}</span>`;
+  }
+}
+
+function renderSessions() {
+  $("active-count").textContent = `${sessions.length} Student${sessions.length === 1 ? '' : 's'} Active`;
+  $("cohort-info").textContent = `${sessions.filter(s => !s.is_frozen && s.speed > 0).length} running, ${sessions.filter(s => s.is_frozen).length} frozen, ${sessions.filter(s => s.well_is_dead).length} killed`;
+
+  const grid = $("student-grid");
+  if (!sessions.length) {
+    grid.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--ink-dim)">
+        <div style="font-size: 32px; margin-bottom: 12px">🎓</div>
+        <div style="font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 6px">No Active Student Sessions Found</div>
+        <div style="font-size: 13px; margin-bottom: 18px">Click below to spawn a sample cohort across all well control scenarios, or launch a student session from the Choke Panel.</div>
+        <button class="primary" onclick="spawnDemoClass()">👥 Spawn Demo Class Now</button>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = sessions.map(s => {
+    const hasCrit = (s.alarms || []).some(a => a.severity === "critical");
+    const cardCls = [
+      "card",
+      hasCrit ? "has-critical" : "",
+      s.is_frozen ? "is-frozen" : "",
+      s.well_is_dead ? "is-dead" : "",
+    ].filter(Boolean).join(" ");
+
+    const overbalanceSign = s.overbalance_psi >= 0 ? "+" : "";
+    const obColor = s.overbalance_psi < 0 ? "var(--critical)" : "var(--good)";
+
+    let shoeMarginColor = "var(--good)";
+    if (s.shoe_margin_psi !== null && s.shoe_margin_psi !== undefined) {
+      if (s.shoe_margin_psi <= 0) shoeMarginColor = "var(--critical)";
+      else if (s.shoe_margin_psi < 150) shoeMarginColor = "var(--warning)";
+    }
+
+    const alarmsHtml = (s.alarms && s.alarms.length)
+      ? s.alarms.map(a => `<div class="alarm-item ${a.severity}"><span>⚠</span><span>${a.text}</span></div>`).join("")
+      : `<div style="font-size:11px;color:var(--ink-dim)">No active alarms — well within safe margins</div>`;
+
+    return `
+      <div class="${cardCls}" id="card-${s.session_id}">
+        <div class="card-header">
+          <div class="card-title">
+            <span style="cursor:pointer" onclick="renamePrompt('${s.session_id}', '${s.student_name}')" title="Click to rename">${s.student_name}</span>
+            <span style="font-size:11px;color:var(--ink-dim);font-weight:400">(${s.session_id.slice(0, 6)})</span>
+          </div>
+          <div>${getStatusBadge(s)}</div>
+        </div>
+
+        <div class="card-body">
+          <div style="font-size:11px;color:var(--ink-dim);display:flex;justify-content:space-between">
+            <span style="color:#fff;font-weight:600">${s.scenario_name}</span>
+            <span class="mono">${s.clock || '00:00:00'} (${s.speed}x)</span>
+          </div>
+
+          <div class="gauges-row">
+            <div class="gauge-box">
+              <span class="lbl">Bottomhole Pressure</span>
+              <span class="val mono">${s.bottomhole_psi.toLocaleString()} psi</span>
+              <span class="sub" style="color:${obColor}">Formation: ${s.formation_psi} (${overbalanceSign}${s.overbalance_psi})</span>
+            </div>
+            <div class="gauge-box">
+              <span class="lbl">Casing Shoe Margin</span>
+              <span class="val mono" style="color:${shoeMarginColor}">${s.shoe_margin_psi !== null ? s.shoe_margin_psi.toLocaleString() + ' psi' : '—'}</span>
+              <span class="sub">Shoe: ${s.shoe_psi} | Frac: ${s.frac_psi !== null ? s.frac_psi : '—'}</span>
+            </div>
+          </div>
+
+          <div class="mini-stats">
+            <div class="mini-stat"><span class="k">DP PSI</span><span class="v mono">${s.standpipe_psi}</span></div>
+            <div class="mini-stat"><span class="k">Csg PSI</span><span class="v mono">${s.casing_psi}</span></div>
+            <div class="mini-stat"><span class="k">Pump</span><span class="v mono">${s.pump_spm}</span></div>
+            <div class="mini-stat"><span class="k">Choke %</span><span class="v mono">${s.choke_percent}%</span></div>
+          </div>
+
+          <div class="mini-stats">
+            <div class="mini-stat"><span class="k">Pit Gain</span><span class="v mono">${s.pit_gain_bbl} bbl</span></div>
+            <div class="mini-stat"><span class="k">Gas Influx</span><span class="v mono">${s.influx_volume_bbl} bbl</span></div>
+            <div class="mini-stat"><span class="k">Active MW</span><span class="v mono">${s.active_mud_weight_ppg} ppg</span></div>
+            <div class="mini-stat"><span class="k">Strokes</span><span class="v mono">${s.strokes}</span></div>
+          </div>
+
+          <div class="alarms-list">
+            ${alarmsHtml}
+          </div>
+        </div>
+
+        <div class="card-actions">
+          <div style="display:flex;gap:6px">
+            <button class="freeze-btn ${s.is_frozen ? 'frozen' : ''}" onclick="toggleFreeze('${s.session_id}', ${!s.is_frozen})" title="Pause / Whiteboard mode">
+              ${s.is_frozen ? '▶ Resume' : '⏸ Freeze'}
+            </button>
+            <button class="danger" onclick="openFaultModal('${s.session_id}', '${s.student_name}')" title="Inject unexpected live failure">
+              ⚡ Fault
+            </button>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button onclick="openWhiteboard('${s.session_id}')" title="Downhole review inspection">
+              🔍 Inspect
+            </button>
+            <a href="/?session=${s.session_id}" target="_blank" style="text-decoration:none">
+              <button class="primary" title="Open student console">🖥 View</button>
+            </a>
+            <button onclick="endSession('${s.session_id}')" title="Terminate session" style="color:#ef4444;background:transparent;border-color:transparent;padding:6px 8px">✕</button>
+          </div>
+        </div>
+      </div>`;
+  }).join("");
+
+  // If whiteboard modal is currently open on an active session, refresh its view
+  if (activeWbSessionId) {
+    const current = sessions.find(x => x.session_id === activeWbSessionId);
+    if (current) updateWhiteboardContent(current);
+  }
+}
+
+async function toggleFreeze(sessionId, freeze) {
+  try {
+    await api(`/api/teacher/sessions/${sessionId}/freeze`, {
+      method: "POST",
+      body: JSON.stringify({ freeze: freeze })
+    });
+    await fetchTeacherSessions();
+  } catch (e) {
+    alert("Failed to freeze/resume session: " + e.message);
+  }
+}
+
+async function freezeAll() {
+  try {
+    await api("/api/teacher/freeze-all", { method: "POST" });
+    await fetchTeacherSessions();
+  } catch (e) {
+    alert("Failed to freeze all: " + e.message);
+  }
+}
+
+async function resumeAll() {
+  try {
+    await api("/api/teacher/resume-all", { method: "POST" });
+    await fetchTeacherSessions();
+  } catch (e) {
+    alert("Failed to resume all: " + e.message);
+  }
+}
+
+async function spawnDemoClass() {
+  try {
+    await api("/api/teacher/spawn-demo-class", { method: "POST" });
+    await fetchTeacherSessions();
+  } catch (e) {
+    alert("Failed to spawn demo class: " + e.message);
+  }
+}
+
+async function endSession(sessionId) {
+  if (!confirm("Terminate and drop this student session?")) return;
+  try {
+    await api(`/api/sessions/${sessionId}`, { method: "DELETE" });
+    await fetchTeacherSessions();
+  } catch (e) {
+    alert("Failed to end session: " + e.message);
+  }
+}
+
+async function renamePrompt(sessionId, current) {
+  const name = prompt("Rename student session:", current);
+  if (name && name.trim()) {
+    try {
+      await api(`/api/teacher/sessions/${sessionId}/name`, {
+        method: "POST",
+        body: JSON.stringify({ name: name.trim() })
+      });
+      await fetchTeacherSessions();
+    } catch (e) {
+      alert("Failed to rename: " + e.message);
+    }
+  }
+}
+
+function openFaultModal(sessionId, studentName) {
+  activeFaultSessionId = sessionId;
+  $("fault-target-student").textContent = `${studentName} (${sessionId.slice(0, 6)})`;
+  $("fault-msg-input").value = "";
+  openModal("modal-fault");
+}
+
+async function submitFault() {
+  if (!activeFaultSessionId) return;
+  const kind = $("fault-kind-select").value;
+  const msg = $("fault-msg-input").value.trim();
+  try {
+    await api(`/api/teacher/sessions/${activeFaultSessionId}/fault`, {
+      method: "POST",
+      body: JSON.stringify({ kind: kind, message: msg })
+    });
+    closeModal("modal-fault");
+    await fetchTeacherSessions();
+  } catch (e) {
+    alert("Failed to inject fault: " + e.message);
+  }
+}
+
+/* Whiteboard Review Mode */
+async function openWhiteboard(sessionId) {
+  activeWbSessionId = sessionId;
+  const s = sessions.find(x => x.session_id === sessionId);
+  if (!s) return;
+
+  // Auto freeze on opening whiteboard review if not already frozen
+  if (!s.is_frozen) {
+    await toggleFreeze(sessionId, true);
+  }
+
+  updateWhiteboardContent(s);
+  loadReplayForWhiteboard(sessionId);
+  openModal("modal-whiteboard");
+}
+
+async function updateWhiteboardContent(s) {
+  $("wb-student-name").textContent = s.student_name;
+  $("wb-scenario-name").textContent = s.scenario_name;
+  $("wb-link-panel").href = `/?session=${s.session_id}`;
+
+  $("wb-bhp").textContent = `${s.bottomhole_psi.toLocaleString()} psi`;
+  $("wb-overbalance").textContent = `Overbalance: ${s.overbalance_psi >= 0 ? '+' : ''}${s.overbalance_psi} psi (Pore: ${s.formation_psi} psi)`;
+  $("wb-shoe").textContent = `${s.shoe_psi.toLocaleString()} psi`;
+  $("wb-shoe-margin").textContent = `Margin: ${s.shoe_margin_psi !== null ? s.shoe_margin_psi + ' psi' : '—'} (Frac: ${s.frac_psi !== null ? s.frac_psi : '—'})`;
+
+  $("wb-dp").textContent = `${s.standpipe_psi} psi`;
+  $("wb-csg").textContent = `${s.casing_psi} psi`;
+  $("wb-spm").textContent = s.pump_spm;
+  $("wb-choke").textContent = `${s.choke_percent}%`;
+
+  $("wb-btn-resume").onclick = async () => {
+    await toggleFreeze(s.session_id, false);
+    closeModal("modal-whiteboard");
+  };
+
+  // Generate dynamic pedagogical commentary
+  let commentary = "";
+  if (s.well_is_dead) {
+    commentary = "<b>Well Dead:</b> The influx is evacuated and the entire well is filled with kill-density mud. Surface pressures are zero, holding full balance against formation pore pressure.";
+  } else if (s.alarms && s.alarms.some(a => a.text.includes("SHOE FRACTURED"))) {
+    commentary = "<b>Critical Error — Shoe Breakdown:</b> Casing shoe pressure exceeded formation fracture limit! The student held excessive choke backpressure or allowed a large gas bubble to expand without opening the choke.";
+  } else if (s.alarms && s.alarms.some(a => a.text.includes("KICK FLOWING"))) {
+    commentary = "<b>Active Kick in Progress:</b> Well is flowing with pumps running or shut down. Student needs to perform space-out and execute the hard shut-in procedure immediately.";
+  } else if (s.influx_volume_bbl > 0 && s.casing_psi > s.standpipe_psi) {
+    commentary = `<b>Gas Migration & Expansion:</b> There is ${s.influx_volume_bbl.toFixed(1)} bbl of influx in the annulus. As gas ascends, its hydrostatic diminishes, causing surface casing pressure (${s.casing_psi} psi) to rise. The student must follow the Drill Pipe pressure schedule to maintain constant bottomhole pressure.`;
+  } else {
+    commentary = `<b>Stable Circulation:</b> Well is contained under constant bottomhole pressure (${s.overbalance_psi >= 0 ? '+' : ''}${s.overbalance_psi} psi overbalance). Ensure the student respects choke response lag time.`;
+  }
+  $("wb-teaching-note").innerHTML = commentary;
+
+  // Fetch AI Coaching debrief & scoring
+  try {
+    const ai = await api(`/api/sessions/${s.session_id}/ai-debrief`);
+    if ($("wb-ai-score-pill")) {
+      $("wb-ai-score-pill").textContent = `${ai.score}/100 (${ai.letter_grade})`;
+      $("wb-ai-score-pill").className = "badge " + (ai.score >= 80 ? "good" : (ai.score >= 60 ? "warning" : "critical"));
+    }
+    if ($("wb-ai-box")) {
+      const strengthsHtml = ai.strengths.slice(0, 2).map(st => `<div style="color:#86efac;margin-top:2px">✓ ${st}</div>`).join("");
+      const deductionsHtml = ai.deductions.slice(0, 2).map(d => `<div style="color:#fca5a5;margin-top:2px">⚠ -${d.penalty} pts [${d.category}]: ${d.reason}</div>`).join("");
+      $("wb-ai-box").innerHTML = `
+        <div style="font-weight:700;color:#fff;margin-bottom:3px">${ai.iwcf_standard}</div>
+        <div style="color:#cbd5e1;margin-bottom:5px">${ai.executive_summary}</div>
+        ${strengthsHtml}
+        ${deductionsHtml}
+      `;
+    }
+  } catch (err) {
+    console.warn("Could not load AI debrief:", err);
+  }
+
+  // Fetch full snapshot events & schematic
+  try {
+    const snap = await api(`/api/sessions/${s.session_id}`);
+    const eventsEl = $("wb-events-list");
+    if (eventsEl && snap.events && snap.events.events) {
+      eventsEl.innerHTML = snap.events.events.slice(-8).reverse().map(e => `
+        <div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.06)">
+          <span class="mono" style="color:var(--ink-dim);margin-right:6px">${e.clock}</span>
+          <span style="color:${e.severity === 'critical' ? '#fca5a5' : (e.severity === 'warning' ? '#fde68a' : '#93c5fd')}">${e.message}</span>
+        </div>
+      `).join("");
+    }
+
+    // Draw schematic on canvas
+    drawWhiteboardSchematic(snap.schematic);
+  } catch (e) {
+    console.error("Error updating whiteboard details:", e);
+  }
+}
+
+function drawWhiteboardSchematic(sch) {
+  const canvas = $("wb-canvas");
+  if (!canvas || !sch) return;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const maxMd = Math.max(sch.hole_md_ft || 10000, 1000);
+  const scaleY = (md) => (md / maxMd) * (h - 40) + 20;
+
+  // Background hole
+  ctx.fillStyle = "#14191f";
+  ctx.fillRect(w * 0.25, 20, w * 0.5, h - 40);
+
+  // Casing
+  const shoeY = scaleY(sch.shoe_md_ft || 4000);
+  ctx.fillStyle = "#2d3748";
+  ctx.fillRect(w * 0.22, 20, 6, shoeY - 20);
+  ctx.fillRect(w * 0.78 - 6, 20, 6, shoeY - 20);
+
+  // Casing Shoe marker
+  ctx.fillStyle = "#a78bfa";
+  ctx.beginPath();
+  ctx.moveTo(w * 0.22, shoeY); ctx.lineTo(w * 0.26, shoeY); ctx.lineTo(w * 0.24, shoeY + 6); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(w * 0.78, shoeY); ctx.lineTo(w * 0.74, shoeY); ctx.lineTo(w * 0.76, shoeY + 6); ctx.fill();
+
+  // Fluid zones in annulus
+  if (sch.zones && sch.zones.length) {
+    sch.zones.forEach(z => {
+      const topY = scaleY(z.top_md_ft);
+      const botY = scaleY(z.bottom_md_ft);
+      if (z.kind === "influx") ctx.fillStyle = "#ea580c";
+      else if (z.kind === "kill_mud") ctx.fillStyle = "#16a34a";
+      else ctx.fillStyle = "#2563eb";
+      ctx.fillRect(w * 0.25, topY, w * 0.5, botY - topY);
+    });
+  }
+
+  // Drill pipe & bit
+  const bitY = scaleY(sch.bit_md_ft || sch.hole_md_ft);
+  ctx.fillStyle = "#cbd5e1";
+  ctx.fillRect(w * 0.46, 20, w * 0.08, bitY - 20);
+  // Bit
+  ctx.fillStyle = "#f59e0b";
+  ctx.beginPath();
+  ctx.moveTo(w * 0.42, bitY); ctx.lineTo(w * 0.58, bitY); ctx.lineTo(w * 0.5, bitY + 8); ctx.fill();
+
+  // Labels
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "9px Consolas";
+  ctx.fillText("0 ft (Surface)", 4, 16);
+  ctx.fillText(`Shoe: ${Math.round(sch.shoe_md_ft || 0)}'`, 4, shoeY);
+  ctx.fillText(`TD: ${Math.round(sch.hole_md_ft || 0)}'`, 4, h - 8);
+}
+
+/* New Student Modal */
+function openNewStudentModal() {
+  $("new-student-name").value = `Student ${sessions.length + 1}`;
+  openModal("modal-new");
+}
+
+async function createNewStudent() {
+  const name = $("new-student-name").value.trim() || `Student ${sessions.length + 1}`;
+  const scenario = $("new-scenario-select").value;
+  try {
+    await api("/api/sessions", {
+      method: "POST",
+      body: JSON.stringify({ scenario: scenario, student_name: name })
+    });
+    closeModal("modal-new");
+    await fetchTeacherSessions();
+  } catch (e) {
+    alert("Failed to create student: " + e.message);
+  }
+}
+
+/* Gradebook */
+async function loadGradebook() {
+  try {
+    const data = await api("/api/teacher/gradebook");
+    const tbody = $("gradebook-tbody");
+    if (!data.entries || !data.entries.length) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--ink-dim)">No cohort records found.</td></tr>`;
+    } else {
+      tbody.innerHTML = data.entries.map(e => `
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.06)">
+          <td style="padding:8px"><b>${e.student_name}</b> <span style="font-size:10px;color:var(--ink-dim)">(${e.session_id.slice(0, 6)})</span></td>
+          <td style="padding:8px">${e.scenario}</td>
+          <td style="padding:8px;text-align:center;font-weight:700;color:${e.score >= 80 ? 'var(--good)' : (e.score >= 60 ? 'var(--warning)' : 'var(--critical)')}">${e.score}/100</td>
+          <td style="padding:8px;text-align:center"><span class="badge ${e.score >= 80 ? 'good' : (e.score >= 60 ? 'warning' : 'critical')}">${e.letter_grade}</span></td>
+          <td style="padding:8px;font-size:11px">${e.iwcf_standard}</td>
+          <td style="padding:8px;text-align:center">${e.well_killed ? '✅ Yes' : '❌ No'}</td>
+          <td style="padding:8px;text-align:right" class="mono">${e.frac_margin_psi !== null ? e.frac_margin_psi + ' psi' : '—'}</td>
+          <td style="padding:8px;text-align:right" class="mono">${e.max_bhp_excursion_psi} psi</td>
+        </tr>
+      `).join("");
+    }
+    openModal("modal-gradebook");
+  } catch (err) {
+    alert("Failed to load gradebook: " + err.message);
+  }
+}
+
+/* Flight Recorder Replay */
+let currentReplay = null;
+let isScrubbing = false;
+
+async function loadReplayForWhiteboard(sessionId) {
+  try {
+    currentReplay = await api(`/api/sessions/${sessionId}/replay`);
+    const slider = $("wb-scrub-slider");
+    if (slider && currentReplay.trace && currentReplay.trace.length) {
+      slider.max = currentReplay.trace.length - 1;
+      slider.value = currentReplay.trace.length - 1;
+      isScrubbing = false;
+      const last = currentReplay.trace[slider.value];
+      $("wb-scrub-clock").textContent = last.clock || "00:00:00";
+    }
+  } catch (err) {
+    console.warn("Could not load replay:", err);
+  }
+}
+
+if ($("wb-scrub-slider")) {
+  $("wb-scrub-slider").oninput = (e) => {
+    if (!currentReplay || !currentReplay.trace) return;
+    const idx = Number(e.target.value);
+    const sample = currentReplay.trace[idx];
+    if (!sample) return;
+    isScrubbing = true;
+    $("wb-scrub-clock").textContent = sample.clock;
+    $("wb-bhp").textContent = `${sample.bottomhole_psi.toLocaleString()} psi`;
+    $("wb-shoe").textContent = `${sample.shoe_psi.toLocaleString()} psi`;
+    $("wb-dp").textContent = `${sample.standpipe_psi} psi`;
+    $("wb-csg").textContent = `${sample.casing_psi} psi`;
+    $("wb-spm").textContent = sample.pump_spm;
+    $("wb-choke").textContent = `${sample.choke_percent}%`;
+  };
+}
+
+if ($("wb-scrub-live")) {
+  $("wb-scrub-live").onclick = () => {
+    if (!currentReplay || !currentReplay.trace) return;
+    const slider = $("wb-scrub-slider");
+    slider.value = currentReplay.trace.length - 1;
+    isScrubbing = false;
+    const s = sessions.find(x => x.session_id === activeWbSessionId);
+    if (s) updateWhiteboardContent(s);
+  };
+}
+
+/* Event listeners */
+$("btn-gradebook").onclick = loadGradebook;
+$("btn-master-freeze").onclick = freezeAll;
+$("btn-master-resume").onclick = resumeAll;
+$("btn-spawn-demo").onclick = spawnDemoClass;
+$("btn-spawn-first").onclick = spawnDemoClass;
+$("btn-refresh").onclick = fetchTeacherSessions;
+$("btn-new-student").onclick = openNewStudentModal;
+$("btn-create-student").onclick = createNewStudent;
+$("btn-submit-fault").onclick = submitFault;
+
+$("poll-rate").onchange = () => {
+  clearInterval(pollTimer);
+  const ms = Number($("poll-rate").value);
+  if (ms > 0) pollTimer = setInterval(fetchTeacherSessions, ms);
+};
+
+// Initial boot
+loadScenarios();
+fetchTeacherSessions();
+pollTimer = setInterval(fetchTeacherSessions, 2000);
+</script>
+</body>
+</html>

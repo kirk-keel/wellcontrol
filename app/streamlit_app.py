@@ -31,4 +31,5 @@ st.set_page_config(
 st.navigation([
     st.Page("views/planner.py", title="Kill Planner", icon="🛢", default=True),
     st.Page("views/learn.py", title="Learn", icon="📖"),
+    st.Page("views/simulator.py", title="Simulator & Teacher Station", icon="🎮"),
 ]).run()

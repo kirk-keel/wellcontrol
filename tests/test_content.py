@@ -96,6 +96,16 @@ class TestMissingFiles:
         assert content.chapter_exists(CHAPTERS[0])
         assert not content.chapter_exists("99-not-here.md")
 
+    def test_referenced_chapters_returns_empty_for_missing(self):
+        assert content.referenced_chapters("99-not-here.md") == []
+
+
+class TestReferencedChapters:
+    def test_finds_valid_references(self):
+        refs = content.referenced_chapters("01-fundamentals.md")
+        assert "02-hydrostatics.md" in refs
+        assert "01-fundamentals.md" not in refs
+
 
 class TestMethodChapterLinks:
     """Every method must point at a chapter that exists."""

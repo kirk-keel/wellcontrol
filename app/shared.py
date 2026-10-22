@@ -36,6 +36,7 @@ CONTENT_DIR = _ROOT / "content"
 #: Path used by the planner to jump to the Learn page, relative to the entry
 #: script as Streamlit requires.
 LEARN_PAGE_PATH = "views/learn.py"
+PLANNER_PAGE_PATH = "views/planner.py"
 
 
 # --------------------------------------------------------------------------
@@ -59,6 +60,11 @@ def chapter_body(filename: str) -> str:
 
 def chapter_exists(filename: str) -> bool:
     return content_lib.chapter_exists(filename, CONTENT_DIR)
+
+
+@st.cache_data(show_spinner=False)
+def referenced_chapters(filename: str) -> list[str]:
+    return content_lib.referenced_chapters(filename, CONTENT_DIR)
 
 
 # --------------------------------------------------------------------------

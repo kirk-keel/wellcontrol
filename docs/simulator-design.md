@@ -156,13 +156,15 @@ The student switches between panels; an instructor can see all of them.
 
 | Screen | Shows | Controls |
 | --- | --- | --- |
-| **Driller's console** | Standpipe pressure, SPM, pit volume, flow out, stroke counters, hookload | Pump start/stop, SPM |
+| **Driller's console** | Standpipe pressure, SPM, pit volume, flow out, stroke counters, hookload | Pump start/stop, SPM, pit mud weight |
 | **Choke panel** | Casing and drill pipe pressure, stroke counter, pump rate, choke position | Choke open/close, choke select |
 | **BOP panel** | Annular and ram status, accumulator pressure | Open/close each element |
 | **Manifold lineup** | Schematic of the circulating system | Click valves open/closed |
 | **Well schematic** | Cross-section: mud, kill mud, influx position, shoe, bit | — |
-| **Kill sheet** | The plan the student made, target vs actual | — |
-| **Debrief** | BHP trace vs target, event log, verdict | — |
+| **Kill sheet** | The plan the student made, target vs actual, live DP schedule | — |
+| **Guide & Coach** | Step-by-step checklist, live operation status, method rules | — |
+| **Debrief** | BHP trace vs target, event log, verdict | Re-score against strict/custom rules |
+| **Teacher Console** (`/teacher`) | Multi-student live grid, BHP, shoe margin, alarms | Master freeze/resume, live fault injector, whiteboard mode |
 
 The choke panel is where the kill is executed and deserves the most care: it
 needs the drill pipe gauge, the casing gauge, the stroke counter and the choke
@@ -299,11 +301,26 @@ Each stage is useful on its own and de-risks the next.
    the clickable P&ID and the live well cross-section. The accumulator and
    hookload were added to the engine so the BOP and stripping screens show real
    instruments rather than indicator lights.
-5. ~~**Scenario library** and instructor debrief.~~ **Done.** Ten built-in
-   exercises in `sim/scenario.py`, and faults that fire on time, stroke count or
-   an event the student caused. Scenarios are plain data with a `from_dict`, so
-   an instructor can add one without touching Python. The listing says only
-   *that* an exercise has faults, never which or when.
+5. ~~**Scenario library** and instructor debrief.~~ **Done.** Twelve built-in
+   exercises in `sim/scenario.py` (including subsea trapped gas below BOP and
+   snubbing pipe-light conditions), and dynamic faults that fire on time, stroke
+   count or an event the student caused.
+6. ~~**Instructor Station & Cohort Tools (`/teacher`).**~~ **Done.** Real-time
+   multi-student telemetry grid, remote master freeze / whiteboard mode, live
+   runtime fault injector, cohort gradebook export (JSON and RFC 4180 CSV), and
+   scrubbable flight-recorder run replay.
+7. ~~**AI-Powered Assessment & Coaching Engine (`sim/ai_coach.py`).**~~ **Done.**
+   Quantitative 0–100 scoring, letter grades (A+ to FAIL), IADC/IWCF Level 3/4
+   standard grading, category breakdown, point deductions, trainee strengths, and
+   chronological coaching timelines.
+8. ~~**Zero-Dependency Rig Procedural Audio.**~~ **Done.** 100% offline procedural
+   Web Audio engine synthesizing triplex mud pump thumps, choke fluid/gas shearing
+   hiss, BOP mechanical actuation clunks, and alarm sirens.
+9. ~~**High-Fidelity Industrial SVG Visuals.**~~ **Done.** Overhauled all equipment
+   and manifold graphics: API 6A flanged gate valves, mud gas separator (MGS) with
+   cascade baffles and liquid seal U-tube leg, triplex pumps with spherical pulsation
+   dampeners, active agitated mud pits, calibrated trip tank with sight glass,
+   surface and deepwater subsea BOP stacks with dual pods, and rock stratigraphy.
 
 Stage 1 is where the real risk is. If the engine is right, everything else is
 presentation.

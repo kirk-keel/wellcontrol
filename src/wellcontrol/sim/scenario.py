@@ -43,6 +43,7 @@ class FaultKind(str, Enum):
     CHOKE_WASHOUT = "choke_washout"
     ACCUMULATOR_LEAK = "accumulator_leak"
     WEAK_SHOE = "weak_shoe"
+    MUD_WEIGHT_DROP = "mud_weight_drop"
 
     @property
     def label(self) -> str:
@@ -198,6 +199,19 @@ SCENARIOS: tuple[Scenario, ...] = (
         require_kill=False,
     ),
     Scenario(
+        key="wait_and_weight",
+        name="Wait and Weight — one circulation kill",
+        objective="Kill the well in a single circulation using weighted kill mud.",
+        briefing=(
+            "The well is shut in on a kick and kill mud has been weighted up in "
+            "the pits. Bring the pump up to kill rate while holding casing pressure "
+            "constant, follow the drill pipe step-down schedule from ICP to FCP as "
+            "kill mud moves to the bit, then maintain constant FCP until kill mud "
+            "reaches surface."
+        ),
+        require_kill=True,
+    ),
+    Scenario(
         key="find_the_kick",
         name="Drilling ahead — find the kick",
         objective="Spot the kick, shut in, and read your own shut-in pressures.",
@@ -227,6 +241,20 @@ SCENARIOS: tuple[Scenario, ...] = (
                 message="Mud pump will not run — fluid end failure.",
             ),
         ),
+    ),
+    Scenario(
+        key="bullhead",
+        name="Bullheading — force influx into formation",
+        objective="Force the influx back into the formation without circulating.",
+        briefing=(
+            "Circulation is impossible or unacceptable. The choke is closed. "
+            "Pump mud down the hole to squeeze the influx back into the formation "
+            "it came from. Monitor standpipe pressure and stop pumping once the "
+            "influx is displaced."
+        ),
+        closed_valves=("choke_line_valve", "choke_1", "choke_bypass"),
+        migration_rate_ft_per_hr=0.0,
+        require_kill=True,
     ),
     Scenario(
         key="lube_and_bleed",
@@ -320,6 +348,34 @@ SCENARIOS: tuple[Scenario, ...] = (
                 severity=Severity.WARNING,
             ),
         ),
+    ),
+    Scenario(
+        key="trapped_gas_subsea",
+        name="Subsea — trapped gas below BOP",
+        objective="Circulate trapped gas from beneath the subsea stack before opening BOP.",
+        briefing=(
+            "The kick was circulated, but an expansion pocket of gas remains "
+            "trapped below the subsea annular preventer. Opening the stack "
+            "without clearing it would unload the marine riser! Line up the kill "
+            "line down to the BOP and bleed the trapped gas across the choke "
+            "manifold under backpressure before clearing the riser."
+        ),
+        bop="subsea",
+        start=StartState.SHUT_IN,
+    ),
+    Scenario(
+        key="snubbing",
+        name="Snubbing — pipe light under pressure",
+        objective="Safely strip in hole under pipe-light conditions where well pressure exceeds string weight.",
+        briefing=(
+            "A kick was shut in while tripping out with the bit 9,200 ft off bottom "
+            "(only 800 ft of pipe in the hole) and surface pressure is high. "
+            "Upward well pressure nearly balances the buoyed string weight — the hookload "
+            "is barely above zero! As gas migrates or pipe is run, hookload drops below zero (pipe light). "
+            "Manage pressure and snub the pipe safely back to bottom."
+        ),
+        bit_off_bottom_ft=9200.0,
+        start=StartState.SHUT_IN,
     ),
 )
 

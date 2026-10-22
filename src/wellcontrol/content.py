@@ -110,3 +110,19 @@ def strip_local_links(text: str) -> str:
 
 def chapter_exists(filename: str, directory: Path | str | None = None) -> bool:
     return (content_dir(directory) / filename).is_file()
+
+
+def referenced_chapters(filename: str, directory: Path | str | None = None) -> list[str]:
+    """Chapter filenames referenced by markdown links in the given chapter."""
+    path = content_dir(directory) / filename
+    try:
+        text = _read(str(path))
+    except OSError:
+        return []
+    matches = re.findall(r"\]\(([0-9]{2}-[a-z\-]+\.md)(?:#[^)]*)?\)", text)
+    valid = set(chapter_files(directory))
+    result: list[str] = []
+    for m in matches:
+        if m in valid and m != filename and m not in result:
+            result.append(m)
+    return result

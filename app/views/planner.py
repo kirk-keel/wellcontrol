@@ -38,14 +38,32 @@ st.caption(
 
 configs = WellConfiguration.standard()
 
+config_options = [c.label for c in configs]
+target_config = st.session_state.get("planner_config")
+config_idx = 0
+if target_config:
+    for idx, opt in enumerate(config_options):
+        if target_config.lower() in opt.lower() or opt.lower() in target_config.lower():
+            config_idx = idx
+            break
+
+method_options = [m.name for m in METHODS]
+target_method = st.session_state.get("planner_method")
+method_idx = 1
+if target_method:
+    for idx, opt in enumerate(method_options):
+        if target_method.lower() in opt.lower() or opt.lower() in target_method.lower():
+            method_idx = idx
+            break
+
 selector_left, selector_right = st.columns(2)
 with selector_left:
     config_label = st.selectbox(
-        "Well configuration", [c.label for c in configs], index=0
+        "Well configuration", config_options, index=config_idx
     )
     config = next(c for c in configs if c.label == config_label)
 with selector_right:
-    method_label = st.selectbox("Kill method", [m.name for m in METHODS], index=1)
+    method_label = st.selectbox("Kill method", method_options, index=method_idx)
     method = next(m for m in METHODS if m.name == method_label)
 
 st.caption(method.summary)

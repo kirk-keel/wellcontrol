@@ -225,6 +225,53 @@ class TestScenariosSetUpTheirExercise:
         session = Session.for_scenario("subsea")
         assert session.simulator.well.choke_line_friction_psi > 0
 
+    def test_trapped_gas_subsea_starts_with_subsea_stack(self):
+        session = Session.for_scenario("trapped_gas_subsea")
+        assert session.simulator.well.configuration.is_subsea
+        assert session.simulator.flow_path.bop_is_closed
+
+    def test_snubbing_starts_deeply_off_bottom(self):
+        session = Session.for_scenario("snubbing")
+        assert session.simulator.hole_md - session.simulator.state.bit_md_ft == pytest.approx(9200.0)
+        assert session.simulator.hookload_lbf < 1000.0
+
+    def test_wait_and_weight_starts_with_kill_mud_in_pits(self):
+        session = Session.for_scenario("wait_and_weight")
+        assert session.simulator.kill_mud_weight_ppg == pytest.approx(
+            session.simulator.well.kill_mud_weight_ppg
+        )
+        assert session.simulator.kill_mud_weight_ppg > session.simulator.well.mud_weight_ppg
+
+    def test_bullhead_starts_closed_in_with_kill_mud(self):
+        session = Session.for_scenario("bullhead")
+        assert session.simulator.flow_path.is_closed_in
+        assert not session.simulator.flow_path.valve("choke_line_valve").is_open
+        assert session.simulator.kill_mud_weight_ppg == pytest.approx(
+            session.simulator.well.kill_mud_weight_ppg
+        )
+        assert session.simulator.migration_rate_ft_per_hr == 0.0
+
+    def test_bullhead_squeezes_influx_into_formation(self):
+        session = Session.for_scenario("bullhead")
+        sim = session.simulator
+        initial_gas = sim.state.influx_volume_bbl
+        assert initial_gas > 0
+        sim.pump.command(25.0)
+        # Pump to squeeze influx into zone
+        for _ in range(150):
+            sim.run(10, dt=0.2)
+            if sim.state.influx_volume_bbl < 0.5:
+                break
+        assert sim.state.influx_volume_bbl < 0.5
+        assert sim.state.injected_bbl > 0
+        sim.pump.command(0.0)
+        for _ in range(10):
+            sim.run(5, dt=0.2)
+            if not sim.pump.running:
+                break
+        assert not sim.pump.running
+        assert sim.state.well_is_dead
+
 
 class TestTheScenarioSetsTheStandard:
     def test_the_debrief_uses_the_scenarios_own_standard(self):

@@ -100,7 +100,7 @@ WEAK_SHOE_MARGIN_PSI: float = 250.0
 
 #: How close the influx has to stay to the zone, ft, for bullheading to push it
 #: back rather than merely squeezing mud past it.
-GAS_AT_ZONE_TOLERANCE_FT: float = 200.0
+GAS_AT_ZONE_TOLERANCE_FT: float = 1000.0
 
 #: Representative gas migration rate, ft/hr, where nobody has measured one.
 #: Field figures run from a few hundred to a couple of thousand; 1,000 is the
@@ -650,6 +650,10 @@ class Simulator:
                     self.frac_pressure_psi,
                     self.state.shoe_pressure_psi + WEAK_SHOE_MARGIN_PSI,
                 )
+        elif kind == "mud_weight_drop":
+            # Active pits diluted or dropped (e.g. water influx into mud tanks)
+            curr = self.kill_mud_weight_ppg if self.kill_mud_weight_ppg is not None else self.well.mud_weight_ppg
+            self.set_kill_mud_weight(max(6.0, curr - 2.0))
 
     # -- the driller's own instruments ---------------------------------------
 
@@ -690,6 +694,25 @@ class Simulator:
         it, exactly as they set a pump rate and work the choke against that.
         """
         self.strip_rate_ft_per_min = float(feet_per_min)
+
+    def set_kill_mud_weight(self, ppg: float) -> None:
+        """Update what mud weight is in the active pits (e.g. for kill)."""
+        if ppg < 0.0 or ppg > 30.0:
+            raise ValueError(f"unphysical mud weight: {ppg}")
+        self.kill_mud_weight_ppg = float(ppg)
+        self.state.record(
+            EventKind.PUMP_STARTED,
+            f"Active pits weighted up to {ppg:.1f} ppg.",
+            severity=Severity.INFO,
+        )
+
+    def zero_trip_tank(self) -> None:
+        """Reset the trip tank baseline so change reads zero."""
+        self.trip_tank.zero()
+
+    def zero_pits(self) -> None:
+        """Reset the pit system baseline so pit gain reads zero."""
+        self.pits.zero()
 
     @property
     def closed_end_displacement_bbl_per_ft(self) -> float:
@@ -1180,8 +1203,11 @@ class Simulator:
 
         self._settle_gas()
 
-        # -- pits ------------------------------------------------------------
-        self.pits.active_bbl += (flow_out - flow_in) * minutes
+        # -- pits / trip tank ------------------------------------------------
+        if self.flow_path.valve("trip_tank_valve").is_open:
+            self.trip_tank.volume_bbl += (flow_out - flow_in) * minutes
+        else:
+            self.pits.active_bbl += (flow_out - flow_in) * minutes
 
         # -- what the run will be judged on ----------------------------------
         state.influx_taken_bbl += influx_rate * minutes
@@ -1493,12 +1519,29 @@ class Simulator:
         state = self.state
         if state.well_is_dead:
             return
-        killed = (
+
+        surface_p = (
+            max(state.standpipe_pressure_psi, state.casing_pressure_psi)
+            if self.flow_path.is_reverse_circulating
+            else state.casing_pressure_psi
+        )
+        circ_killed = (
             state.influx_volume_bbl < 0.5
-            and state.casing_pressure_psi < 25.0
+            and surface_p < 25.0
+            and state.bottomhole_pressure_psi >= self.formation_pressure_psi
+            and (
+                state.pumped_bbl > self.string_volume_bbl
+                or state.reverse_pumped_bbl > self.string_volume_bbl
+                or state.lubricated_bbl > 0.0
+            )
+        )
+        bullhead_killed = (
+            state.influx_volume_bbl < 0.5
+            and state.injected_bbl > 0.0
+            and not self.pump.running
             and state.bottomhole_pressure_psi >= self.formation_pressure_psi
         )
-        if killed and state.pumped_bbl > self.string_volume_bbl:
+        if circ_killed or bullhead_killed:
             state.well_is_dead = True
             state.record(
                 EventKind.WELL_DEAD,

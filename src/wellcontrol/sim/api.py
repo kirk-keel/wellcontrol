@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -58,6 +58,10 @@ class NewSession(BaseModel):
             "decides the well, the lineup and any faults, and the rest of "
             "this body is ignored."
         ),
+    )
+    student_name: str | None = Field(
+        default=None,
+        description="Optional name or callsign for the student session.",
     )
     bop: str = Field(default="surface", description="surface or subsea")
     trajectory: str = Field(
@@ -98,6 +102,28 @@ class StripCommand(BaseModel):
     )
 
 
+class MudWeightCommand(BaseModel):
+    ppg: float = Field(
+        ge=5.0, le=25.0,
+        description="Mud weight in active pits (ppg).",
+    )
+
+
+class FaultInjectionCommand(BaseModel):
+    kind: str = Field(
+        description="Fault kind: pump_failure, choke_plugged, choke_washout, accumulator_leak, weak_shoe, mud_weight_drop"
+    )
+    message: str = Field(default="", description="Optional custom rig alert message")
+
+
+class FreezeCommand(BaseModel):
+    freeze: bool = Field(default=True, description="True to freeze (pause) session; False to resume")
+
+
+class StudentNameCommand(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------
@@ -116,6 +142,11 @@ def _session(session_id: str) -> Session:
 @app.get("/", include_in_schema=False)
 def choke_panel() -> FileResponse:
     return FileResponse(STATIC / "choke_panel.html")
+
+
+@app.get("/teacher", include_in_schema=False)
+def teacher_console() -> FileResponse:
+    return FileResponse(STATIC / "teacher.html")
 
 
 @app.get("/api/speeds")
@@ -141,6 +172,7 @@ def create_session(body: NewSession) -> dict:
     try:
         session = store.create(
             scenario=body.scenario,
+            student_name=body.student_name,
             **({} if body.scenario else {
                 "bop": body.bop,
                 "trajectory": body.trajectory,
@@ -154,6 +186,7 @@ def create_session(body: NewSession) -> dict:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
         "session_id": session.session_id,
+        "student_name": session.student_name,
         "gauges": session.gauges(),
         "lineup": session.lineup(),
         "scenario": (
@@ -221,6 +254,27 @@ def strip(session_id: str, body: StripCommand) -> dict:
     return {"gauges": session.gauges()}
 
 
+@app.post("/api/sessions/{session_id}/mud-weight")
+def set_mud_weight(session_id: str, body: MudWeightCommand) -> dict:
+    session = _session(session_id)
+    session.set_mud_weight(body.ppg)
+    return {"gauges": session.gauges()}
+
+
+@app.post("/api/sessions/{session_id}/zero-trip-tank")
+def zero_trip_tank(session_id: str) -> dict:
+    session = _session(session_id)
+    session.zero_trip_tank()
+    return {"gauges": session.gauges()}
+
+
+@app.post("/api/sessions/{session_id}/zero-pits")
+def zero_pits(session_id: str) -> dict:
+    session = _session(session_id)
+    session.zero_pits()
+    return {"gauges": session.gauges()}
+
+
 @app.get("/api/sessions/{session_id}/schematic")
 def schematic(session_id: str) -> dict:
     return _session(session_id).schematic()
@@ -237,7 +291,123 @@ def debrief(session_id: str, require_kill: bool | None = None) -> dict:
     return _session(session_id).debrief(require_kill=require_kill)
 
 
+@app.get("/api/sessions/{session_id}/ai-debrief")
+def ai_debrief(session_id: str) -> dict:
+    """AI-powered qualitative assessment, score, and instructor coaching notes."""
+    return _session(session_id).ai_debrief()
+
+
 @app.delete("/api/sessions/{session_id}", status_code=204)
 def end_session(session_id: str) -> None:
     _session(session_id)
     store.drop(session_id)
+
+
+# --------------------------------------------------------------------------
+# Teacher / Instructor endpoints
+# --------------------------------------------------------------------------
+
+@app.get("/api/teacher/sessions")
+def teacher_sessions() -> dict:
+    """Multi-student overview for the teacher dashboard."""
+    return {
+        "sessions": [s.summary() for s in store.list()],
+        "total": len(store),
+    }
+
+
+@app.post("/api/teacher/sessions/{session_id}/fault")
+def inject_fault(session_id: str, body: FaultInjectionCommand) -> dict:
+    """Inject an unexpected live equipment failure onto a student's session."""
+    session = _session(session_id)
+    try:
+        session.inject_fault(body.kind, body.message)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"ok": True, "session": session.summary()}
+
+
+@app.post("/api/teacher/sessions/{session_id}/freeze")
+def freeze_session(session_id: str, body: FreezeCommand) -> dict:
+    """Remotely freeze/unfreeze a specific student for whiteboard review."""
+    session = _session(session_id)
+    session.freeze(body.freeze)
+    return {"ok": True, "session": session.summary()}
+
+
+@app.post("/api/teacher/sessions/{session_id}/name")
+def rename_student(session_id: str, body: StudentNameCommand) -> dict:
+    """Rename a student session."""
+    session = _session(session_id)
+    session.student_name = body.name
+    return {"ok": True, "session": session.summary()}
+
+
+@app.post("/api/teacher/freeze-all")
+def freeze_all() -> dict:
+    """Master freeze across all active sessions simultaneously."""
+    store.freeze_all(True)
+    return {"ok": True, "sessions": [s.summary() for s in store.list()]}
+
+
+@app.post("/api/teacher/resume-all")
+def resume_all() -> dict:
+    """Master resume across all active sessions simultaneously."""
+    store.freeze_all(False)
+    return {"ok": True, "sessions": [s.summary() for s in store.list()]}
+
+
+@app.post("/api/teacher/spawn-demo-class")
+def spawn_demo_class() -> dict:
+    """Spawn a representative cohort of students for immediate training & demonstration."""
+    demos = [
+        ("Alex M.", "drillers", 10.0),
+        ("Elena R.", "wait_and_weight", 10.0),
+        ("Carlos D.", "bullhead", 10.0),
+        ("Priya S.", "reverse", 10.0),
+        ("Tom H.", "find_the_kick", 1.0),
+    ]
+    spawned = []
+    for name, scenario, spd in demos:
+        s = store.create(scenario=scenario, student_name=name)
+        s.set_speed(spd)
+        spawned.append(s.summary())
+    return {
+        "ok": True,
+        "spawned": len(spawned),
+        "sessions": [s.summary() for s in store.list()],
+    }
+
+
+@app.get("/api/sessions/{session_id}/replay")
+def replay_session(session_id: str) -> dict:
+    """Full flight-recorder telemetry sequence and events for second-by-second scrubbing."""
+    return _session(session_id).replay_data()
+
+
+@app.get("/api/teacher/gradebook")
+def teacher_gradebook() -> dict:
+    """Cohort gradebook entries with AI scores and metrics."""
+    return {"entries": store.gradebook()}
+
+
+@app.get("/api/teacher/gradebook.csv")
+def teacher_gradebook_csv() -> Response:
+    """Export cohort gradebook as downloadable CSV for Excel / LMS."""
+    import csv
+    import io
+
+    entries = store.gradebook()
+    output = io.StringIO()
+    if entries:
+        writer = csv.DictWriter(output, fieldnames=list(entries[0].keys()))
+        writer.writeheader()
+        writer.writerows(entries)
+    else:
+        writer = csv.writer(output)
+        writer.writerow(["session_id", "student_name", "scenario", "score", "letter_grade", "iwcf_standard"])
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="wellcontrol_gradebook.csv"'},
+    )

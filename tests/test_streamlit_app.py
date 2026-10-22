@@ -16,6 +16,7 @@ _APP_DIR = Path(__file__).resolve().parent.parent / "app"
 APP = _APP_DIR / "streamlit_app.py"
 PLANNER = _APP_DIR / "views" / "planner.py"
 LEARN = _APP_DIR / "views" / "learn.py"
+SIMULATOR = _APP_DIR / "views" / "simulator.py"
 
 CONFIG_LABELS = [
     "Surface BOP - Vertical",
@@ -413,13 +414,59 @@ class TestLearnPage:
 
         files = content.chapter_files()
         first = self._learn(files[0])
-        assert len(first.button) == 1          # next only
+        nav_first = [b for b in first.button if b.key in ("learn_previous", "learn_next")]
+        assert len(nav_first) == 1          # next only
+        assert nav_first[0].key == "learn_next"
 
         middle = self._learn(files[5])
-        assert len(middle.button) == 2         # previous and next
+        nav_middle = [b for b in middle.button if b.key in ("learn_previous", "learn_next")]
+        assert len(nav_middle) == 2         # previous and next
 
         last = self._learn(files[-1])
-        assert len(last.button) == 1           # previous only
+        nav_last = [b for b in last.button if b.key in ("learn_previous", "learn_next")]
+        assert len(nav_last) == 1           # previous only
+        assert nav_last[0].key == "learn_previous"
+
+    def test_navigation_buttons_advance_and_retreat(self):
+        from wellcontrol import content
+
+        files = content.chapter_files()
+        app = self._learn(files[0])
+        next_btn = next(b for b in app.button if b.key == "learn_next")
+        next_btn.click().run()
+        assert app.session_state["learn_chapter"] == files[1]
+
+        prev_btn = next(b for b in app.button if b.key == "learn_previous")
+        prev_btn.click().run()
+        assert app.session_state["learn_chapter"] == files[0]
+
+    def test_learn_quiz_evaluates_answer(self):
+        app = self._learn("01-fundamentals.md")
+        assert not app.exception
+        quiz_radio = next(r for r in app.radio if "quiz_01-fundamentals" in str(r.key))
+        assert quiz_radio.options
+        # Select correct answer
+        quiz_radio.set_value(quiz_radio.options[0]).run()
+        assert any("Correct!" in str(s.value) for s in app.success)
+
+    def test_learn_sandbox_calculates_hydrostatics(self):
+        app = self._learn("02-hydrostatics.md")
+        assert not app.exception
+        # Check metrics rendered
+        metrics = {str(m.label): str(m.value) for m in app.metric}
+        assert "Hydrostatic Pressure" in metrics
+        assert "Equivalent Circulating Density (ECD)" in metrics
+
+    def test_planner_honours_presets_from_learn(self):
+        app = AppTest.from_file(str(PLANNER), default_timeout=90)
+        app.session_state["planner_config"] = "Surface BOP - Horizontal"
+        app.session_state["planner_method"] = "Driller's Method"
+        app.run()
+        assert not app.exception
+        config_box = app.selectbox[0]
+        method_box = app.selectbox[1]
+        assert config_box.value == "Surface BOP - Horizontal"
+        assert method_box.value == "Driller's Method"
 
     def test_rendered_body_has_no_dead_relative_links(self):
         app = self._learn("06-circulation-methods.md")
@@ -440,3 +487,13 @@ def test_impossible_geometry_is_reported_not_raised():
     app.run()
     assert not app.exception, "bad geometry should be caught, not raised"
     assert len(app.error) > 0
+
+
+def test_simulator_view_renders():
+    """Verify that the simulator view renders cleanly without exceptions."""
+    app = AppTest.from_file(str(SIMULATOR), default_timeout=90)
+    app.run()
+    assert not app.exception, f"simulator view raised: {app.exception}"
+    assert any("Well Control Simulator" in str(t.value) for t in app.title)
+    # Check scenario launch buttons are present
+    assert len(app.link_button) >= 7

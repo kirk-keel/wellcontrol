@@ -232,11 +232,11 @@
      card, so all of them are sized by height. Left to scale on width they run
      to a thousand pixels and the student scrolls to find the bottom. */
   svg { display: block; width: 100%; }
-  #schematic { height: min(74vh, 620px); }
-  #pid { height: min(46vh, 340px); }
-  #bop-panel { height: min(76vh, 560px); }
-  #standpipe { height: min(72vh, 540px); }
-  #ckmanifold { height: min(44vh, 320px); }
+  #schematic { height: min(76vh, 640px); }
+  #pid { height: min(60vh, 480px); }
+  #bop-panel { height: min(78vh, 580px); }
+  #standpipe { height: min(74vh, 560px); }
+  #ckmanifold { height: min(48vh, 360px); }
 
   /* Dials. Two big ones for the pressures a kill is flown on, three smaller
      for the settings, exactly as the panel is laid out on a rig. */
@@ -270,6 +270,10 @@
   <span class="pill mono" id="clock">00:00:00</span>
   <span class="pill" id="deadpill" style="display:none">Well dead</span>
   <span class="grow"></span>
+  <a href="/teacher" target="_blank" style="text-decoration:none">
+    <button style="background:linear-gradient(#2b3744,#1b242e);color:#e2e8f0;border-color:#3e4c5b" title="Open Multi-Student Teacher Dashboard">🎓 Instructor Console ↗</button>
+  </a>
+  <button id="btn-audio" style="background:linear-gradient(#2b3744,#1b242e);color:#e2e8f0;border-color:#3e4c5b" title="Toggle Rig Acoustic Simulation (Procedural Audio)">🔇 Audio</button>
   <label class="lbl">Exercise</label>
   <select id="scenario"></select>
   <label class="lbl">Speed</label>
@@ -290,6 +294,7 @@
   <button data-screen="well">Well</button>
   <button data-screen="sheet">Kill sheet</button>
   <button data-screen="debrief">Debrief</button>
+  <button data-screen="guide">Guide</button>
 </nav>
 
 <main>
@@ -371,6 +376,24 @@
           displacement on the choke or bottomhole pressure climbs. Watch the
           hookload: when it reaches zero the well is pushing the pipe out and it
           has to be snubbed.
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Mud Weight & Pits</h2>
+        <div style="font-size:12px;margin-bottom:8px">
+          Original: <b id="d-orig-mw">—</b> ppg &nbsp;|&nbsp;
+          Active: <b id="d-active-mw" style="color:var(--killmud)">—</b> ppg &nbsp;|&nbsp;
+          Kill Target: <b id="d-target-mw">—</b> ppg
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <input type="number" id="mw-val" min="5" max="25" step="0.1" style="width:85px;padding:5px 8px;font-weight:700">
+          <button id="btn-set-mw">Weight Up</button>
+          <button id="btn-set-kmw">Fill With Kill Mud</button>
+        </div>
+        <div class="btns" style="margin-top:10px">
+          <button id="btn-zero-pit">Zero Pit Totalizer</button>
+          <button id="btn-zero-tt">Zero Trip Tank</button>
         </div>
       </div>
     </div>
@@ -524,7 +547,7 @@
     <div>
       <div class="card">
         <h2>Circulating system</h2>
-        <svg id="pid" viewBox="0 0 720 420" role="img" aria-label="Piping schematic"></svg>
+        <svg id="pid" viewBox="0 0 760 450" role="img" aria-label="Piping schematic"></svg>
       </div>
       <div class="card">
         <h2>All valves</h2>
@@ -575,6 +598,14 @@
           planner prints for this well.
         </div>
       </div>
+
+      <div class="card" style="margin-top:16px">
+        <h2>Drill Pipe Step-Down Schedule</h2>
+        <div style="font-size:12px;color:var(--dim);margin-bottom:8px">
+          Follow the DP gauge from ICP at 0 strokes down to FCP at bit strokes.
+        </div>
+        <table id="sheet-schedule"><tbody></tbody></table>
+      </div>
     </div>
   </div>
 </section>
@@ -606,6 +637,101 @@
         <div id="db-events" style="max-height:420px;overflow-y:auto;font-size:12px"></div>
       </div>
     </div>
+
+    <div class="card" id="card-ai-coach" style="grid-column: 1 / -1; margin-top: 14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <h2>🤖 AI Instructor Evaluation & Competency Scoring</h2>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="pill ok" id="ai-score-badge" style="font-size:14px;padding:4px 12px">—</span>
+          <span class="pill" id="ai-iwcf-standard" style="font-size:12px;padding:4px 10px">—</span>
+        </div>
+      </div>
+      <div id="ai-summary" style="font-size:13px;line-height:1.6;margin:10px 0;padding:10px 14px;background:var(--sunk);border-radius:6px;border:1px solid #27313a;color:#e2e8f0">
+        —
+      </div>
+      
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;margin-bottom:12px" id="ai-categories-grid">
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;font-size:12px">
+        <div>
+          <b style="color:var(--good);display:block;margin-bottom:6px">✓ Key Commendations & Strengths:</b>
+          <div id="ai-strengths-list" style="display:flex;flex-direction:column;gap:4px"></div>
+        </div>
+        <div>
+          <b style="color:var(--critical);display:block;margin-bottom:6px">⚠ Point Deductions & Deviations:</b>
+          <div id="ai-deductions-list" style="display:flex;flex-direction:column;gap:4px"></div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px" id="ai-timeline-box">
+        <b style="color:var(--ink);display:block;margin-bottom:6px">Instructor Coaching Callouts:</b>
+        <div id="ai-coaching-list" style="display:flex;flex-direction:column;gap:6px;font-size:12px"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ GUIDE ============================ -->
+<section class="screen" id="s-guide">
+  <div class="cols">
+    <div>
+      <div class="card" id="guide-status-card">
+        <h2>Live Operation & Procedure Coach</h2>
+        <div id="guide-stage-banner" style="padding:10px 14px;border-radius:6px;font-weight:700;font-size:14px;margin-bottom:12px;background:#14181c;color:#4bf07e;border:1px solid #3c4650">
+          Diagnosis: <span id="guide-phase-text">—</span>
+        </div>
+        <div style="font-size:13px;line-height:1.6;margin-bottom:14px" id="guide-instruction-text">
+          —
+        </div>
+        <div class="stats" style="margin-bottom:14px">
+          <div class="s"><div class="k" id="g-k1">DP Target</div><div class="v" id="g-target-dp">—</div></div>
+          <div class="s"><div class="k" id="g-k2">DP Actual</div><div class="v" id="g-actual-dp">—</div></div>
+          <div class="s"><div class="k" id="g-k3">Casing Now</div><div class="v" id="g-actual-csg">—</div></div>
+          <div class="s"><div class="k" id="g-k4">Strokes to Bit</div><div class="v" id="g-target-stk">—</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Step-by-Step Well Control Procedure</h2>
+        <div id="guide-checklist" style="font-size:13px;display:flex;flex-direction:column;gap:8px">
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Key Physics & Rules of Thumb</h2>
+        <div style="font-size:12px;line-height:1.6;color:var(--ink)">
+          <div style="margin-bottom:10px">
+            <b style="color:#4a1d02">1. Pressure Takes TVD, Strokes Take MD</b><br>
+            Hydrostatic head depends only on True Vertical Depth. Measured depth is used only to compute fluid displacement volumes and stroke counts.
+          </div>
+          <div style="margin-bottom:10px">
+            <b style="color:#4a1d02">2. Follow the Drill Pipe Gauge</b><br>
+            The drill string contains clean mud of known density. Annulus pressure fluctuates heavily as gas expands. Keep drill pipe pressure on schedule.
+          </div>
+          <div style="margin-bottom:10px">
+            <b style="color:#4a1d02">3. Respect Choke Lag Time</b><br>
+            Pressure pulses travel at ~3,000–4,000 ft/s (approx. 2 seconds per 1,000 ft of depth). Make small, measured choke adjustments and wait for needle response.
+          </div>
+          <div>
+            <b style="color:#4a1d02">4. Wait-and-Weight vs. Driller's Method</b><br>
+            Wait-and-Weight weights the pits before circulation, keeping casing shoe pressure lower. Driller's circulates the influx out first with original mud, then pumps kill mud on a second circulation.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Quick Keyboard Shortcuts</h2>
+        <div style="font-size:12px;display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:center">
+          <kbd style="background:#222;color:#fff;padding:2px 6px;border-radius:4px">Space</kbd><span>Toggle Pause / Run</span>
+          <kbd style="background:#222;color:#fff;padding:2px 6px;border-radius:4px">[ / ]</kbd><span>Choke -1% / +1%</span>
+          <kbd style="background:#222;color:#fff;padding:2px 6px;border-radius:4px">&larr; / &rarr;</kbd><span>Fine choke step</span>
+          <kbd style="background:#222;color:#fff;padding:2px 6px;border-radius:4px">1 - 8</kbd><span>Switch screens</span>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -616,6 +742,7 @@ const $ = (id) => document.getElementById(id);
 let sessionId = null, nextEvent = 0, trace = [], busy = false, screen = "driller";
 let formationPsi = null, fracPsi = null, maaspPsi = null, downholeVisible = true;
 let lineupCache = [], schematicCache = null;
+let currentGauges = null, lastSheetPoll = 0, currentKillSheet = null;
 // Readings the equipment panels draw from, kept here so a redraw does not have
 // to go back to the server for numbers the last poll already brought.
 let accumulatorPsi = 3000, manifoldPsi = 3000, accumulatorOk = true;
@@ -684,6 +811,14 @@ async function poll() {
   finally { busy = false; }
 }
 
+async function updateSheetThrottled() {
+  const now = Date.now();
+  if (now - lastSheetPoll >= 1000) {
+    lastSheetPoll = now;
+    await loadSheet();
+  }
+}
+
 function redraw() {
   if (screen === "choke") drawCharts();
   else if (screen === "driller") drawPits();
@@ -693,15 +828,22 @@ function redraw() {
     drawLineup(lineupCache);
   }
   else if (screen === "well") drawSchematic();
+  else if (screen === "sheet") updateSheetThrottled();
+  else if (screen === "guide") renderGuide();
 }
 
 /* -------------------------------- paint -------------------------------- */
 function paint(g) {
+  currentGauges = g;
   const psi = v => v === null || v === undefined ? "—" : v.toLocaleString() + " psi";
   const seen = g.downhole_visible;
   downholeVisible = seen;
   formationPsi = g.formation_psi; fracPsi = g.frac_psi; maaspPsi = g.maasp_psi;
   const excess = g.flow_out_bpm - g.flow_in_bpm;
+
+  if (typeof updateAudioTelemetry === "function") {
+    updateAudioTelemetry(g);
+  }
 
   /* --- driller --- */
   $("d-spp").textContent = g.drill_pipe_psi.toLocaleString();
@@ -722,6 +864,17 @@ function paint(g) {
   $("d-note").textContent = g.hookload_klbf <= 0
     ? "Hookload is at zero — the well is pushing the string out. This has to be snubbed, not stripped."
     : "";
+
+  if (g.active_mud_weight_ppg !== undefined) {
+    if ($("d-active-mw")) $("d-active-mw").textContent = g.active_mud_weight_ppg.toFixed(1);
+    if ($("d-orig-mw")) $("d-orig-mw").textContent = g.original_mud_weight_ppg.toFixed(1);
+    if ($("d-target-mw")) $("d-target-mw").textContent = g.target_kill_mud_weight_ppg ? g.target_kill_mud_weight_ppg.toFixed(1) : "—";
+    if ($("mw-val") && (!$("mw-val").value || document.activeElement !== $("mw-val"))) {
+      if (g.target_kill_mud_weight_ppg && !$("mw-val").value) {
+        $("mw-val").value = g.target_kill_mud_weight_ppg.toFixed(1);
+      }
+    }
+  }
 
   /* --- choke: the dials --- */
   // Scale chosen once from what this well can actually reach, so the needle
@@ -1007,72 +1160,135 @@ function drawSchematic() {
   if (!s) return;
   if (!s.visible) {
     svg.innerHTML = `<rect width="620" height="560" fill="var(--sunk)"/>
-      <text x="310" y="270" text-anchor="middle" fill="${css('--dim')}" font-size="15">
+      <text x="310" y="270" text-anchor="middle" fill="${css('--dim')}" font-size="15" font-weight="700">
         No downhole picture while a kick is developing.</text>
       <text x="310" y="296" text-anchor="middle" fill="${css('--faint')}" font-size="12">
         A rig has no cross-section of the well. Watch the pit and the flow line.</text>`;
     return;
   }
-  const TOP = 30, BOT = 520, LEFT = 190, RIGHT = 430;
+  const TOP = 36, BOT = 520, LEFT = 190, RIGHT = 430;
   const D = s.hole_md_ft || 1;
   const y = md => TOP + (BOT - TOP) * Math.min(1, Math.max(0, md / D));
   const bits = [];
 
-  bits.push(`<rect x="0" y="0" width="620" height="560" fill="var(--sunk)"/>`);
-  // Open hole and casing walls.
-  bits.push(`<rect x="${LEFT - 14}" y="${TOP}" width="${RIGHT - LEFT + 28}" height="${BOT - TOP}" fill="#141c24"/>`);
+  bits.push(`<rect x="0" y="0" width="620" height="560" fill="#0b0f14"/>`);
+
+  // Geological rock stratigraphy layers outside the wellbore
+  const strata = [
+    [TOP, y(D * 0.25), "#181e24", "Interbedded Sand/Shale"],
+    [y(D * 0.25), y(D * 0.6), "#1e1b18", "Massive Marine Shale"],
+    [y(D * 0.6), y(D * 0.85), "#22201d", "Tight Siltstone / Chalk"],
+    [y(D * 0.85), BOT, "#2a1e17", "Permeable Sandstone Reservoir"]
+  ];
+  strata.forEach(([y1, y2, col, txt]) => {
+    bits.push(`<rect x="10" y="${y1}" width="${LEFT - 26}" height="${y2 - y1}" fill="${col}"/>`);
+    bits.push(`<rect x="${RIGHT + 16}" y="${y1}" width="160" height="${y2 - y1}" fill="${col}"/>`);
+    bits.push(`<line x1="10" y1="${y2}" x2="${LEFT - 16}" y2="${y2}" stroke="#334155" stroke-width="0.8" stroke-dasharray="3,3"/>`);
+    bits.push(`<line x1="${RIGHT + 16}" y1="${y2}" x2="610" y2="${y2}" stroke="#334155" stroke-width="0.8" stroke-dasharray="3,3"/>`);
+  });
+
+  // Surface Wellhead & BOP Stack Silhouette at top
+  bits.push(`<rect x="${LEFT + 15}" y="6" width="${RIGHT - LEFT - 30}" height="12" rx="2" fill="#475569" stroke="#0f172a"/>`);
+  bits.push(`<rect x="${(LEFT + RIGHT)/2 - 25}" y="18" width="50" height="18" rx="2" fill="#334155" stroke="#0f172a"/>`);
+  bits.push(`<line x1="${(LEFT + RIGHT)/2 + 25}" y1="24" x2="${(LEFT + RIGHT)/2 + 55}" y2="16" stroke="#3b82f6" stroke-width="5"/>`);
+  bits.push(`<text x="310" y="30" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-weight="700">SURFACE BOP / WELLHEAD</text>`);
+
+  // Open hole gauge & casing walls
+  bits.push(`<rect x="${LEFT - 16}" y="${TOP}" width="${RIGHT - LEFT + 32}" height="${BOT - TOP}" fill="#0f172a"/>`);
+  bits.push(`<line x1="${LEFT - 16}" y1="${TOP}" x2="${LEFT - 16}" y2="${BOT}" stroke="#334155" stroke-width="2"/>`);
+  bits.push(`<line x1="${RIGHT + 16}" y1="${TOP}" x2="${RIGHT + 16}" y2="${BOT}" stroke="#334155" stroke-width="2"/>`);
+
+  // Casing & Cement Sheath up to Shoe
   if (s.shoe_md_ft) {
-    bits.push(`<rect x="${LEFT - 14}" y="${TOP}" width="8" height="${y(s.shoe_md_ft) - TOP}" fill="#3c4a58"/>`);
-    bits.push(`<rect x="${RIGHT + 6}" y="${TOP}" width="8" height="${y(s.shoe_md_ft) - TOP}" fill="#3c4a58"/>`);
+    const shoeY = y(s.shoe_md_ft);
+    // Cement sheath behind casing
+    bits.push(`<rect x="${LEFT - 16}" y="${TOP}" width="6" height="${shoeY - TOP}" fill="#475569"/>`);
+    bits.push(`<rect x="${RIGHT + 10}" y="${TOP}" width="6" height="${shoeY - TOP}" fill="#475569"/>`);
+    // Steel Casing Walls
+    bits.push(`<rect x="${LEFT - 10}" y="${TOP}" width="7" height="${shoeY - TOP}" fill="#64748b" stroke="#0f172a" stroke-width="0.8"/>`);
+    bits.push(`<rect x="${RIGHT + 3}" y="${TOP}" width="7" height="${shoeY - TOP}" fill="#64748b" stroke="#0f172a" stroke-width="0.8"/>`);
+    // Casing Guide Shoe Bevels
+    bits.push(`<polygon points="${LEFT - 10},${shoeY} ${LEFT - 3},${shoeY} ${LEFT - 10},${shoeY + 8}" fill="#94a3b8" stroke="#0f172a"/>`);
+    bits.push(`<polygon points="${RIGHT + 10},${shoeY} ${RIGHT + 3},${shoeY} ${RIGHT + 10},${shoeY + 8}" fill="#94a3b8" stroke="#0f172a"/>`);
   }
 
-  // Annular fluid zones, drawn bottom-up as the column is built.
+  // Annular fluid zones, drawn bottom-up as the column is built
   (s.annulus_zones || []).forEach(z => {
     const top = y(z.top_md_ft), bot = y(z.bottom_md_ft);
     const colour = FLUID_COLOUR[z.label] || "#2a4257";
-    bits.push(`<rect x="${LEFT}" y="${top}" width="${RIGHT - LEFT}" height="${Math.max(1, bot - top)}"
-      fill="${colour}"><title>${z.label} — ${z.density_ppg} ppg</title></rect>`);
+    const isGas = z.label.includes("influx") || z.label.includes("gas");
+
+    if (isGas) {
+      // Realistic Taylor gas bubble with curved nose and trailing boundary
+      bits.push(`<rect x="${LEFT - 2}" y="${top + 6}" width="${RIGHT - LEFT + 4}" height="${Math.max(1, bot - top - 6)}" fill="${colour}"/>`);
+      bits.push(`<path d="M ${LEFT - 2} ${top + 6} Q ${(LEFT + RIGHT)/2} ${top - 6} ${RIGHT + 2} ${top + 6} Z" fill="${colour}"/>`);
+      // Aerated bubbles
+      bits.push(`<circle cx="${(LEFT + RIGHT)/2 - 12}" cy="${top + 10}" r="3" fill="#fef08a" opacity="0.8"/>`);
+      bits.push(`<circle cx="${(LEFT + RIGHT)/2 + 10}" cy="${top + 14}" r="4" fill="#fef08a" opacity="0.8"/>`);
+      bits.push(`<circle cx="${(LEFT + RIGHT)/2}" cy="${top + 22}" r="2.5" fill="#fef08a" opacity="0.8"/>`);
+    } else {
+      bits.push(`<rect x="${LEFT - 2}" y="${top}" width="${RIGHT - LEFT + 4}" height="${Math.max(1, bot - top)}" fill="${colour}"><title>${z.label} — ${z.density_ppg} ppg</title></rect>`);
+      // Meniscus line
+      bits.push(`<line x1="${LEFT - 2}" y1="${bot}" x2="${RIGHT + 2}" y2="${bot}" stroke="#0f172a" stroke-width="1.2" opacity="0.5"/>`);
+    }
   });
 
-  // Drill string down the middle.
+  // Drill string down the middle
   const bitY = y(s.bit_md_ft);
-  bits.push(`<rect x="${(LEFT + RIGHT) / 2 - 13}" y="${TOP}" width="26" height="${bitY - TOP}"
-    fill="#1d2731" stroke="#46565f"/>`);
+  const midX = (LEFT + RIGHT) / 2;
+  // Drill Pipe Body
+  bits.push(`<rect x="${midX - 11}" y="${TOP}" width="22" height="${bitY - TOP}" fill="#334155" stroke="#0f172a" stroke-width="1"/>`);
+  // Tool Joints every ~40ft interval
+  const stepFt = 2000;
+  for (let d = stepFt; d < s.bit_md_ft; d += stepFt) {
+    const jy = y(d);
+    bits.push(`<rect x="${midX - 13}" y="${jy - 3}" width="26" height="6" rx="1" fill="#475569" stroke="#0f172a"/>`);
+  }
+  // Drill Collars / BHA near bit (heavier, wider)
+  const bhaLengthFt = Math.min(600, s.bit_md_ft * 0.15);
+  const bhaTopY = y(s.bit_md_ft - bhaLengthFt);
+  if (bitY - bhaTopY > 10) {
+    bits.push(`<rect x="${midX - 15}" y="${bhaTopY}" width="30" height="${bitY - bhaTopY}" fill="#1e293b" stroke="#0f172a" stroke-width="1.2"/>`);
+  }
+
+  // Influx in string (if reverse circulating or taking inside kick)
   if (s.influx_in_string) {
     const t = y(s.influx_top_md_ft), b = y(s.influx_bottom_md_ft);
-    bits.push(`<rect x="${(LEFT + RIGHT) / 2 - 10}" y="${t}" width="20" height="${Math.max(2, b - t)}"
-      fill="var(--gas)"><title>influx, in the string</title></rect>`);
+    bits.push(`<rect x="${midX - 9}" y="${t}" width="18" height="${Math.max(2, b - t)}" fill="var(--gas)"><title>influx in the string</title></rect>`);
   }
-  bits.push(`<rect x="${(LEFT + RIGHT) / 2 - 17}" y="${bitY - 6}" width="34" height="10" fill="#6d7c88"/>`);
 
-  // Depth labels. The bit sits exactly on TD whenever it is on bottom, so
-  // without spacing the two texts print on top of each other and neither is
-  // readable. Collected, sorted and nudged apart, with a leader line back to
-  // the true depth so the nudge does not lie about where the thing is.
+  // Detailed Rotary Drill Bit at bit depth
+  bits.push(`<polygon points="${midX - 15},${bitY - 6} ${midX + 15},${bitY - 6} ${midX + 11},${bitY + 6} ${midX - 11},${bitY + 6}" fill="#64748b" stroke="#0f172a" stroke-width="1.2"/>`);
+  // Cutter Cones & Jet Nozzles
+  bits.push(`<circle cx="${midX - 8}" cy="${bitY + 6}" r="4" fill="#f59e0b" stroke="#0f172a"/>`);
+  bits.push(`<circle cx="${midX + 8}" cy="${bitY + 6}" r="4" fill="#f59e0b" stroke="#0f172a"/>`);
+  bits.push(`<circle cx="${midX}" cy="${bitY + 7}" r="3.5" fill="#f59e0b" stroke="#0f172a"/>`);
+  bits.push(`<circle cx="${midX}" cy="${bitY + 4}" r="1.5" fill="#38bdf8"/>`);
+
+  // Depth labels with leader lines
   const marks = [];
-  if (s.shoe_md_ft) marks.push({md: s.shoe_md_ft, text: `shoe ${s.shoe_md_ft.toLocaleString()} ft`, colour: css("--shoe")});
-  marks.push({md: s.bit_md_ft, text: `bit ${s.bit_md_ft.toLocaleString()} ft`, colour: css("--dim")});
+  if (s.shoe_md_ft) marks.push({md: s.shoe_md_ft, text: `Shoe: ${s.shoe_md_ft.toLocaleString()} ft`, colour: css("--shoe")});
+  marks.push({md: s.bit_md_ft, text: `Bit: ${s.bit_md_ft.toLocaleString()} ft`, colour: "#94a3b8"});
   if (Math.abs(s.hole_md_ft - s.bit_md_ft) > 1) {
-    marks.push({md: s.hole_md_ft, text: `TD ${s.hole_md_ft.toLocaleString()} ft`, colour: css("--faint")});
+    marks.push({md: s.hole_md_ft, text: `TD: ${s.hole_md_ft.toLocaleString()} ft`, colour: "#64748b"});
   }
   marks.sort((a, b) => a.md - b.md);
   let lastY = -99;
   marks.forEach(mk => {
     const trueY = y(mk.md);
-    const textY = Math.max(trueY, lastY + 14);
+    const textY = Math.max(trueY, lastY + 16);
     lastY = textY;
-    bits.push(`<path d="M ${RIGHT + 16} ${trueY} L ${RIGHT + 38} ${textY}
-      L ${RIGHT + 46} ${textY}" fill="none" stroke="${mk.colour}" stroke-width="1"/>`);
-    bits.push(`<text x="${RIGHT + 52}" y="${textY + 4}" fill="${mk.colour}"
-      font-size="11" font-family="Consolas, monospace">${mk.text}</text>`);
+    bits.push(`<path d="M ${RIGHT + 18} ${trueY} L ${RIGHT + 42} ${textY} L ${RIGHT + 52} ${textY}" fill="none" stroke="${mk.colour}" stroke-width="1.5"/>`);
+    bits.push(`<text x="${RIGHT + 56}" y="${textY + 4}" fill="${mk.colour}" font-size="11" font-weight="700" font-family="Consolas, monospace">${mk.text}</text>`);
   });
+
   if (!s.influx_in_string && s.influx_bbl > 0) {
     const yy = (y(s.influx_top_md_ft) + y(s.influx_bottom_md_ft)) / 2;
-    bits.push(`<line x1="${LEFT - 44}" y1="${yy}" x2="${LEFT - 16}" y2="${yy}" stroke="${css('--gas')}"/>`);
-    bits.push(`<text x="${LEFT - 50}" y="${yy + 4}" text-anchor="end" fill="${css('--gas')}"
-      font-size="11" font-family="Consolas, monospace">influx ${s.influx_bbl} bbl</text>`);
+    bits.push(`<line x1="${LEFT - 46}" y1="${yy}" x2="${LEFT - 18}" y2="${yy}" stroke="${css('--gas')}" stroke-width="2"/>`);
+    bits.push(`<rect x="35" y="${yy - 10}" width="95" height="18" rx="2" fill="#0b0f14" stroke="#f59e0b"/>`);
+    bits.push(`<text x="82" y="${yy + 3}" text-anchor="middle" fill="${css('--gas')}" font-size="10.5" font-weight="700" font-family="Consolas, monospace">INFLUX ${s.influx_bbl} bbl</text>`);
   }
-  bits.push(`<text x="310" y="18" text-anchor="middle" fill="${css('--dim')}" font-size="11">surface</text>`);
+
   svg.innerHTML = bits.join("");
 
   const rows = (s.annulus_zones || []).slice().reverse().map(z => `<tr>
@@ -1089,61 +1305,362 @@ function drawSchematic() {
 
 /* --------------------------------- P&ID -------------------------------- */
 const PID_NODES = {
-  "mud pump":          [40, 40, 92, 30],
-  "standpipe":         [190, 40, 92, 30],
-  "drill string":      [340, 40, 92, 30],
-  "bit":               [480, 40, 60, 30],
-  "annulus":           [480, 130, 92, 30],
-  "BOP stack":         [480, 210, 92, 30],
-  "flowline":          [340, 300, 92, 30],
-  "choke line":        [300, 210, 92, 30],
-  "kill line":         [140, 130, 92, 30],
-  "choke manifold":    [140, 300, 110, 30],
-  "mud gas separator": [140, 360, 110, 30],
-  "active pits":       [340, 360, 92, 30],
-  "trip tank":         [600, 130, 80, 30],
+  "mud pump":          [24, 24, 114, 56],
+  "standpipe":         [186, 28, 96, 48],
+  "drill string":      [332, 28, 96, 48],
+  "bit":               [476, 28, 76, 48],
+  "annulus":           [476, 126, 96, 48],
+  "BOP stack":         [476, 214, 104, 58],
+  "trip tank":         [624, 102, 94, 86],
+  "kill line":         [136, 126, 96, 46],
+  "choke line":        [296, 214, 96, 46],
+  "choke manifold":    [136, 286, 118, 52],
+  "mud gas separator": [136, 362, 118, 80],
+  "flowline":          [342, 286, 98, 48],
+  "active pits":       [342, 362, 118, 80],
 };
 
-/* Drawn as a manifold panel rather than a graph: heavy red pipework on a
-   light panel, with gate valves that show green when they are passing. That is
-   what the schematic on a standpipe or choke manifold screen looks like, and a
-   student who has seen one should recognise this. See simulator_screens/. */
 const PIPE_RED = "#b8322c";
 const PIPE_DARK = "#7d211c";
 const VALVE_OPEN = "#25c04e";
 const VALVE_SHUT = "#14181c";
 
+/* Detailed industrial equipment and valve SVG generators */
+function renderGateValveSvg(cx, cy, name, label, open, ang, isBop = false, isActuated = false) {
+  const face = isBop ? (open ? "#4a5568" : "#dc2626") : (open ? VALVE_OPEN : VALVE_SHUT);
+  return `<g class="pv" data-valve="${name}" style="cursor:pointer"
+      transform="translate(${cx} ${cy}) rotate(${ang})">
+    <circle r="18" fill="transparent"/>
+    ${open && !isBop ? `<circle r="16" fill="none" stroke="${VALVE_OPEN}" stroke-width="2.8" opacity="0.9"/>` : ""}
+    ${!open && isBop ? `<circle r="16" fill="none" stroke="#dc2626" stroke-width="2.8" opacity="0.9"/>` : ""}
+    <!-- Pipe flanges with bolts -->
+    <rect x="-13" y="-8" width="3" height="16" rx="0.8" fill="#334155" stroke="#0f172a" stroke-width="0.8"/>
+    <circle cx="-11.5" cy="-5" r="0.8" fill="#cbd5e1"/>
+    <circle cx="-11.5" cy="5" r="0.8" fill="#cbd5e1"/>
+    <rect x="10" y="-8" width="3" height="16" rx="0.8" fill="#334155" stroke="#0f172a" stroke-width="0.8"/>
+    <circle cx="11.5" cy="-5" r="0.8" fill="#cbd5e1"/>
+    <circle cx="11.5" cy="5" r="0.8" fill="#cbd5e1"/>
+    <!-- Cast valve body housing -->
+    <path d="M -10 -7 L 10 -7 L 8 7 L -8 7 Z" fill="${isBop ? '#2d3748' : '#8a2520'}" stroke="#0f172a" stroke-width="1.2"/>
+    <!-- Gate wedges / bore status -->
+    <polygon points="-8,-6 -8,6 0,0" fill="${face}" stroke="#0f172a" stroke-width="1"/>
+    <polygon points="8,-6 8,6 0,0" fill="${face}" stroke="#0f172a" stroke-width="1"/>
+    ${open ? `<line x1="-7" y1="0" x2="7" y2="0" stroke="#86efac" stroke-width="1.8"/>` : `<line x1="0" y1="-6" x2="0" y2="6" stroke="#ef4444" stroke-width="2.2"/>`}
+    <!-- Bonnet neck -->
+    <rect x="-3.5" y="-12" width="7" height="5" rx="1" fill="#334155" stroke="#0f172a" stroke-width="1"/>
+    <!-- Stem -->
+    <line x1="0" y1="-12" x2="0" y2="-19" stroke="#cbd5e1" stroke-width="2.2"/>
+    <!-- Operator: Actuator vs Handwheel -->
+    ${isActuated ? `
+      <rect x="-6" y="-24" width="12" height="11" rx="2" fill="#1e3a5f" stroke="#0f172a" stroke-width="1.2"/>
+      <circle cx="0" cy="-26" r="2.5" fill="${open ? VALVE_OPEN : '#ef4444'}"/>
+    ` : `
+      <ellipse cx="0" cy="-20" rx="8" ry="3.5" fill="#a8231f" stroke="#0f172a" stroke-width="1.4"/>
+      <circle cx="0" cy="-20" r="1.8" fill="#f1f5f9"/>
+      <line x1="-6" y1="-20" x2="6" y2="-20" stroke="#0f172a" stroke-width="1"/>
+    `}
+    <title>${label} — ${open ? "open" : "shut"}${isBop ? " (BOP: closed seals the annulus)" : ""}</title>
+  </g>`;
+}
+
+function renderMudPumpGraphic(x, y, w, h, label, active, spm) {
+  const isRunning = spm > 0;
+  return `
+    <g class="eq-pump" transform="translate(${x}, ${y})">
+      <!-- Base Skid -->
+      <rect x="0" y="${h - 8}" width="${w}" height="8" rx="2" fill="#1e293b" stroke="#0f172a" stroke-width="1.2"/>
+      <!-- Electric Traction Motor (Left) -->
+      <rect x="4" y="14" width="28" height="${h - 24}" rx="3" fill="#1e3a5f" stroke="#0f172a" stroke-width="1.2"/>
+      <!-- Cooling Fins on Motor -->
+      <line x1="8" y1="20" x2="28" y2="20" stroke="#38bdf8" stroke-width="1" opacity="0.6"/>
+      <line x1="8" y1="26" x2="28" y2="26" stroke="#38bdf8" stroke-width="1" opacity="0.6"/>
+      <line x1="8" y1="32" x2="28" y2="32" stroke="#38bdf8" stroke-width="1" opacity="0.6"/>
+      <line x1="8" y1="38" x2="28" y2="38" stroke="#38bdf8" stroke-width="1" opacity="0.6"/>
+      <!-- Drive Shaft & Coupling -->
+      <rect x="32" y="${h/2 - 5}" width="8" height="10" fill="#475569" stroke="#0f172a"/>
+      <!-- Crankcase / Power End (Middle) -->
+      <rect x="40" y="10" width="34" height="${h - 20}" rx="3" fill="#334155" stroke="#0f172a" stroke-width="1.2"/>
+      <!-- Crosshead Inspection Hatch -->
+      <circle cx="57" cy="${h/2}" r="8" fill="#1e293b" stroke="#475569" stroke-width="1.2"/>
+      <circle cx="57" cy="${h/2}" r="2" fill="#94a3b8"/>
+      <!-- Fluid End (Right) - Three Cylinders -->
+      <rect x="75" y="12" width="35" height="${h - 22}" rx="2" fill="#475569" stroke="#0f172a" stroke-width="1.2"/>
+      <!-- Three Valve Pot Caps -->
+      <rect x="77" y="6" width="9" height="7" rx="1.5" fill="#64748b" stroke="#0f172a"/>
+      <rect x="88" y="6" width="9" height="7" rx="1.5" fill="#64748b" stroke="#0f172a"/>
+      <rect x="99" y="6" width="9" height="7" rx="1.5" fill="#64748b" stroke="#0f172a"/>
+      <!-- Spherical Pulsation Dampener (Top of Fluid End) -->
+      <circle cx="92" cy="-2" r="10" fill="#1e293b" stroke="#0f172a" stroke-width="1.5"/>
+      <circle cx="92" cy="-2" r="8" fill="#334155"/>
+      <!-- Pressure Gauge on Dampener -->
+      <line x1="92" y1="-12" x2="92" y2="-17" stroke="#cbd5e1" stroke-width="1.5"/>
+      <circle cx="92" cy="-20" r="4" fill="#f8fafc" stroke="#0f172a" stroke-width="1"/>
+      <line x1="92" y1="-20" x2="94" y2="-22" stroke="#dc2626" stroke-width="1"/>
+      <!-- Discharge Manifold Pipe Outlet -->
+      <rect x="108" y="24" width="6" height="8" fill="#b8322c" stroke="#0f172a"/>
+      <!-- Live Running Status LED -->
+      <circle cx="${w - 8}" cy="10" r="4.5" fill="${isRunning ? '#22c55e' : (active ? '#3b82f6' : '#64748b')}" stroke="#0f172a"/>
+      <!-- Label -->
+      <text x="${w / 2}" y="${h + 12}" text-anchor="middle" fill="#f8fafc" font-size="9" font-weight="700" font-family="system-ui, sans-serif">${label}</text>
+      <text x="${w / 2}" y="${h + 22}" text-anchor="middle" fill="${isRunning ? '#4ade80' : '#94a3b8'}" font-size="8" font-weight="600" font-family="Consolas, monospace">${isRunning ? spm.toFixed(0) + ' SPM' : 'STANDBY'}</text>
+    </g>`;
+}
+
+function renderMgsGraphic(x, y, w, h, active) {
+  return `
+    <g class="eq-mgs" transform="translate(${x}, ${y})">
+      <!-- Vessel Body & Heads -->
+      <path d="M 22 22 A 18 12 0 0 1 58 22 L 58 ${h - 26} A 18 12 0 0 1 22 ${h - 26} Z" fill="#334155" stroke="#0f172a" stroke-width="1.5"/>
+      <!-- Structural Support Skirt / Legs -->
+      <line x1="24" y1="${h - 26}" x2="18" y2="${h - 6}" stroke="#0f172a" stroke-width="2.5"/>
+      <line x1="56" y1="${h - 26}" x2="62" y2="${h - 6}" stroke="#0f172a" stroke-width="2.5"/>
+      <rect x="14" y="${h - 6}" width="52" height="4" rx="1" fill="#1e293b" stroke="#0f172a"/>
+      <!-- Top Gas Vent Line (Heading to flare / derrick vent) -->
+      <path d="M 40 10 L 40 -16 L 40 -26" fill="none" stroke="#f59e0b" stroke-width="5" stroke-linecap="round"/>
+      <polygon points="36,-24 44,-24 40,-32" fill="#f59e0b"/>
+      <text x="40" y="-35" text-anchor="middle" fill="#f59e0b" font-size="7.5" font-weight="700" font-family="system-ui, sans-serif">TO FLARE / VENT</text>
+      <!-- Internal Cascade Baffles (cutaway view) -->
+      <line x1="25" y1="30" x2="48" y2="34" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
+      <line x1="55" y1="42" x2="32" y2="46" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
+      <line x1="25" y1="54" x2="48" y2="58" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
+      <!-- Inverted Liquid Seal Leg (U-Tube loop) -->
+      <path d="M 40 ${h - 20} L 40 ${h - 6} A 8 8 0 0 0 56 ${h - 6} L 56 ${h - 18} L 74 ${h - 18}" fill="none" stroke="#b8322c" stroke-width="5" stroke-linecap="round"/>
+      <!-- Level Sight Glass on Vessel Shell -->
+      <rect x="17" y="32" width="3.5" height="26" rx="1" fill="#e2e8f0" stroke="#0f172a"/>
+      <rect x="17" y="44" width="3.5" height="14" rx="1" fill="#0284c7"/>
+      <!-- Badge Plates -->
+      <rect x="66" y="24" width="48" height="28" rx="2" fill="#0f172a" stroke="#475569" stroke-width="1.2"/>
+      <text x="90" y="36" text-anchor="middle" fill="#f8fafc" font-size="8.5" font-weight="700" font-family="system-ui, sans-serif">MGS</text>
+      <text x="90" y="46" text-anchor="middle" fill="#38bdf8" font-size="7" font-weight="600" font-family="system-ui, sans-serif">POOR BOY</text>
+      <text x="90" y="${h - 14}" text-anchor="middle" fill="#cbd5e1" font-size="7" font-weight="600">SEAL LEG →</text>
+    </g>`;
+}
+
+function renderPitsGraphic(x, y, w, h, active, mudWeight, pitGain) {
+  const mw = mudWeight !== undefined ? mudWeight.toFixed(1) : "—";
+  const gain = pitGain !== undefined ? pitGain.toFixed(1) : "0.0";
+  return `
+    <g class="eq-pits" transform="translate(${x}, ${y})">
+      <!-- Main Mud Tank Shell -->
+      <rect x="2" y="14" width="${w - 4}" height="${h - 18}" rx="2" fill="#1e293b" stroke="#0f172a" stroke-width="1.5"/>
+      <!-- Top Safety Handrail & Grating -->
+      <line x1="2" y1="14" x2="${w - 2}" y2="14" stroke="#e2e8f0" stroke-width="1.5"/>
+      <line x1="6" y1="6" x2="${w - 6}" y2="6" stroke="#94a3b8" stroke-width="1.2"/>
+      <line x1="6" y1="6" x2="6" y2="14" stroke="#94a3b8" stroke-width="1.2"/>
+      <line x1="${w - 6}" y1="6" x2="${w - 6}" y2="14" stroke="#94a3b8" stroke-width="1.2"/>
+      <!-- Structural Vertical Stiffeners -->
+      <line x1="26" y1="14" x2="26" y2="${h - 4}" stroke="#0f172a" stroke-width="1.5"/>
+      <line x1="58" y1="14" x2="58" y2="${h - 4}" stroke="#0f172a" stroke-width="1.5"/>
+      <line x1="90" y1="14" x2="90" y2="${h - 4}" stroke="#0f172a" stroke-width="1.5"/>
+      <!-- Dynamic Mud Fluid Level -->
+      <rect x="4" y="24" width="${w - 8}" height="${h - 30}" fill="#2e485a" opacity="0.9"/>
+      <line x1="4" y1="24" x2="${w - 4}" y2="24" stroke="#60a5fa" stroke-width="2"/>
+      <!-- Mechanical Mud Agitator -->
+      <rect x="36" y="2" width="18" height="10" rx="1.5" fill="#0284c7" stroke="#0f172a"/>
+      <line x1="45" y1="12" x2="45" y2="52" stroke="#e2e8f0" stroke-width="2"/>
+      <!-- Dual Impeller Blades -->
+      <line x1="33" y1="36" x2="57" y2="36" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="30" y1="48" x2="60" y2="48" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round"/>
+      <!-- PVT Level Float Sensor -->
+      <line x1="${w - 20}" y1="8" x2="${w - 20}" y2="${h - 8}" stroke="#94a3b8" stroke-dasharray="2,2"/>
+      <rect x="${w - 26}" y="20" width="12" height="7" rx="2" fill="#f59e0b" stroke="#78350f" stroke-width="1"/>
+      <!-- Suction Box / Foot Valve (Bottom Left) -->
+      <rect x="6" y="${h - 18}" width="16" height="12" rx="1" fill="#0f172a" stroke="#64748b"/>
+      <circle cx="10" cy="${h - 12}" r="1" fill="#fff"/>
+      <circle cx="14" cy="${h - 12}" r="1" fill="#fff"/>
+      <circle cx="18" cy="${h - 12}" r="1" fill="#fff"/>
+      <!-- Badges & Instrument Tags -->
+      <rect x="18" y="${h - 22}" width="${w - 36}" height="18" rx="2" fill="#0b0f14" stroke="#334155"/>
+      <text x="${w / 2}" y="${h - 10}" text-anchor="middle" fill="#5df08a" font-size="8.5" font-weight="700" font-family="Consolas, monospace">ACTIVE PITS &bull; ${mw} ppg</text>
+      <text x="${w / 2}" y="${h + 10}" text-anchor="middle" fill="#94a3b8" font-size="8" font-weight="600">Gain: ${gain} bbl</text>
+    </g>`;
+}
+
+function renderTripTankGraphic(x, y, w, h, active, volumeBbl) {
+  const vol = volumeBbl !== undefined ? volumeBbl : 20.0;
+  const frac = Math.max(0, Math.min(1, vol / 30.0));
+  const glassH = h - 28;
+  const liquidH = Math.max(2, frac * glassH);
+  return `
+    <g class="eq-triptank" transform="translate(${x}, ${y})">
+      <!-- Main Tall Cylindrical Shell -->
+      <rect x="4" y="10" width="36" height="${h - 18}" rx="3" fill="#1e293b" stroke="#0f172a" stroke-width="1.5"/>
+      <!-- Roof Vent & Inspection Hatch -->
+      <rect x="16" y="4" width="12" height="6" fill="#475569" stroke="#0f172a"/>
+      <!-- External Calibrated Sight Glass Tube -->
+      <rect x="46" y="10" width="18" height="${glassH}" rx="1" fill="#f8fafc" stroke="#334155"/>
+      <rect x="49" y="10" width="6" height="${glassH}" rx="1" fill="#e2e8f0" stroke="#0f172a"/>
+      <!-- Liquid Level in Sight Glass -->
+      <rect x="49" y="${10 + glassH - liquidH}" width="6" height="${liquidH}" rx="0.5" fill="#0284c7"/>
+      <!-- Graduation Ticks on Board -->
+      <line x1="56" y1="${10 + glassH * 0.1}" x2="62" y2="${10 + glassH * 0.1}" stroke="#0f172a" stroke-width="1"/>
+      <line x1="56" y1="${10 + glassH * 0.33}" x2="62" y2="${10 + glassH * 0.33}" stroke="#0f172a" stroke-width="1"/>
+      <line x1="56" y1="${10 + glassH * 0.66}" x2="62" y2="${10 + glassH * 0.66}" stroke="#0f172a" stroke-width="1"/>
+      <line x1="56" y1="${10 + glassH * 0.9}" x2="62" y2="${10 + glassH * 0.9}" stroke="#0f172a" stroke-width="1"/>
+      <!-- Dedicated Centrifugal Fill Pump at Base -->
+      <circle cx="22" cy="${h - 4}" r="7" fill="#0284c7" stroke="#0f172a" stroke-width="1.2"/>
+      <circle cx="22" cy="${h - 4}" r="3" fill="#38bdf8"/>
+      <!-- Title & Volume Readout -->
+      <text x="22" y="24" text-anchor="middle" fill="#f8fafc" font-size="8" font-weight="700" font-family="system-ui, sans-serif">TRIP</text>
+      <text x="22" y="34" text-anchor="middle" fill="#94a3b8" font-size="7.5" font-weight="600" font-family="system-ui, sans-serif">TANK</text>
+      <rect x="2" y="${h + 6}" width="${w - 4}" height="16" rx="2" fill="#0b0f14" stroke="#334155"/>
+      <text x="${w / 2}" y="${h + 18}" text-anchor="middle" fill="#5df08a" font-size="9" font-weight="700" font-family="Consolas, monospace">${vol.toFixed(1)} bbl</text>
+    </g>`;
+}
+
+function renderBopStackPidGraphic(x, y, w, h, active, annularShut, ramsShut) {
+  return `
+    <g class="eq-bop" transform="translate(${x}, ${y})">
+      <!-- Bell Nipple / Over-shot at Top -->
+      <rect x="36" y="0" width="26" height="8" fill="#475569" stroke="#0f172a"/>
+      <!-- Annular Preventer Dome -->
+      <path d="M 24 18 A 25 10 0 0 1 74 18 L 72 26 L 26 26 Z" fill="#64748b" stroke="#0f172a" stroke-width="1.2"/>
+      <circle cx="49" cy="19" r="6" fill="${annularShut ? '#dc2626' : '#22c55e'}" stroke="#0f172a"/>
+      <!-- Upper Pipe Rams -->
+      <rect x="30" y="28" width="38" height="12" rx="1.5" fill="#475569" stroke="#0f172a"/>
+      <rect x="12" y="31" width="18" height="6" rx="1" fill="#334155" stroke="#0f172a"/>
+      <rect x="68" y="31" width="18" height="6" rx="1" fill="#334155" stroke="#0f172a"/>
+      <!-- Drilling Spool with Choke & Kill Outlets -->
+      <rect x="34" y="40" width="30" height="8" fill="#334155" stroke="#0f172a"/>
+      <line x1="22" y1="44" x2="34" y2="44" stroke="#b8322c" stroke-width="4"/>
+      <line x1="64" y1="44" x2="76" y2="44" stroke="#b8322c" stroke-width="4"/>
+      <!-- Lower Pipe Rams -->
+      <rect x="30" y="48" width="38" height="12" rx="1.5" fill="#475569" stroke="#0f172a"/>
+      <rect x="12" y="51" width="18" height="6" rx="1" fill="#334155" stroke="#0f172a"/>
+      <rect x="68" y="51" width="18" height="6" rx="1" fill="#334155" stroke="#0f172a"/>
+      <!-- Casing Flange / Wellhead -->
+      <rect x="26" y="60" width="46" height="6" rx="1" fill="#1e293b" stroke="#0f172a"/>
+      <!-- Central Wellbore Seal Indicator -->
+      ${annularShut || ramsShut ? `
+        <line x1="42" y1="28" x2="56" y2="28" stroke="#ef4444" stroke-width="3"/>
+        <line x1="42" y1="48" x2="56" y2="48" stroke="#ef4444" stroke-width="3"/>
+      ` : `
+        <line x1="49" y1="8" x2="49" y2="60" stroke="#86efac" stroke-width="2" stroke-dasharray="2,2"/>
+      `}
+      <!-- Badge Label -->
+      <text x="${w / 2}" y="${h + 12}" text-anchor="middle" fill="#f8fafc" font-size="8.5" font-weight="700" font-family="system-ui, sans-serif">BOP STACK</text>
+    </g>`;
+}
+
+function renderStandpipePidGraphic(x, y, w, h, active, sppPsi) {
+  const spp = sppPsi !== undefined ? Math.round(sppPsi) : 0;
+  return `
+    <g class="eq-standpipe" transform="translate(${x}, ${y})">
+      <rect x="0" y="0" width="${w}" height="${h}" rx="3" fill="${active ? '#1c2836' : '#232b33'}" stroke="#0f172a" stroke-width="1.5"/>
+      <!-- Standpipe Riser Header -->
+      <line x1="20" y1="8" x2="20" y2="${h - 8}" stroke="#b8322c" stroke-width="7" stroke-linecap="round"/>
+      <line x1="20" y1="${h / 2}" x2="${w - 14}" y2="${h / 2}" stroke="#b8322c" stroke-width="5"/>
+      <!-- Pressure Transmitter -->
+      <circle cx="20" cy="8" r="5" fill="#f8fafc" stroke="#0f172a" stroke-width="1"/>
+      <text x="${w / 2 + 10}" y="${h / 2 - 4}" text-anchor="middle" fill="#f8fafc" font-size="8" font-weight="700">STANDPIPE</text>
+      <text x="${w / 2 + 10}" y="${h / 2 + 8}" text-anchor="middle" fill="#38bdf8" font-size="8.5" font-weight="700" font-family="Consolas, monospace">${spp} psi</text>
+    </g>`;
+}
+
+function renderChokeManifoldPidGraphic(x, y, w, h, active, chokePct) {
+  const chk = chokePct !== undefined ? chokePct.toFixed(1) : "0.0";
+  return `
+    <g class="eq-ckman" transform="translate(${x}, ${y})">
+      <rect x="0" y="0" width="${w}" height="${h}" rx="3" fill="${active ? '#1c2836' : '#232b33'}" stroke="#0f172a" stroke-width="1.5"/>
+      <!-- Manifold High-Pressure Pipe Dual Header -->
+      <line x1="12" y1="14" x2="${w - 12}" y2="14" stroke="#b8322c" stroke-width="5"/>
+      <line x1="12" y1="${h - 14}" x2="${w - 12}" y2="${h - 14}" stroke="#b8322c" stroke-width="5"/>
+      <line x1="${w / 2}" y1="14" x2="${w / 2}" y2="${h - 14}" stroke="#b8322c" stroke-width="4"/>
+      <!-- Choke Needle Icon -->
+      <polygon points="${w/2 - 6},${h/2 - 4} ${w/2 + 6},${h/2 - 4} ${w/2},${h/2 + 4}" fill="#f59e0b" stroke="#0f172a"/>
+      <text x="${w / 2}" y="${h - 4}" text-anchor="middle" fill="#f8fafc" font-size="8" font-weight="700">CHOKE MANIFOLD</text>
+      <text x="${w / 2}" y="10" text-anchor="middle" fill="#5df08a" font-size="8" font-family="Consolas, monospace" font-weight="700">POS: ${chk}%</text>
+    </g>`;
+}
+
+function renderFlowlinePidGraphic(x, y, w, h, active) {
+  return `
+    <g class="eq-flowline" transform="translate(${x}, ${y})">
+      <rect x="0" y="0" width="${w}" height="${h}" rx="3" fill="${active ? '#1c2836' : '#232b33'}" stroke="#0f172a" stroke-width="1.5"/>
+      <!-- 45 Degree Sloping Flowline Pipe -->
+      <line x1="10" y1="12" x2="38" y2="28" stroke="#3b82f6" stroke-width="6" stroke-linecap="round"/>
+      <!-- Vibrating Shale Shaker Deck -->
+      <polygon points="36,26 84,26 80,38 32,38" fill="#475569" stroke="#0f172a" stroke-width="1"/>
+      <line x1="40" y1="30" x2="76" y2="30" stroke="#94a3b8" stroke-width="1" stroke-dasharray="2,2"/>
+      <line x1="38" y1="34" x2="74" y2="34" stroke="#94a3b8" stroke-width="1" stroke-dasharray="2,2"/>
+      <!-- Shaker Motor -->
+      <circle cx="82" cy="22" r="4.5" fill="#0284c7" stroke="#0f172a"/>
+      <text x="${w / 2}" y="${h - 2}" text-anchor="middle" fill="#f8fafc" font-size="8" font-weight="700">FLOWLINE & SHAKERS</text>
+    </g>`;
+}
+
+function renderDrillStringPidGraphic(x, y, w, h, active) {
+  return `
+    <g class="eq-string" transform="translate(${x}, ${y})">
+      <rect x="0" y="0" width="${w}" height="${h}" rx="3" fill="${active ? '#1c2836' : '#232b33'}" stroke="#0f172a" stroke-width="1.5"/>
+      <!-- Drill Pipe Tube & Tool Joint -->
+      <rect x="14" y="${h / 2 - 4}" width="${w - 28}" height="8" fill="#64748b" stroke="#0f172a"/>
+      <rect x="${w / 2 - 5}" y="${h / 2 - 6}" width="10" height="12" rx="1" fill="#475569" stroke="#0f172a"/>
+      <text x="${w / 2}" y="${h - 4}" text-anchor="middle" fill="#f8fafc" font-size="8" font-weight="700">DRILL STRING</text>
+    </g>`;
+}
+
+function renderBitPidGraphic(x, y, w, h, active) {
+  return `
+    <g class="eq-bit" transform="translate(${x}, ${y})">
+      <rect x="0" y="0" width="${w}" height="${h}" rx="3" fill="${active ? '#1c2836' : '#232b33'}" stroke="#0f172a" stroke-width="1.5"/>
+      <!-- Tri-Cone Drill Bit Body & Cones -->
+      <path d="M 16 14 L 38 14 L 34 32 L 20 32 Z" fill="#64748b" stroke="#0f172a"/>
+      <circle cx="23" cy="33" r="3.5" fill="#f59e0b" stroke="#0f172a"/>
+      <circle cx="31" cy="33" r="3.5" fill="#f59e0b" stroke="#0f172a"/>
+      <!-- Jet Nozzles -->
+      <circle cx="27" cy="32" r="1.5" fill="#38bdf8"/>
+      <text x="${w / 2}" y="${h - 4}" text-anchor="middle" fill="#f8fafc" font-size="8" font-weight="700">BIT</text>
+    </g>`;
+}
+
+function renderAnnulusPidGraphic(x, y, w, h, active) {
+  return `
+    <g class="eq-annulus" transform="translate(${x}, ${y})">
+      <rect x="0" y="0" width="${w}" height="${h}" rx="3" fill="${active ? '#1c2836' : '#232b33'}" stroke="#0f172a" stroke-width="1.5"/>
+      <!-- Casing Walls & Wellbore Annulus -->
+      <rect x="18" y="8" width="10" height="${h - 16}" fill="#475569" stroke="#0f172a"/>
+      <rect x="${w - 28}" y="8" width="10" height="${h - 16}" fill="#475569" stroke="#0f172a"/>
+      <!-- Inner Drill Pipe Center -->
+      <rect x="${w / 2 - 5}" y="8" width="10" height="${h - 16}" fill="#1e293b" stroke="#0f172a"/>
+      <text x="${w / 2}" y="${h - 4}" text-anchor="middle" fill="#f8fafc" font-size="8" font-weight="700">ANNULUS</text>
+    </g>`;
+}
+
+function renderHeaderBox(x, y, w, h, label, active) {
+  return `
+    <g class="eq-header" transform="translate(${x}, ${y})">
+      <rect x="0" y="0" width="${w}" height="${h}" rx="3" fill="${active ? '#1c2836' : '#232b33'}" stroke="#0f172a" stroke-width="1.5"/>
+      <!-- Header Flange Line -->
+      <line x1="8" y1="${h / 2}" x2="${w - 8}" y2="${h / 2}" stroke="#b8322c" stroke-width="6" stroke-linecap="round"/>
+      <rect x="6" y="${h / 2 - 5}" width="3" height="10" fill="#cbd5e1" stroke="#0f172a"/>
+      <rect x="${w - 9}" y="${h / 2 - 5}" width="3" height="10" fill="#cbd5e1" stroke="#0f172a"/>
+      <text x="${w / 2}" y="${h - 4}" text-anchor="middle" fill="#f8fafc" font-size="8" font-weight="700">${label.toUpperCase()}</text>
+    </g>`;
+}
+
 function drawPid() {
   const svg = $("pid");
+  if (!svg) return;
   const active = new Set();
   lineupCache.forEach(v => { if (v.state === "open" && !v.is_bop) { active.add(v.from); active.add(v.to); } });
-  const bits = [`<rect width="720" height="420" fill="#b9c0c6"/>`];
+  const bits = [`<rect width="760" height="450" fill="#b9c0c6"/>`];
 
-  // Several valves can join the same pair of nodes -- the three BOP elements
-  // all sit between the annulus and the stack, and the kelly cock and the
-  // float share the string and the bit. Drawn on the raw midpoint they land on
-  // top of each other and only the last one is visible or clickable, so they
-  // are counted first and then fanned out along the line.
   const groups = {};
   lineupCache.forEach(v => {
     const key = [v.from, v.to].sort().join("|");
     (groups[key] = groups[key] || []).push(v);
   });
 
-  // Edges first, so boxes sit on top.
+  // Edges first, so equipment illustrations sit crisp on top.
   Object.values(groups).forEach(group => {
     group.forEach((v, i) => {
       const a = PID_NODES[v.from], b = PID_NODES[v.to];
       if (!a || !b) return;
       const ax = a[0] + a[2] / 2, ay = a[1] + a[3] / 2;
       const bx = b[0] + b[2] / 2, by = b[1] + b[3] / 2;
-      // A BOP element reads backwards: closed is what seals the annulus, so
-      // closed is the state worth colouring as significant.
       const open = v.state === "open";
       if (i === 0) {
-        // Pipework is pipework whether or not it is flowing -- it is the
-        // valves that say what is passing. Drawn heavy, with a darker casing
-        // line under it so it reads as pipe rather than as a connector.
         const live = group.some(g => g.state === "open" && !g.is_bop);
         bits.push(`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}"
           stroke="${PIPE_DARK}" stroke-width="13" stroke-linecap="round"/>`);
@@ -1151,47 +1668,54 @@ function drawPid() {
           stroke="${live ? PIPE_RED : "#9c4a45"}" stroke-width="9"
           stroke-linecap="round"/>`);
       }
-      // Fan the markers along the line, centred on its midpoint.
-      const spread = 19;
+      const spread = 22;
       const offset = (i - (group.length - 1) / 2) * spread;
       const len = Math.hypot(bx - ax, by - ay) || 1;
       const mx = (ax + bx) / 2 + (bx - ax) / len * offset;
       const my = (ay + by) / 2 + (by - ay) / len * offset;
-      // A gate valve: the bowtie every P&ID uses, with a stem and handwheel,
-      // ringed in green when it is passing. The ring is what the manifold
-      // screens use to make an open valve findable at a glance.
       const ang = Math.atan2(by - ay, bx - ax) * 180 / Math.PI;
-      const face = v.is_bop
-        ? (open ? "#4a5560" : "#c0392b")
-        : (open ? VALVE_OPEN : VALVE_SHUT);
-      bits.push(`<g class="pv" data-valve="${v.name}" style="cursor:pointer"
-        transform="translate(${mx} ${my}) rotate(${ang})">
-        <circle r="14" fill="transparent"/>
-        ${open && !v.is_bop
-          ? `<circle r="12" fill="none" stroke="${VALVE_OPEN}" stroke-width="2.5"
-               opacity="0.85"/>` : ""}
-        <polygon points="-9,-8 -9,8 0,0" fill="${face}" stroke="#12161a" stroke-width="1.2"/>
-        <polygon points="9,-8 9,8 0,0" fill="${face}" stroke="#12161a" stroke-width="1.2"/>
-        <line x1="0" y1="0" x2="0" y2="-13" stroke="#12161a" stroke-width="2"/>
-        <line x1="-5" y1="-13" x2="5" y2="-13" stroke="#12161a" stroke-width="2.5"/>
-        <title>${v.label} — ${v.state}${v.is_bop
-          ? " (BOP: closed seals the annulus)" : ""}</title></g>`);
+      const isActuated = v.is_bop || v.throttling || v.name.includes("line_valve");
+      bits.push(renderGateValveSvg(mx, my, v.name, v.label, open, ang, v.is_bop, isActuated));
     });
   });
 
-  // Equipment as labelled plates on the panel, in the manifold-screen idiom:
-  // a dark tag with light lettering, brightened when fluid can reach it.
+  // Detailed industrial equipment graphics
+  const g = currentGauges || {};
+  const annularShut = valveState("annular") === false;
+  const ramsShut = (valveState("upper_rams") === false) || (valveState("lower_rams") === false);
+
   Object.entries(PID_NODES).forEach(([name, [x, yy, w, h]]) => {
     const on = active.has(name);
-    bits.push(`<rect x="${x}" y="${yy}" width="${w}" height="${h}" rx="3"
-      fill="${on ? "#1d2830" : "#454e56"}" stroke="#12161a" stroke-width="1.5"/>`);
-    bits.push(`<text x="${x + w / 2}" y="${yy + h / 2 + 4}" text-anchor="middle"
-      fill="${on ? "#eef3f7" : "#c2c9cf"}" font-size="10.5"
-      font-family="system-ui, sans-serif" font-weight="600">${name}</text>`);
+    if (name === "mud pump") {
+      bits.push(renderMudPumpGraphic(x, yy, w, h, "MUD PUMP", on, g.pump_spm || 0));
+    } else if (name === "mud gas separator") {
+      bits.push(renderMgsGraphic(x, yy, w, h, on));
+    } else if (name === "active pits") {
+      bits.push(renderPitsGraphic(x, yy, w, h, on, g.active_mud_weight_ppg, g.pit_gain_bbl));
+    } else if (name === "trip tank") {
+      bits.push(renderTripTankGraphic(x, yy, w, h, on, g.trip_tank_bbl));
+    } else if (name === "BOP stack") {
+      bits.push(renderBopStackPidGraphic(x, yy, w, h, on, annularShut, ramsShut));
+    } else if (name === "standpipe") {
+      bits.push(renderStandpipePidGraphic(x, yy, w, h, on, drillPipePsi));
+    } else if (name === "choke manifold") {
+      bits.push(renderChokeManifoldPidGraphic(x, yy, w, h, on, chokePercent));
+    } else if (name === "flowline") {
+      bits.push(renderFlowlinePidGraphic(x, yy, w, h, on));
+    } else if (name === "drill string") {
+      bits.push(renderDrillStringPidGraphic(x, yy, w, h, on));
+    } else if (name === "bit") {
+      bits.push(renderBitPidGraphic(x, yy, w, h, on));
+    } else if (name === "annulus") {
+      bits.push(renderAnnulusPidGraphic(x, yy, w, h, on));
+    } else {
+      bits.push(renderHeaderBox(x, yy, w, h, name, on));
+    }
   });
+
   svg.innerHTML = bits.join("");
-  svg.querySelectorAll(".pv").forEach(g => {
-    g.onclick = () => toggleValve(g.dataset.valve);
+  svg.querySelectorAll(".pv").forEach(el => {
+    el.onclick = () => toggleValve(el.dataset.valve);
   });
 }
 
@@ -1207,26 +1731,14 @@ function pipe(x1, y1, x2, y2) {
       stroke-width="12" stroke-linecap="square"/>`;
 }
 
-function gateValve(cx, cy, name, label, open, vertical) {
-  // The green ring is what makes an open valve findable at a glance, which is
-  // the whole job of a manifold screen.
-  return `<g class="pv" data-valve="${name}" style="cursor:pointer"
-      transform="translate(${cx} ${cy}) rotate(${vertical ? 90 : 0})">
-    <circle r="17" fill="transparent"/>
-    ${open ? `<circle r="15" fill="none" stroke="${VALVE_OPEN}" stroke-width="3"/>` : ""}
-    <rect x="-11" y="-11" width="22" height="22" rx="2" fill="${PIPE_RED}"
-      stroke="#12161a" stroke-width="1.5"/>
-    <polygon points="-8,-7 -8,7 0,0" fill="${open ? VALVE_OPEN : VALVE_SHUT}"
-      stroke="#12161a"/>
-    <polygon points="8,-7 8,7 0,0" fill="${open ? VALVE_OPEN : VALVE_SHUT}"
-      stroke="#12161a"/>
-    <title>${label} — ${open ? "open" : "shut"}</title></g>`;
+function gateValve(cx, cy, name, label, open, vertical, isActuated = false) {
+  return renderGateValveSvg(cx, cy, name, label, open, vertical ? 90 : 0, false, isActuated);
 }
 
 function digitalTag(x, y, label, value, unit) {
   return `<text x="${x + 46}" y="${y - 4}" text-anchor="middle" fill="#22282e"
-      font-size="10" font-weight="600" font-family="system-ui, sans-serif">${label}</text>
-    <rect x="${x}" y="${y}" width="92" height="26" rx="2" fill="#0d1117" stroke="#3c4650"/>
+      font-size="10" font-weight="700" font-family="system-ui, sans-serif">${label.toUpperCase()}</text>
+    <rect x="${x}" y="${y}" width="92" height="26" rx="3" fill="#0b0f14" stroke="#334155" stroke-width="1.5"/>
     <text x="${x + 46}" y="${y + 18}" text-anchor="middle" fill="#5df08a"
       font-size="12" font-weight="700"
       font-family="Consolas, monospace">${value} ${unit}</text>`;
@@ -1247,35 +1759,35 @@ function drawStandpipeManifold() {
   bits.push(digitalTag(310, 38, "Choke", Math.round(chokePsi), "psi"));
 
   // Header across the middle, risers up to the taps, and the two pumps below.
-  const HEADER = 250, LEFT = 70, RIGHT = 400;
+  const HEADER = 240, LEFT = 75, RIGHT = 395;
   bits.push(pipe(LEFT, HEADER, RIGHT, HEADER));
-  bits.push(pipe(150, HEADER, 150, 120));       // standpipe riser
-  bits.push(pipe(320, HEADER, 320, 120));       // choke/kill riser
-  bits.push(pipe(LEFT, HEADER, LEFT, 360));     // down to MP1
-  bits.push(pipe(RIGHT, HEADER, RIGHT, 360));   // down to MP2
+  bits.push(pipe(150, HEADER, 150, 110));       // standpipe riser
+  bits.push(pipe(320, HEADER, 320, 110));       // choke/kill riser
+  bits.push(pipe(LEFT, HEADER, LEFT, 335));     // down to MP1
+  bits.push(pipe(RIGHT, HEADER, RIGHT, 335));   // down to MP2
   bits.push(pipe(235, HEADER, 235, 410));       // kill line take-off
 
-  bits.push(`<text x="150" y="112" text-anchor="middle" fill="#22282e" font-size="10"
+  bits.push(`<text x="150" y="102" text-anchor="middle" fill="#22282e" font-size="10"
     font-weight="700" font-family="system-ui, sans-serif">TO STANDPIPE</text>`);
-  bits.push(`<text x="320" y="112" text-anchor="middle" fill="#22282e" font-size="10"
+  bits.push(`<text x="320" y="102" text-anchor="middle" fill="#22282e" font-size="10"
     font-weight="700" font-family="system-ui, sans-serif">TO KILL LINE</text>`);
 
-  bits.push(gateValve(150, 180, "standpipe_valve", "Standpipe valve",
+  bits.push(gateValve(150, 135, "standpipe_to_manifold", "Standpipe to manifold",
+    valveState("standpipe_to_manifold"), true));
+  bits.push(gateValve(150, 185, "standpipe_valve", "Standpipe valve",
     valveState("standpipe_valve"), true));
-  bits.push(gateValve(320, 180, "pump_to_kill_line", "Pump to kill line",
+  bits.push(gateValve(320, 175, "pump_to_kill_line", "Pump to kill line",
     valveState("pump_to_kill_line"), true));
-  bits.push(gateValve(LEFT, 310, "pump_discharge", "Mud pump discharge",
+  bits.push(gateValve(LEFT, 290, "pump_discharge", "Mud pump discharge",
     valveState("pump_discharge"), true));
-  bits.push(gateValve(235, 330, "kill_line_valve", "Kill line valve",
+  bits.push(gateValve(235, 325, "kill_line_valve", "Kill line valve",
     valveState("kill_line_valve"), true));
 
-  // Pumps, drawn as the blue blocks the manifold screens use.
-  [[LEFT, "MP1"], [RIGHT, "MP2"]].forEach(([x, tag]) => {
-    bits.push(`<rect x="${x - 34}" y="362" width="68" height="34" rx="3"
-      fill="#2f5fa8" stroke="#12161a" stroke-width="2"/>`);
-    bits.push(`<text x="${x}" y="384" text-anchor="middle" fill="#eaf1fb"
-      font-size="12" font-weight="700" font-family="system-ui, sans-serif">${tag}</text>`);
-  });
+  // Authentic Triplex Mud Pumps for MP1 and MP2
+  const g = currentGauges || {};
+  bits.push(renderMudPumpGraphic(LEFT - 48, 335, 96, 56, "MP1 (MAIN)", true, g.pump_spm || 0));
+  bits.push(renderMudPumpGraphic(RIGHT - 48, 335, 96, 56, "MP2 (AUX)", false, 0));
+
   bits.push(`<text x="235" y="432" text-anchor="middle" fill="#22282e" font-size="11"
     font-weight="700" font-family="system-ui, sans-serif">KILL LINE</text>`);
 
@@ -1307,28 +1819,29 @@ function drawChokeKillManifold() {
       font-family="system-ui, sans-serif">${text}</text>`;
   bits.push(tag(IN - 4, 74, "CHOKE LINE", "end"));
   bits.push(tag(IN - 4, 228, "KILL LINE", "end"));
-  bits.push(tag(OUT + 6, 74, "CHOKE 1", "start"));
+  bits.push(tag(OUT + 6, 74, "CHOKE 1 (AUTO)", "start"));
   bits.push(tag(OUT + 6, 146, "BYPASS", "start"));
-  bits.push(tag(OUT + 6, 228, "CHOKE 2", "start"));
+  bits.push(tag(OUT + 6, 228, "CHOKE 2 (MANUAL)", "start"));
 
-  bits.push(gateValve(155, 78, "choke_line_to_manifold", "Choke line to manifold",
+  bits.push(gateValve(105, 78, "choke_line_valve", "Choke line valve",
+    valveState("choke_line_valve"), false, true));
+  bits.push(gateValve(180, 78, "choke_line_to_manifold", "Choke line to manifold",
     valveState("choke_line_to_manifold"), false));
-  bits.push(gateValve(155, 232, "kill_line_to_manifold", "Kill line to manifold",
+  bits.push(gateValve(180, 232, "kill_line_to_manifold", "Kill line to manifold",
     valveState("kill_line_to_manifold"), false));
   bits.push(gateValve(515, 78, "choke_1", "Adjustable choke 1",
-    valveState("choke_1"), false));
+    valveState("choke_1"), false, true));
   bits.push(gateValve(515, HEADER, "choke_bypass", "Choke manifold bypass",
     valveState("choke_bypass"), false));
   bits.push(gateValve(515, 232, "choke_2", "Adjustable choke 2",
-    valveState("choke_2"), false));
+    valveState("choke_2"), false, true));
 
-  // The adjustable choke's opening, which is the one thing here that is not
-  // simply open or shut.
-  bits.push(`<rect x="250" y="266" width="140" height="30" rx="3" fill="#0d1117"
-    stroke="#3c4650"/>`);
-  bits.push(`<text x="320" y="286" text-anchor="middle" fill="#5df08a" font-size="13"
-    font-weight="700" font-family="Consolas, monospace">CHOKE ${chokePercent.toFixed(1)}%</text>`);
-  bits.push(tag(320, 312, "adjustable choke position"));
+  // The adjustable choke's opening, with industrial digital badge
+  bits.push(`<rect x="235" y="266" width="170" height="32" rx="3" fill="#0b0f14"
+    stroke="#334155" stroke-width="1.5"/>`);
+  bits.push(`<text x="320" y="287" text-anchor="middle" fill="#5df08a" font-size="13"
+    font-weight="700" font-family="Consolas, monospace">CHOKE POS: ${chokePercent.toFixed(1)}%</text>`);
+  bits.push(tag(320, 316, "ADJUSTABLE HYDRAULIC CHOKE POSITION"));
 
   svg.innerHTML = bits.join("");
   svg.querySelectorAll(".pv").forEach(g =>
@@ -1355,85 +1868,127 @@ function drawBopPanel() {
   (isSubsea ? drawSubseaBop : drawSurfaceBop)();
 }
 
+const bopGauge = (cx, cy, r, value, max, label) => {
+  const frac = Math.max(0, Math.min(1, value / max));
+  const out = [
+    `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#f8fafc" stroke="#334155" stroke-width="3"/>`,
+    `<circle cx="${cx}" cy="${cy}" r="${r - 3}" fill="none" stroke="#cbd5e1" stroke-width="1"/>`
+  ];
+  for (let i = 0; i <= 8; i++) {
+    const [x1, y1] = polar(cx, cy, r - 4, A0 + i / 8 * SWEEP);
+    const [x2, y2] = polar(cx, cy, r - 10, A0 + i / 8 * SWEEP);
+    out.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#0f172a" stroke-width="1.5"/>`);
+  }
+  const [nx, ny] = polar(cx, cy, r - 13, A0 + frac * SWEEP);
+  out.push(`<line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="#dc2626" stroke-width="3" stroke-linecap="round"/>`);
+  out.push(`<circle cx="${cx}" cy="${cy}" r="5" fill="#0f172a"/>`);
+  out.push(`<circle cx="${cx}" cy="${cy}" r="2" fill="#cbd5e1"/>`);
+  out.push(`<text x="${cx}" y="${cy + r + 15}" text-anchor="middle" fill="#f8fafc"
+    font-size="10" font-weight="700" font-family="system-ui, sans-serif">${label}</text>`);
+  out.push(`<rect x="${cx - 28}" y="${cy + r - 18}" width="56" height="15" rx="2" fill="#0b0f14" stroke="#334155"/>`);
+  out.push(`<text x="${cx}" y="${cy + r - 7}" text-anchor="middle" fill="#5df08a"
+    font-size="11" font-weight="700"
+    font-family="Consolas, monospace">${Math.round(value).toLocaleString()}</text>`);
+  return out.join("");
+};
+
 function drawSurfaceBop() {
   const svg = $("bop-panel");
   const elements = lineupCache.filter(v => v.is_bop);
   const bits = [
-    `<rect width="640" height="430" rx="8" fill="#a8231f"/>`,
+    `<rect width="640" height="430" rx="8" fill="#8f1d19"/>`,
     `<rect x="8" y="8" width="624" height="414" rx="5" fill="none"
-       stroke="#7a1613" stroke-width="3"/>`,
+       stroke="#5c120f" stroke-width="3"/>`,
+    `<rect x="18" y="16" width="604" height="32" rx="3" fill="#14181c" stroke="#334155"/>`,
+    `<text x="320" y="37" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700" letter-spacing="0.08em" font-family="system-ui, sans-serif">BOP REMOTE HYDRAULIC CONTROL CONSOLE</text>`
   ];
 
-  // Two pressure gauges across the top, as on the cabinet.
-  const gauge = (cx, cy, r, value, max, label) => {
-    const frac = Math.max(0, Math.min(1, value / max));
-    const out = [
-      `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#f4f5f6" stroke="#5c6169" stroke-width="3"/>`,
-    ];
-    for (let i = 0; i <= 8; i++) {
-      const [x1, y1] = polar(cx, cy, r - 4, A0 + i / 8 * SWEEP);
-      const [x2, y2] = polar(cx, cy, r - 11, A0 + i / 8 * SWEEP);
-      out.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#2c3138" stroke-width="1.5"/>`);
+  bits.push(bopGauge(75, 96, 38, accumulatorPsi, 3000, "ACCUMULATOR"));
+  bits.push(bopGauge(565, 96, 38, manifoldPsi, 3000, "MANIFOLD"));
+
+  // Cameron / Shaffer authentic surface BOP stack graphic down the left
+  const sx = 175, sw = 84;
+  bits.push(`<rect x="${sx - 35}" y="56" width="70" height="6" fill="#475569" stroke="#0f172a"/>`);
+  bits.push(`<rect x="${sx - 14}" y="62" width="28" height="18" fill="#64748b" stroke="#0f172a"/>`);
+  bits.push(`<line x1="${sx + 14}" y1="70" x2="${sx + 38}" y2="58" stroke="#3b82f6" stroke-width="7" stroke-linecap="round"/>`);
+  bits.push(`<rect x="${sx - 10}" y="80" width="20" height="280" fill="#1e293b"/>`);
+
+  elements.forEach((v, i) => {
+    const y = 84 + i * 82;
+    const shut = v.state !== "open";
+    const reach = shut ? sw / 2 - 8 : 10;
+    const isAnnular = v.name === "annular";
+    const isShear = v.name.includes("upper") || v.label.toLowerCase().includes("shear");
+
+    if (isAnnular) {
+      bits.push(`<path d="M ${sx - sw/2 + 2} ${y + 36} A ${sw/2} 22 0 0 1 ${sx + sw/2 - 2} ${y + 36} Z"
+        fill="#475569" stroke="#0f172a" stroke-width="2"/>`);
+      bits.push(`<rect x="${sx - sw/2}" y="${y + 36}" width="${sw}" height="14" rx="2" fill="#334155" stroke="#0f172a" stroke-width="1.5"/>`);
+      bits.push(`<circle cx="${sx - sw/2 - 4}" cy="${y + 24}" r="4" fill="#64748b" stroke="#0f172a"/>`);
+      bits.push(`<circle cx="${sx + sw/2 + 4}" cy="${y + 24}" r="4" fill="#64748b" stroke="#0f172a"/>`);
+      bits.push(`<circle cx="${sx}" cy="${y + 26}" r="${shut ? 12 : 7}" fill="${shut ? '#dc2626' : '#22c55e'}" stroke="#0f172a" stroke-width="1.5"/>`);
+    } else {
+      bits.push(`<rect x="${sx - sw / 2}" y="${y}" width="${sw}" height="42" rx="3"
+        fill="#475569" stroke="#0f172a" stroke-width="2"/>`);
+      const cylW = isShear ? 34 : 26;
+      bits.push(`<rect x="${sx - sw/2 - cylW}" y="${y + 10}" width="${cylW}" height="22" rx="2"
+        fill="#334155" stroke="#0f172a" stroke-width="1.5"/>`);
+      bits.push(`<rect x="${sx + sw/2}" y="${y + 10}" width="${cylW}" height="22" rx="2"
+        fill="#334155" stroke="#0f172a" stroke-width="1.5"/>`);
+      bits.push(`<ellipse cx="${sx - sw/2 - cylW - 4}" cy="${y + 21}" rx="3" ry="8" fill="#a8231f" stroke="#0f172a"/>`);
+      bits.push(`<ellipse cx="${sx + sw/2 + cylW + 4}" cy="${y + 21}" rx="3" ry="8" fill="#a8231f" stroke="#0f172a"/>`);
+      bits.push(`<rect x="${sx - sw / 2 + 6}" y="${y + 12}" width="${reach}" height="18" rx="1"
+        fill="${shut ? "#dc2626" : "#94a3b8"}" stroke="#0f172a"/>`);
+      bits.push(`<rect x="${sx + sw / 2 - 6 - reach}" y="${y + 12}" width="${reach}" height="18" rx="1"
+        fill="${shut ? "#dc2626" : "#94a3b8"}" stroke="#0f172a"/>`);
+      if (i === 1) {
+        bits.push(`<line x1="${sx - sw/2 - 20}" y1="${y + 54}" x2="${sx - sw/2}" y2="${y + 54}" stroke="#b8322c" stroke-width="6"/>`);
+        bits.push(`<line x1="${sx + sw/2}" y1="${y + 54}" x2="${sx + sw/2 + 20}" y2="${y + 54}" stroke="#b8322c" stroke-width="6"/>`);
+        bits.push(`<rect x="${sx - sw/2 - 16}" y="${y + 49}" width="4" height="10" fill="#cbd5e1" stroke="#0f172a"/>`);
+        bits.push(`<rect x="${sx + sw/2 + 12}" y="${y + 49}" width="4" height="10" fill="#cbd5e1" stroke="#0f172a"/>`);
+      }
     }
-    const [nx, ny] = polar(cx, cy, r - 13, A0 + frac * SWEEP);
-    out.push(`<line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="#c0392b" stroke-width="3"/>`);
-    out.push(`<circle cx="${cx}" cy="${cy}" r="5" fill="#2c3138"/>`);
-    out.push(`<text x="${cx}" y="${cy + r + 15}" text-anchor="middle" fill="#f7e6e5"
-      font-size="10" font-weight="600" font-family="system-ui, sans-serif">${label}</text>`);
-    out.push(`<text x="${cx}" y="${cy + r - 8}" text-anchor="middle" fill="#2c3138"
-      font-size="11" font-weight="700"
-      font-family="Consolas, monospace">${Math.round(value).toLocaleString()}</text>`);
-    return out.join("");
-  };
-  bits.push(gauge(80, 68, 44, accumulatorPsi, 3000, "ACCUMULATOR psi"));
-  bits.push(gauge(560, 68, 44, manifoldPsi, 3000, "MANIFOLD psi"));
-
-  // Stack schematic down the left, as printed on the cabinet face.
-  const sx = 175, sw = 74;
-  bits.push(`<rect x="${sx - 11}" y="46" width="22" height="330" fill="#6f7880"/>`);
-  elements.forEach((v, i) => {
-    const y = 60 + i * 78;
-    const shut = v.state !== "open";
-    bits.push(`<rect x="${sx - sw / 2}" y="${y}" width="${sw}" height="34" rx="2"
-      fill="#d9dbde" stroke="#2c3138" stroke-width="2"/>`);
-    const reach = shut ? sw / 2 - 11 : 11;
-    bits.push(`<rect x="${sx - sw / 2 + 4}" y="${y + 9}" width="${reach}" height="16"
-      fill="${shut ? "#c0392b" : "#9aa1a8"}" stroke="#2c3138"/>`);
-    bits.push(`<rect x="${sx + sw / 2 - 4 - reach}" y="${y + 9}" width="${reach}" height="16"
-      fill="${shut ? "#c0392b" : "#9aa1a8"}" stroke="#2c3138"/>`);
+    bits.push(`<circle cx="${sx - sw/2 - 12}" cy="${y + 22}" r="5" fill="${shut ? '#dc2626' : '#22c55e'}" stroke="#0f172a"/>`);
   });
-  bits.push(`<rect x="${sx - 46}" y="${60 + elements.length * 78}" width="92" height="14"
-    rx="2" fill="#d9dbde" stroke="#2c3138" stroke-width="2"/>`);
 
-  // One rotary selector per element, the way the panel is actually operated.
+  // Wellhead casing bowl & foundation flange at base
+  const baseY = 84 + elements.length * 82;
+  bits.push(`<rect x="${sx - sw/2 - 10}" y="${baseY}" width="${sw + 20}" height="18" rx="2" fill="#1e293b" stroke="#0f172a" stroke-width="2"/>`);
+  bits.push(`<text x="${sx}" y="${baseY + 13}" text-anchor="middle" fill="#cbd5e1" font-size="9" font-weight="700">WELLHEAD</text>`);
+
+  // Industrial rotary selector switches on the right
   elements.forEach((v, i) => {
-    const y = 78 + i * 78, cx = 400;
+    const y = 92 + i * 82, cx = 410;
     const shut = v.state !== "open";
-    // The plate is sized round the lettering rather than the other way about:
-    // at 18px high the descenders sat on the bottom stroke and the label read
-    // as struck through.
-    bits.push(`<rect x="270" y="${y - 32}" width="260" height="24" rx="2"
-      fill="#f2f3f4" stroke="#2c3138" stroke-width="1.5"/>`);
-    bits.push(`<text x="400" y="${y - 15}" text-anchor="middle" fill="#a8231f"
-      font-size="12" font-weight="700" letter-spacing="0.06em"
+    // Heavy steel nameplate
+    bits.push(`<rect x="270" y="${y - 30}" width="280" height="24" rx="2"
+      fill="#f8fafc" stroke="#0f172a" stroke-width="1.5"/>`);
+    bits.push(`<text x="410" y="${y - 14}" text-anchor="middle" fill="#8f1d19"
+      font-size="11.5" font-weight="700" letter-spacing="0.06em"
       font-family="system-ui, sans-serif">${v.label.toUpperCase()}</text>`);
-    // OPEN / CLOSE arc, with the handle pointing at the position it is in.
-    bits.push(`<path d="M ${cx - 46} ${y + 26} A 46 46 0 0 1 ${cx + 46} ${y + 26}"
-      fill="none" stroke="#f2f3f4" stroke-width="3"/>`);
-    bits.push(`<text x="${cx - 56}" y="${y + 30}" text-anchor="end" fill="#f7e6e5"
-      font-size="9" font-weight="600" font-family="system-ui, sans-serif">OPEN</text>`);
-    bits.push(`<text x="${cx + 56}" y="${y + 30}" fill="#f7e6e5"
-      font-size="9" font-weight="600" font-family="system-ui, sans-serif">CLOSE</text>`);
+
+    // Detent arc and indicators
+    bits.push(`<path d="M ${cx - 52} ${y + 26} A 52 52 0 0 1 ${cx + 52} ${y + 26}"
+      fill="none" stroke="#f8fafc" stroke-width="3.5"/>`);
+    bits.push(`<circle cx="${cx - 52}" cy="${y + 26}" r="4" fill="#22c55e" stroke="#0f172a"/>`);
+    bits.push(`<circle cx="${cx + 52}" cy="${y + 26}" r="4" fill="#dc2626" stroke="#0f172a"/>`);
+    bits.push(`<text x="${cx - 62}" y="${y + 30}" text-anchor="end" fill="#f8fafc"
+      font-size="9.5" font-weight="700" font-family="system-ui, sans-serif">OPEN</text>`);
+    bits.push(`<text x="${cx + 62}" y="${y + 30}" fill="#f8fafc"
+      font-size="9.5" font-weight="700" font-family="system-ui, sans-serif">CLOSE</text>`);
+
     const angle = shut ? -35 : -145;
-    const [hx, hy] = polar(cx, y + 26, 38, angle);
+    const [hx, hy] = polar(cx, y + 26, 42, angle);
     bits.push(`<g class="bopsel" data-valve="${v.name}" style="cursor:pointer">
-      <circle cx="${cx}" cy="${y + 26}" r="30" fill="transparent"/>
-      <line x1="${cx}" y1="${y + 26}" x2="${hx}" y2="${hy}" stroke="#14181c" stroke-width="7"
-        stroke-linecap="round"/>
-      <circle cx="${cx}" cy="${y + 26}" r="13" fill="#2c3138" stroke="#14181c" stroke-width="2"/>
-      <circle cx="${cx}" cy="${y + 26}" r="4" fill="#7d858d"/>
-      <title>${v.label} — ${shut ? "closed" : "open"}. Click to operate.</title></g>`);
+      <circle cx="${cx}" cy="${y + 26}" r="34" fill="transparent"/>
+      <!-- Metallic brushed selector handle -->
+      <line x1="${cx}" y1="${y + 26}" x2="${hx}" y2="${hy}" stroke="#0f172a" stroke-width="8" stroke-linecap="round"/>
+      <line x1="${cx}" y1="${y + 26}" x2="${hx}" y2="${hy}" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="${cx}" cy="${y + 26}" r="15" fill="#334155" stroke="#0f172a" stroke-width="2"/>
+      <circle cx="${cx}" cy="${y + 26}" r="6" fill="#94a3b8"/>
+      <title>${v.label} — ${shut ? "closed" : "open"}. Click to toggle.</title></g>`);
   });
+
   svg.innerHTML = bits.join("");
   svg.querySelectorAll(".bopsel").forEach(g =>
     g.onclick = () => toggleValve(g.dataset.valve));
@@ -1442,71 +1997,97 @@ function drawSurfaceBop() {
 function drawSubseaBop() {
   const svg = $("bop-panel");
   const elements = lineupCache.filter(v => v.is_bop);
-  const bits = [`<rect width="640" height="430" fill="#eef1f4"/>`];
+  const bits = [`<rect width="640" height="430" fill="#0f172a"/>`];
 
-  // Surface pressures strip, as the monitoring screen carries it.
-  bits.push(`<rect x="180" y="8" width="280" height="42" fill="#fff" stroke="#5b6672"/>`);
-  bits.push(`<text x="320" y="22" text-anchor="middle" fill="#26313c" font-size="10"
-    font-weight="700" font-family="system-ui, sans-serif">SURFACE PRESSURES</text>`);
+  // Surface telemetry header bar
+  bits.push(`<rect x="140" y="8" width="360" height="44" rx="4" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>`);
+  bits.push(`<text x="320" y="22" text-anchor="middle" fill="#94a3b8" font-size="9.5"
+    font-weight="700" font-family="system-ui, sans-serif">SUBSEA BOP TELEMETRY &bull; MUX CONTROL</text>`);
   [["Kill", 0], ["Choke", chokePsi], ["SPP", drillPipePsi], ["CLF", clfPsi]]
     .forEach(([name, value], i) => {
-      const x = 200 + i * 70;
-      bits.push(`<text x="${x}" y="${34}" text-anchor="middle" fill="#5b6672"
-        font-size="9" font-family="system-ui, sans-serif">${name}</text>`);
-      bits.push(`<text x="${x}" y="${46}" text-anchor="middle" fill="#12303f"
+      const x = 175 + i * 86;
+      bits.push(`<text x="${x}" y="33" text-anchor="middle" fill="#94a3b8"
+        font-size="8.5" font-family="system-ui, sans-serif">${name}</text>`);
+      bits.push(`<text x="${x}" y="45" text-anchor="middle" fill="#5df08a"
         font-size="11" font-weight="700"
         font-family="Consolas, monospace">${Math.round(value)} psi</text>`);
     });
 
-  // The stack in yellow, the way subsea schematics draw it.
-  const CX = 320, W = 108;
-  bits.push(`<rect x="${CX - 13}" y="62" width="26" height="330" fill="#8d949b"/>`);
-  elements.forEach((v, i) => {
-    const y = 78 + i * 84;
-    const shut = v.state !== "open";
-    bits.push(`<rect x="${CX - W / 2}" y="${y}" width="${W}" height="46" rx="3"
-      fill="#f2d94e" stroke="#7a6a12" stroke-width="2"/>`);
-    const reach = shut ? W / 2 - 13 : 13;
-    bits.push(`<rect x="${CX - W / 2 + 5}" y="${y + 14}" width="${reach}" height="18"
-      fill="${shut ? "#2b2b2b" : "#cbb93f"}" stroke="#7a6a12"/>`);
-    bits.push(`<rect x="${CX + W / 2 - 5 - reach}" y="${y + 14}" width="${reach}" height="18"
-      fill="${shut ? "#2b2b2b" : "#cbb93f"}" stroke="#7a6a12"/>`);
+  // Deepwater Subsea BOP Stack & LMRP in Center (CX = 320)
+  const CX = 320, W = 116;
+  bits.push(`<circle cx="${CX}" cy="70" r="14" fill="#334155" stroke="#64748b" stroke-width="2"/>`);
+  bits.push(`<rect x="${CX - 18}" y="80" width="36" height="8" rx="2" fill="#475569" stroke="#0f172a"/>`);
+  bits.push(`<rect x="${CX - 12}" y="88" width="24" height="260" fill="#020617"/>`);
 
-    // Position boxes on both pods, cyan for open and black for closed --
-    // the legend every subsea monitoring screen uses.
+  elements.forEach((v, i) => {
+    const y = 92 + i * 78;
+    const shut = v.state !== "open";
+    const reach = shut ? W / 2 - 12 : 14;
+    const isAnnular = v.name === "annular";
+
+    if (isAnnular) {
+      bits.push(`<path d="M ${CX - W/2} ${y + 36} A ${W/2} 24 0 0 1 ${CX + W/2} ${y + 36} Z"
+        fill="#eab308" stroke="#713f12" stroke-width="2"/>`);
+      bits.push(`<circle cx="${CX}" cy="${y + 24}" r="${shut ? 13 : 8}" fill="${shut ? '#0f172a' : '#38bdf8'}" stroke="#713f12"/>`);
+    } else {
+      bits.push(`<rect x="${CX - W / 2}" y="${y}" width="${W}" height="44" rx="4"
+        fill="#eab308" stroke="#713f12" stroke-width="2"/>`);
+      bits.push(`<rect x="${CX - W/2 - 18}" y="${y + 11}" width="20" height="22" rx="2" fill="#ca8a04" stroke="#713f12"/>`);
+      bits.push(`<rect x="${CX + W/2 - 2}" y="${y + 11}" width="20" height="22" rx="2" fill="#ca8a04" stroke="#713f12"/>`);
+      bits.push(`<rect x="${CX - W / 2 + 6}" y="${y + 13}" width="${reach}" height="18" rx="1"
+        fill="${shut ? "#0f172a" : "#fef08a"}" stroke="#713f12"/>`);
+      bits.push(`<rect x="${CX + W / 2 - 6 - reach}" y="${y + 13}" width="${reach}" height="18" rx="1"
+        fill="${shut ? "#0f172a" : "#fef08a"}" stroke="#713f12"/>`);
+    }
+
     ["blue", "yellow"].forEach((pod, p) => {
-      const bx = p === 0 ? CX - W / 2 - 68 : CX + W / 2 + 8;
+      const bx = p === 0 ? CX - W / 2 - 82 : CX + W / 2 + 24;
       bits.push(`<g class="bopsel" data-valve="${v.name}" style="cursor:pointer">
-        <rect x="${bx}" y="${y + 12}" width="60" height="22" rx="2"
-          fill="${shut ? "#14181c" : "#3fd0e0"}" stroke="#3c4650" stroke-width="1.5"/>
-        <text x="${bx + 30}" y="${y + 27}" text-anchor="middle"
-          fill="${shut ? "#fff" : "#0d2b31"}" font-size="10" font-weight="700"
-          font-family="system-ui, sans-serif">${shut ? "Close" : "Open"}</text>
-        <title>${v.label} — ${pod} pod. Click to operate.</title></g>`);
+        <rect x="${bx}" y="${y + 10}" width="58" height="24" rx="3"
+          fill="${shut ? "#14181c" : "#0284c7"}" stroke="#38bdf8" stroke-width="1.5"/>
+        <text x="${bx + 29}" y="${y + 26}" text-anchor="middle"
+          fill="${shut ? "#f8fafc" : "#ffffff"}" font-size="10" font-weight="700"
+          font-family="system-ui, sans-serif">${shut ? "CLOSED" : "OPEN"}</text>
+        <title>${v.label} — ${pod} pod control. Click to toggle.</title></g>`);
     });
-    // Health lamps, and the element's name.
-    bits.push(`<circle cx="${CX - W / 2 - 84}" cy="${y + 23}" r="7"
-      fill="${accumulatorOk ? "#3ac455" : "#e8a33d"}" stroke="#3c4650"/>`);
-    bits.push(`<text x="${CX}" y="${y - 5}" text-anchor="middle" fill="#26313c"
-      font-size="10" font-weight="600"
-      font-family="system-ui, sans-serif">${v.label}</text>`);
+
+    bits.push(`<text x="${CX}" y="${y - 4}" text-anchor="middle" fill="#f8fafc"
+      font-size="10.5" font-weight="700"
+      font-family="system-ui, sans-serif">${v.label.toUpperCase()}</text>`);
   });
 
-  bits.push(`<path d="M 150 400 q 30 -10 60 0 t 60 0 t 60 0 t 60 0 t 60 0"
-    fill="none" stroke="#7f8c98" stroke-width="2"/>`);
-  bits.push(`<text x="320" y="420" text-anchor="middle" fill="#5b6672"
-    font-size="10" font-family="system-ui, sans-serif">sea bed</text>`);
+  // Dual Subsea Control Pods (Blue Pod on port, Yellow Pod on stbd)
+  bits.push(`<rect x="80" y="70" width="56" height="260" rx="4" fill="#1e3a5f" stroke="#0284c7" stroke-width="1.5"/>`);
+  bits.push(`<text x="108" y="90" text-anchor="middle" fill="#38bdf8" font-size="9" font-weight="700">BLUE POD</text>`);
+  bits.push(`<circle cx="108" cy="110" r="8" fill="#22c55e" stroke="#0f172a"/>`);
+  bits.push(`<text x="108" y="130" text-anchor="middle" fill="#cbd5e1" font-size="8">ONLINE</text>`);
+  for (let b = 0; b < 4; b++) {
+    bits.push(`<rect x="94" y="${145 + b * 42}" width="28" height="34" rx="5" fill="#facc15" stroke="#713f12" stroke-width="1.2"/>`);
+  }
 
-  // Legend, so the colours are not a private language.
-  bits.push(`<rect x="12" y="352" width="118" height="56" fill="#fff" stroke="#5b6672"/>`);
-  bits.push(`<text x="71" y="366" text-anchor="middle" fill="#26313c" font-size="9"
-    font-weight="700" font-family="system-ui, sans-serif">POSITION LEGEND</text>`);
-  bits.push(`<circle cx="26" cy="380" r="6" fill="#3fd0e0" stroke="#3c4650"/>`);
-  bits.push(`<text x="38" y="384" fill="#26313c" font-size="9"
-    font-family="system-ui, sans-serif">Open</text>`);
-  bits.push(`<circle cx="26" cy="397" r="6" fill="#14181c" stroke="#3c4650"/>`);
-  bits.push(`<text x="38" y="401" fill="#26313c" font-size="9"
-    font-family="system-ui, sans-serif">Closed</text>`);
+  bits.push(`<rect x="504" y="70" width="56" height="260" rx="4" fill="#422006" stroke="#ca8a04" stroke-width="1.5"/>`);
+  bits.push(`<text x="532" y="90" text-anchor="middle" fill="#facc15" font-size="9" font-weight="700">YEL POD</text>`);
+  bits.push(`<circle cx="532" cy="110" r="8" fill="#22c55e" stroke="#0f172a"/>`);
+  bits.push(`<text x="532" y="130" text-anchor="middle" fill="#cbd5e1" font-size="8">STANDBY</text>`);
+  for (let b = 0; b < 4; b++) {
+    bits.push(`<rect x="518" y="${145 + b * 42}" width="28" height="34" rx="5" fill="#facc15" stroke="#713f12" stroke-width="1.2"/>`);
+  }
+
+  // Seabed Mudline Permanent Guide Base (PGB)
+  const baseY = 92 + elements.length * 78;
+  bits.push(`<rect x="${CX - W/2 - 20}" y="${baseY}" width="${W + 40}" height="20" rx="2" fill="#334155" stroke="#64748b" stroke-width="2"/>`);
+  // Guide posts
+  bits.push(`<line x1="${CX - W/2 - 12}" y1="${baseY}" x2="${CX - W/2 - 12}" y2="${baseY - 24}" stroke="#94a3b8" stroke-width="4"/>`);
+  bits.push(`<line x1="${CX + W/2 + 12}" y1="${baseY}" x2="${CX + W/2 + 12}" y2="${baseY - 24}" stroke="#94a3b8" stroke-width="4"/>`);
+  bits.push(`<text x="${CX}" y="${baseY + 14}" text-anchor="middle" fill="#cbd5e1" font-size="9" font-weight="700">SEABED WELLHEAD TEMPLATE</text>`);
+
+  // Position Legend
+  bits.push(`<rect x="16" y="360" width="128" height="58" rx="3" fill="#1e293b" stroke="#334155"/>`);
+  bits.push(`<text x="80" y="375" text-anchor="middle" fill="#cbd5e1" font-size="9" font-weight="700">STATUS LEGEND</text>`);
+  bits.push(`<circle cx="34" cy="390" r="5" fill="#0284c7" stroke="#38bdf8"/>`);
+  bits.push(`<text x="46" y="393" fill="#38bdf8" font-size="9" font-weight="600">Open</text>`);
+  bits.push(`<circle cx="34" cy="405" r="5" fill="#14181c" stroke="#cbd5e1"/>`);
+  bits.push(`<text x="46" y="408" fill="#f8fafc" font-size="9" font-weight="600">Closed</text>`);
 
   svg.innerHTML = bits.join("");
   svg.querySelectorAll(".bopsel").forEach(g =>
@@ -1537,6 +2118,7 @@ function drawLineup(valves) {
 async function toggleValve(name) {
   const v = lineupCache.find(x => x.name === name);
   if (!v || !sessionId) return;
+  if (typeof playBopClunk === "function") playBopClunk();
   const r = await api(`/api/sessions/${sessionId}/valve`, {
     method: "POST",
     body: JSON.stringify({name, state: v.state === "open" ? "closed" : "open"})
@@ -1560,8 +2142,10 @@ async function loadSheet() {
       row("Drill pipe now", k.actual_drill_pipe_psi.toLocaleString(), "psi") +
       row("Casing now", k.actual_casing_psi.toLocaleString(), "psi") + "</tbody>";
     $("sheet-source").textContent = "";
+    if ($("sheet-schedule")) $("sheet-schedule").innerHTML = "";
     return;
   }
+  currentKillSheet = k;
   $("sheet-source").textContent = k.readings_are_the_students
     ? "Built from the pressures you read after shutting in — not from the "
       + "figures the exercise was designed around. Shut in slowly and this "
@@ -1584,12 +2168,29 @@ async function loadSheet() {
     row("Strokes to bit", k.strokes_to_bit.toLocaleString(), "") +
     row("Strokes bit to surface", k.strokes_bit_to_surface.toLocaleString(), "") +
     row("Total strokes", k.total_strokes.toLocaleString(), "") + "</tbody>";
+
   $("sheet-live").innerHTML = "<tbody>" +
     row("Strokes pumped", k.actual_strokes.toLocaleString(), "") +
     row("Drill pipe now", k.actual_drill_pipe_psi.toLocaleString(), "psi") +
+    row("Target DP now", (k.target_dp_psi !== undefined ? k.target_dp_psi.toLocaleString() : "—"), "psi") +
     row("Drill pipe target: ICP", k.icp_psi.toLocaleString(), "psi") +
     row("Drill pipe target: FCP", k.fcp_psi.toLocaleString(), "psi") +
     row("Casing now", k.actual_casing_psi.toLocaleString(), "psi") + "</tbody>";
+
+  if ($("sheet-schedule")) {
+    if (k.schedule && k.schedule.length) {
+      let schedHtml = "<thead><tr><th>Strokes</th><th>Target DP</th><th>Status</th></tr></thead><tbody>";
+      k.schedule.forEach(st => {
+        const reached = k.actual_strokes >= st.strokes;
+        const tag = reached ? "✓ Passed" : "";
+        schedHtml += `<tr style="${reached ? 'opacity:0.6;' : ''}"><td>${st.strokes.toLocaleString()}</td><td class="num">${st.target_dp_psi.toLocaleString()} psi</td><td style="color:${reached ? 'var(--good)' : 'var(--dim)'}">${tag}</td></tr>`;
+      });
+      schedHtml += "</tbody>";
+      $("sheet-schedule").innerHTML = schedHtml;
+    } else {
+      $("sheet-schedule").innerHTML = "";
+    }
+  }
 }
 
 /* -------------------------------- debrief ------------------------------ */
@@ -1617,6 +2218,333 @@ async function loadDebrief() {
         <span class="t mono" style="color:#7b8792;margin-right:7px">${e.clock}</span>
         <span class="sev-${e.severity}">${e.message}</span></div>`).join("")
     : `<div style="color:#8d99a4;padding:8px 0">Nothing worth reporting — the well was never in trouble.</div>`;
+
+  // Fetch AI-powered competency evaluation
+  try {
+    const ai = await api(`/api/sessions/${sessionId}/ai-debrief`);
+    if ($("ai-score-badge")) {
+      $("ai-score-badge").textContent = `${ai.score}/100 (${ai.letter_grade})`;
+      $("ai-score-badge").className = "pill " + (ai.score >= 80 ? "ok" : (ai.score >= 60 ? "warn" : "bad"));
+    }
+    if ($("ai-iwcf-standard")) $("ai-iwcf-standard").textContent = ai.iwcf_standard;
+    if ($("ai-summary")) $("ai-summary").textContent = ai.executive_summary;
+
+    if ($("ai-categories-grid")) {
+      $("ai-categories-grid").innerHTML = ai.categories.map(c => `
+        <div style="background:var(--sunk);padding:8px 10px;border-radius:6px;border:1px solid #27313a">
+          <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700">
+            <span>${c.name}</span>
+            <span style="color:${c.percentage >= 80 ? 'var(--good)' : (c.percentage >= 60 ? 'var(--warning)' : 'var(--critical)')}">${c.score}/${c.max_score} (${c.percentage}%)</span>
+          </div>
+          <div style="height:4px;background:#2d3748;border-radius:2px;margin:6px 0;overflow:hidden">
+            <div style="height:100%;width:${c.percentage}%;background:${c.percentage >= 80 ? 'var(--good)' : (c.percentage >= 60 ? 'var(--warning)' : 'var(--critical)')}"></div>
+          </div>
+          <div style="font-size:10px;color:#94a3b8;line-height:1.4">${c.feedback}</div>
+        </div>
+      `).join("");
+    }
+
+    if ($("ai-strengths-list")) {
+      $("ai-strengths-list").innerHTML = ai.strengths.map(s => `
+        <div style="padding:4px 8px;background:rgba(47,158,74,0.1);border-radius:4px;color:#86efac;border-left:3px solid var(--good)">
+          ${s}
+        </div>
+      `).join("");
+    }
+
+    if ($("ai-deductions-list")) {
+      $("ai-deductions-list").innerHTML = ai.deductions.length
+        ? ai.deductions.map(d => `
+          <div style="padding:4px 8px;background:rgba(196,48,42,0.1);border-radius:4px;color:#fca5a5;border-left:3px solid var(--critical)">
+            <b>-${d.penalty} pts</b> [${d.category}]: ${d.reason} ${d.timestamp ? '(' + d.timestamp + ')' : ''}
+          </div>
+        `).join("")
+        : `<div style="color:var(--good);padding:4px 0">Zero point deductions — clean execution!</div>`;
+    }
+
+    if ($("ai-coaching-list")) {
+      $("ai-coaching-list").innerHTML = ai.coaching_timeline.length
+        ? ai.coaching_timeline.map(ci => `
+          <div style="padding:6px 10px;background:var(--sunk);border-radius:4px;border-left:3px solid ${ci.severity === 'critical' ? 'var(--critical)' : (ci.severity === 'warning' ? 'var(--warning)' : 'var(--good)')}">
+            <span class="mono" style="color:#7b8792;font-size:11px">[${ci.time}]</span> <b>${ci.stage}:</b> ${ci.observation}
+            <div style="color:#cbd5e1;margin-top:2px">💡 <i>Tip: ${ci.recommendation}</i></div>
+          </div>
+        `).join("")
+        : `<div style="color:#8d99a4">Routine execution without anomalies.</div>`;
+    }
+  } catch (err) {
+    console.warn("AI Debrief load error:", err);
+  }
+}
+
+/* --------------------------------- guide ------------------------------- */
+function renderGuide() {
+  if (!currentGauges) return;
+  const g = currentGauges;
+  const isDead = g.well_is_dead;
+  const isShutIn = g.bop_closed;
+  const pumpRunning = g.pump_spm > 0;
+  const onChoke = (g.returns || "").indexOf("choke") >= 0;
+  const pitGain = g.pit_gain_bbl;
+  const dpNow = g.drill_pipe_psi;
+  const csgNow = g.casing_psi;
+  const stk = g.strokes;
+  const scenarioKey = g.scenario || ($("scenario") ? $("scenario").value : "drillers");
+
+  if (!currentKillSheet && sessionId && typeof updateSheetThrottled === "function") {
+    updateSheetThrottled();
+  }
+
+  let phase = "Normal Operations";
+  let bannerBg = "#14181c";
+  let bannerColor = "#4bf07e";
+  let instruction = "Monitor instruments. Verify pit levels and flowline returns.";
+
+  let k1 = "DP Target", v1 = "—";
+  let k2 = "DP Actual", v2 = dpNow.toLocaleString() + " psi";
+  let k3 = "Casing Now", v3 = csgNow.toLocaleString() + " psi";
+  let k4 = "Strokes to Bit", v4 = "—";
+  let steps = [];
+
+  const strokesToBit = currentKillSheet ? (currentKillSheet.strokes_to_bit || 800) : 800;
+  const targetDp = currentKillSheet && currentKillSheet.target_dp_psi !== undefined ? currentKillSheet.target_dp_psi.toLocaleString() + " psi" : "—";
+
+  if (scenarioKey === "wait_and_weight") {
+    k1 = "DP Target"; v1 = targetDp;
+    k2 = "DP Actual"; v2 = dpNow.toLocaleString() + " psi";
+    k3 = "Casing Now"; v3 = csgNow.toLocaleString() + " psi";
+    k4 = "Strokes to Bit"; v4 = strokesToBit.toLocaleString();
+
+    if (isDead) {
+      phase = "Well Dead & Controlled (W&W 1-Circulation Kill)";
+      bannerBg = "#1b4d29"; bannerColor = "#a3f7bf";
+      instruction = "Well killed in a single circulation! Kill mud fills string and annulus from bottom to top with zero surface pressure. Stop pump and close choke.";
+    } else if (!isShutIn && pitGain > 1.0) {
+      phase = "KICK DETECTED — SHUT IN REQUIRED!";
+      bannerBg = "#5c1815"; bannerColor = "#ff9e99";
+      instruction = "Influx detected! 1) Stop pumps. 2) Space out. 3) Close BOP (Annular/Pipe Rams). 4) Open choke line valve to closed choke. 5) Confirm shut-in.";
+    } else if (!pumpRunning) {
+      phase = "Wait & Weight — Kill Mud in Pits, Ready to Circulate";
+      bannerBg = "#4a3311"; bannerColor = "#ffd699";
+      instruction = "Kill mud is weighted up in active pits. Bring mud pump up to kill rate (30 SPM) while adjusting choke to hold CASING pressure constant at SICP. Once at 30 SPM, drill pipe will be at ICP.";
+    } else if (stk < strokesToBit) {
+      phase = "W&W Stage 1: DP Step-Down (ICP → FCP)";
+      bannerBg = "#182d4d"; bannerColor = "#9ec5ff";
+      instruction = "Kill mud is traveling down the drill string. Adjust the choke to follow the drill pipe step-down schedule from ICP down to FCP as stroke count increases toward the bit.";
+    } else {
+      phase = "W&W Stage 2: Constant FCP to Surface";
+      bannerBg = "#182d4d"; bannerColor = "#9ec5ff";
+      instruction = "Kill mud has reached the bit and is rising up the annulus. Hold drill pipe pressure constant at FCP by adjusting the choke until clean kill mud returns to surface.";
+    }
+
+    steps = [
+      { title: "1. Detect Kick & Shut In Well", done: isShutIn },
+      { title: "2. Active Pits Weighted to Kill Mud Weight", done: (g.active_mud_weight_ppg || 0) >= (g.target_kill_mud_weight_ppg || 0) - 0.05 },
+      { title: "3. Start Pump to Kill Rate (30 SPM) Holding Casing Pressure", done: pumpRunning && stk > 5 },
+      { title: "4. Follow Drill Pipe Schedule (ICP → FCP) to Bit", done: stk >= strokesToBit || isDead },
+      { title: "5. Hold Constant FCP as Kill Mud Displaces Annulus", done: isDead || stk > strokesToBit + 150 },
+      { title: "6. Shut Down Pump & Verify Zero Surface Pressure (Well Dead)", done: isDead }
+    ];
+  } else if (scenarioKey === "drillers") {
+    k1 = "DP Target"; v1 = targetDp;
+    k2 = "DP Actual"; v2 = dpNow.toLocaleString() + " psi";
+    k3 = "Casing Now"; v3 = csgNow.toLocaleString() + " psi";
+    k4 = "Active Mud Wt"; v4 = (g.active_mud_weight_ppg || 0).toFixed(1) + " ppg";
+
+    const kmwReady = (g.active_mud_weight_ppg || 0) >= (g.target_kill_mud_weight_ppg || 0) - 0.05;
+
+    if (isDead) {
+      phase = "Well Dead & Controlled (Driller's 2-Circulation Kill)";
+      bannerBg = "#1b4d29"; bannerColor = "#a3f7bf";
+      instruction = "Well dead! Two circulations completed: influx evacuated on circ 1, well displaced with kill mud on circ 2. Zero surface pressure.";
+    } else if (!isShutIn && pitGain > 1.0) {
+      phase = "KICK DETECTED — SHUT IN REQUIRED!";
+      bannerBg = "#5c1815"; bannerColor = "#ff9e99";
+      instruction = "Influx detected! 1) Stop pumps. 2) Space out. 3) Close BOP. 4) Open choke line valve to closed choke. 5) Confirm shut-in.";
+    } else if (isShutIn && !pumpRunning && !kmwReady && stk < 50) {
+      phase = "Driller's Circ 1: Ready to Start Pump";
+      bannerBg = "#4a3311"; bannerColor = "#ffd699";
+      instruction = "Circulation 1: Bring mud pump to kill rate (30 SPM) while holding CASING pressure constant at SICP. When up to rate, note initial circulating pressure (ICP).";
+    } else if (pumpRunning && !kmwReady) {
+      phase = "Driller's Circ 1: Displacing Influx at Constant DP (ICP)";
+      bannerBg = "#182d4d"; bannerColor = "#9ec5ff";
+      instruction = "Circulation 1: Circulating influx out with original mud. Adjust choke to hold DRILL PIPE pressure constant at ICP until the influx leaves the well.";
+    } else if (!pumpRunning && !kmwReady && stk >= 50) {
+      phase = "Circ 1 Complete: Weight Up Active Mud Pits";
+      bannerBg = "#4a3311"; bannerColor = "#ffd699";
+      instruction = "Influx is circulated out! Shut down pump and verify SIDPP equals SICP. Now weight up active mud pits to Kill Mud Weight on the Driller panel.";
+    } else if (!pumpRunning && kmwReady) {
+      phase = "Driller's Circ 2: Kill Mud Ready, Start Pump";
+      bannerBg = "#4a3311"; bannerColor = "#ffd699";
+      instruction = "Active pits contain Kill Mud. Start pump to kill rate holding casing pressure constant. Once up to rate, begin Circulation 2.";
+    } else {
+      phase = "Driller's Circ 2: Displacing Well with Kill Mud";
+      bannerBg = "#182d4d"; bannerColor = "#9ec5ff";
+      instruction = "Circulation 2: Displace drill string with kill mud (step down DP to FCP), then hold FCP constant until kill mud returns to surface.";
+    }
+
+    steps = [
+      { title: "1. Detect Kick & Shut In Well", done: isShutIn },
+      { title: "2. Circ 1: Bring Pump to Kill Rate Holding Casing Pressure", done: pumpRunning && stk > 5 },
+      { title: "3. Circ 1: Hold DP Pressure at ICP Until Influx Cleared", done: stk > 300 || isDead },
+      { title: "4. Circ 1: Shut Down Pump & Verify SIDPP == SICP", done: (stk > 300 && !pumpRunning) || kmwReady || isDead },
+      { title: "5. Weight Up Active Mud Pits to Kill Mud Weight", done: kmwReady },
+      { title: "6. Circ 2: Bring Pump to Kill Rate & Step Down to FCP", done: (kmwReady && stk > strokesToBit) || isDead },
+      { title: "7. Circ 2: Hold FCP Until Clean Kill Mud at Surface", done: isDead },
+      { title: "8. Shut Down Pump & Confirm Zero Surface Pressure", done: isDead }
+    ];
+  } else if (scenarioKey === "reverse") {
+    k1 = "Standpipe (Choke)"; v1 = dpNow.toLocaleString() + " psi";
+    k2 = "Casing (Pump)"; v2 = csgNow.toLocaleString() + " psi";
+    k3 = "Flow In / Out"; v3 = (g.flow_in_bpm || 0).toFixed(1) + " / " + (g.flow_out_bpm || 0).toFixed(1) + " bpm";
+    k4 = "Active Mud Wt"; v4 = (g.active_mud_weight_ppg || 0).toFixed(1) + " ppg";
+
+    if (isDead) {
+      phase = "Well Dead & Controlled (Reverse Circulation Kill)";
+      bannerBg = "#1b4d29"; bannerColor = "#a3f7bf";
+      instruction = "Influx reversed out through drill string directly to choke manifold! The casing shoe was never exposed to the kick.";
+    } else if (pumpRunning) {
+      phase = "Reverse Circulation: Influx Moving Up String";
+      bannerBg = "#182d4d"; bannerColor = "#9ec5ff";
+      instruction = "Mud is pumped down the annulus via kill line; returns travel up drill pipe to choke manifold. Adjust choke on the drill pipe manifold to hold constant BHP.";
+    } else {
+      phase = "Reverse Lineup Ready (Ported Float)";
+      bannerBg = "#4a3311"; bannerColor = "#ffd699";
+      instruction = "Float is ported. Pump is lined up to kill line; standpipe is lined up to choke manifold. Start pump and regulate returns via choke.";
+    }
+
+    steps = [
+      { title: "1. Confirm String Float Valve Ported / Removed", done: true },
+      { title: "2. Line Up Pump to Kill Line (Down Annulus)", done: true },
+      { title: "3. Line Up Standpipe to Choke Manifold", done: true },
+      { title: "4. Start Mud Pump & Regulate Choke on String Returns", done: pumpRunning },
+      { title: "5. Displace Influx up Drill Pipe Directly to Separator", done: stk > 200 || isDead },
+      { title: "6. Displace to Kill Mud & Confirm Well Dead", done: isDead }
+    ];
+  } else if (scenarioKey === "lube_and_bleed") {
+    k1 = "Lubricated Mud"; v1 = (g.lubricated_bbl || 0).toFixed(1) + " bbl";
+    k2 = "Gas Bled Out"; v2 = (g.bled_bbl || 0).toFixed(1) + " bbl";
+    k3 = "Casing Pressure"; v3 = csgNow.toLocaleString() + " psi";
+    k4 = "Pit Gain"; v4 = pitGain.toFixed(1) + " bbl";
+
+    if (isDead) {
+      phase = "Well Dead & Controlled (Lube & Bleed Complete)";
+      bannerBg = "#1b4d29"; bannerColor = "#a3f7bf";
+      instruction = "Gas cap has been completely lubricated out! Casing pressure is zero and hydrostatic balances formation.";
+    } else if (pumpRunning) {
+      phase = "Lube & Bleed: Lubricating Mud Slug via Kill Line";
+      bannerBg = "#182d4d"; bannerColor = "#9ec5ff";
+      instruction = "Lubricating mud into the annulus via the kill line. Pump a 5–10 bbl batch then stop the pump to allow mud to fall through the gas.";
+    } else if (g.choke_percent > 0) {
+      phase = "Lube & Bleed: Bleeding Gas via Choke";
+      bannerBg = "#182d4d"; bannerColor = "#9ec5ff";
+      instruction = "Bleeding gas off through the choke. Bleed until casing pressure drops by the calculated hydrostatic pressure of the lubricated slug.";
+    } else {
+      phase = "Lube & Bleed: Gas at Surface — Ready for Batch";
+      bannerBg = "#4a3311"; bannerColor = "#ffd699";
+      instruction = "Gas is at surface under the closed BOP. 1) Lubricate a mud slug (5–10 bbl) in via kill line. 2) Wait for mud to fall. 3) Bleed gas on choke to drop casing pressure. Repeat.";
+    }
+
+    steps = [
+      { title: "1. Confirm BOP Closed & Gas at Surface", done: isShutIn },
+      { title: "2. Line Up Mud Pump to Kill Line", done: true },
+      { title: "3. Lubricate Mud Slug (5–10 bbl) into Annulus", done: (g.lubricated_bbl || 0) > 2 },
+      { title: "4. Allow Mud to Fall Through Gas Cap", done: (g.lubricated_bbl || 0) > 2 && !pumpRunning },
+      { title: "5. Bleed Gas via Choke to Drop Pressure by Slug Hydrostatic", done: (g.bled_bbl || 0) > 1 },
+      { title: "6. Repeat Cycles Until Casing Pressure Reaches Zero", done: isDead }
+    ];
+  } else if (scenarioKey === "bullhead") {
+    k1 = "Injected to Zone"; v1 = (g.injected_bbl || 0).toFixed(1) + " bbl";
+    k2 = "Standpipe Pressure"; v2 = dpNow.toLocaleString() + " psi";
+    k3 = "Casing Pressure"; v3 = csgNow.toLocaleString() + " psi";
+    k4 = "Shoe Pressure"; v4 = (g.shoe_psi !== undefined && g.shoe_psi !== null) ? g.shoe_psi + " psi" : "—";
+
+    if (isDead) {
+      phase = "Well Dead & Controlled (Bullheaded into Zone)";
+      bannerBg = "#1b4d29"; bannerColor = "#a3f7bf";
+      instruction = "The influx has been completely forced back into the formation! Pressures are contained with zero returns to surface.";
+    } else if (pumpRunning) {
+      phase = "Bullheading: Pumping Mud to Squeeze Influx";
+      bannerBg = "#182d4d"; bannerColor = "#9ec5ff";
+      instruction = "Pumping against closed choke. Fluid is compressing and raising BHP above the formation injection threshold. Squeeze influx back into the kicking zone. Monitor shoe fracture limit!";
+    } else {
+      phase = "Bullhead: Well Closed In — Ready to Squeeze";
+      bannerBg = "#4a3311"; bannerColor = "#ffd699";
+      instruction = "Circulation is prohibited or impossible. The choke is closed. Line up pump directly to drill pipe and pump mud to force the influx back into the formation.";
+    }
+
+    steps = [
+      { title: "1. Confirm Choke Manifold Fully Closed (No Returns)", done: true },
+      { title: "2. Line Up Mud Pump to Well", done: true },
+      { title: "3. Verify Mud Pits Contain Kill Mud", done: (g.active_mud_weight_ppg || 0) >= (g.target_kill_mud_weight_ppg || 0) - 0.05 },
+      { title: "4. Start Pump to Overcome Formation Injection Threshold", done: pumpRunning && (g.injected_bbl || 0) > 0.1 },
+      { title: "5. Force Influx Completely Back into Formation", done: (g.injected_bbl || 0) > 10.0 || isDead },
+      { title: "6. Shut Down Pump & Allow Well to Stabilize Under Control", done: isDead }
+    ];
+  } else {
+    // Fallback for volumetric, stripping, find_the_kick, etc.
+    k1 = "DP Target"; v1 = targetDp;
+    k2 = "DP Actual"; v2 = dpNow.toLocaleString() + " psi";
+    k3 = "Casing Now"; v3 = csgNow.toLocaleString() + " psi";
+    k4 = "Strokes to Bit"; v4 = strokesToBit.toLocaleString();
+
+    if (isDead) {
+      phase = "Well Dead & Controlled";
+      bannerBg = "#1b4d29"; bannerColor = "#a3f7bf";
+      instruction = "The well is completely dead! Surface pressures have settled to zero, and the hydrostatic mud column balances formation pressure.";
+    } else if (!isShutIn && pitGain > 1.0) {
+      phase = "KICK DETECTED — SHUT IN REQUIRED!";
+      bannerBg = "#5c1815"; bannerColor = "#ff9e99";
+      instruction = "An influx is entering the wellbore! 1) Stop rotary & mud pumps immediately. 2) Pick up off bottom to space out. 3) Close the Annular preventer or Upper Pipe Rams. 4) Open the HCR / choke line valve to line up to the choke manifold with the choke closed. 5) Confirm shut-in.";
+    } else if (isShutIn && !pumpRunning) {
+      phase = "Well Shut In — Pressures Stabilizing";
+      bannerBg = "#4a3311"; bannerColor = "#ffd699";
+      instruction = "The well is securely shut in. Allow pressures to stabilize. Record SIDPP, SICP, and Pit Gain. Open the 'Kill Sheet' tab to determine Kill Mud Weight, ICP, and FCP.";
+    } else if (isShutIn && pumpRunning) {
+      phase = "Circulating Under Choke";
+      bannerBg = "#182d4d"; bannerColor = "#9ec5ff";
+      instruction = "Maintaining constant bottomhole pressure. Follow the Drill Pipe pressure schedule by adjusting the choke. As gas nears surface, expect rapid gas expansion and be ready to open the choke.";
+    }
+
+    steps = [
+      { title: "1. Detect Kick & Stop Mud Pump", done: isShutIn || (pitGain > 0.5 && !pumpRunning) },
+      { title: "2. Close BOP & Line Up Choke Manifold", done: isShutIn && onChoke },
+      { title: "3. Read & Record Stabilized SIDPP & SICP", done: isShutIn && dpNow > 0 },
+      { title: "4. Weight Up Active Mud Pits to Kill MW", done: (g.active_mud_weight_ppg || 0) > (g.original_mud_weight_ppg || 0) },
+      { title: "5. Bring Pump to Kill Rate (30 SPM) Holding Casing Pressure", done: pumpRunning },
+      { title: "6. Follow Drill Pipe Schedule from ICP to FCP", done: stk > 50 },
+      { title: "7. Circulate Clean Kill Mud to Surface", done: isDead || (g.active_mud_weight_ppg > g.original_mud_weight_ppg && stk > 500) },
+      { title: "8. Shut Down & Confirm Zero Surface Pressure (Well Dead)", done: isDead }
+    ];
+  }
+
+  if ($("guide-phase-text")) $("guide-phase-text").textContent = phase;
+  if ($("guide-stage-banner")) {
+    $("guide-stage-banner").style.background = bannerBg;
+    $("guide-stage-banner").style.color = bannerColor;
+  }
+  if ($("guide-instruction-text")) $("guide-instruction-text").textContent = instruction;
+
+  if ($("g-k1")) $("g-k1").textContent = k1;
+  if ($("g-target-dp")) $("g-target-dp").textContent = v1;
+  if ($("g-k2")) $("g-k2").textContent = k2;
+  if ($("g-actual-dp")) $("g-actual-dp").textContent = v2;
+  if ($("g-k3")) $("g-k3").textContent = k3;
+  if ($("g-actual-csg")) $("g-actual-csg").textContent = v3;
+  if ($("g-k4")) $("g-k4").textContent = k4;
+  if ($("g-target-stk")) $("g-target-stk").textContent = v4;
+
+  if ($("guide-checklist")) {
+    let checklistHtml = "";
+    steps.forEach(st => {
+      const icon = st.done ? "✅" : "⬜";
+      const clr = st.done ? "var(--good)" : "var(--dim)";
+      checklistHtml += `<div style="display:flex;align-items:center;gap:8px;color:${clr};font-weight:${st.done ? 600 : 400}">
+        <span>${icon}</span><span>${st.title}</span>
+      </div>`;
+    });
+    $("guide-checklist").innerHTML = checklistHtml;
+  }
 }
 
 /* ------------------------------- controls ------------------------------ */
@@ -1626,8 +2554,62 @@ $("choke").addEventListener("input", () => {
   clearTimeout(chokeTimer);
   chokeTimer = setTimeout(() => send("choke", {percent: Number($("choke").value)}), 60);
 });
+$("pump").addEventListener("input", () => {
+  $("pump-read").textContent = $("pump").value;
+});
 $("pump").addEventListener("change", () => send("pump", {spm: Number($("pump").value)}));
+$("strip").addEventListener("input", () => {
+  $("strip-read").textContent = $("strip").value;
+});
 $("strip").addEventListener("change", () => send("strip", {feet_per_min: Number($("strip").value)}));
+
+if ($("btn-set-mw")) {
+  $("btn-set-mw").addEventListener("click", () => {
+    const ppg = Number($("mw-val").value);
+    if (ppg > 0) send("mud-weight", {ppg: ppg});
+  });
+}
+if ($("btn-set-kmw")) {
+  $("btn-set-kmw").addEventListener("click", () => {
+    if (currentGauges && currentGauges.target_kill_mud_weight_ppg) {
+      $("mw-val").value = currentGauges.target_kill_mud_weight_ppg.toFixed(1);
+      send("mud-weight", {ppg: currentGauges.target_kill_mud_weight_ppg});
+    }
+  });
+}
+if ($("btn-zero-pit")) {
+  $("btn-zero-pit").addEventListener("click", () => send("zero-pits", {}));
+}
+if ($("btn-zero-tt")) {
+  $("btn-zero-tt").addEventListener("click", () => send("zero-trip-tank", {}));
+}
+
+window.addEventListener("keydown", e => {
+  if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT")) return;
+  if (e.code === "Space") {
+    e.preventDefault();
+    const curSpeed = Number($("speed").value);
+    const newSpeed = curSpeed > 0 ? 0 : 1;
+    $("speed").value = newSpeed;
+    send("speed", {speed: newSpeed});
+  } else if (e.key === "[" || e.key === "ArrowLeft") {
+    const cur = Number($("choke").value);
+    const nextVal = Math.max(0, cur - 1);
+    $("choke").value = nextVal;
+    $("choke-read").textContent = nextVal.toFixed(1);
+    send("choke", {percent: nextVal});
+  } else if (e.key === "]" || e.key === "ArrowRight") {
+    const cur = Number($("choke").value);
+    const nextVal = Math.min(100, cur + 1);
+    $("choke").value = nextVal;
+    $("choke-read").textContent = nextVal.toFixed(1);
+    send("choke", {percent: nextVal});
+  } else if (e.key >= "1" && e.key <= "8") {
+    const tabBtns = document.querySelectorAll("#tabs button");
+    const idx = Number(e.key) - 1;
+    if (idx < tabBtns.length) tabBtns[idx].click();
+  }
+});
 
 async function send(what, body) {
   if (!sessionId) return;
@@ -1665,7 +2647,215 @@ $("tabs").addEventListener("click", e => {
 });
 window.addEventListener("resize", redraw);
 
-loadScenarios().then(start).then(() => setInterval(poll, 250));
+/* -------------------------- procedural audio engine ----------------------- */
+let audioCtx = null;
+let audioEnabled = false;
+let lastPumpStrokeTime = 0;
+let chokeFilterNode = null;
+let chokeGainNode = null;
+let alarmInterval = null;
+
+function initAudio() {
+  if (audioCtx) return;
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+  audioCtx = new AudioContext();
+
+  // Create continuous white noise generator for choke fluid/gas shearing
+  const bufferSize = audioCtx.sampleRate * 2;
+  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const output = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    output[i] = Math.random() * 2 - 1;
+  }
+  const whiteNoise = audioCtx.createBufferSource();
+  whiteNoise.buffer = noiseBuffer;
+  whiteNoise.loop = true;
+
+  chokeFilterNode = audioCtx.createBiquadFilter();
+  chokeFilterNode.type = "bandpass";
+  chokeFilterNode.frequency.value = 1200;
+  chokeFilterNode.Q.value = 1.8;
+
+  chokeGainNode = audioCtx.createGain();
+  chokeGainNode.gain.value = 0.0;
+
+  whiteNoise.connect(chokeFilterNode);
+  chokeFilterNode.connect(chokeGainNode);
+  chokeGainNode.connect(audioCtx.destination);
+  whiteNoise.start(0);
+}
+
+function toggleAudio() {
+  if (!audioCtx) initAudio();
+  if (audioCtx && audioCtx.state === "suspended") {
+    audioCtx.resume();
+  }
+  audioEnabled = !audioEnabled;
+  if ($("btn-audio")) {
+    $("btn-audio").textContent = audioEnabled ? "🔊 Audio ON" : "🔇 Audio";
+    $("btn-audio").style.borderColor = audioEnabled ? "var(--good)" : "#3e4c5b";
+  }
+  if (!audioEnabled && chokeGainNode && audioCtx) {
+    chokeGainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
+    playAlarmSiren(false);
+  }
+}
+
+function playPumpStroke() {
+  if (!audioEnabled || !audioCtx) return;
+  const now = audioCtx.currentTime;
+
+  // Low mechanical thump oscillator
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  const filter = audioCtx.createBiquadFilter();
+
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(65, now);
+  osc.frequency.exponentialRampToValueAtTime(30, now + 0.18);
+
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(140, now);
+
+  gain.gain.setValueAtTime(0.35, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start(now);
+  osc.stop(now + 0.24);
+}
+
+function playBopClunk() {
+  if (!audioEnabled || !audioCtx) return;
+  const now = audioCtx.currentTime;
+
+  // Metallic valve / ram impact
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(220, now);
+  osc.frequency.exponentialRampToValueAtTime(45, now + 0.15);
+
+  gain.gain.setValueAtTime(0.4, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start(now);
+  osc.stop(now + 0.26);
+}
+
+function playAlarmSiren(on) {
+  if (!audioEnabled || !audioCtx) {
+    if (alarmInterval) { clearInterval(alarmInterval); alarmInterval = null; }
+    return;
+  }
+  if (!on) {
+    if (alarmInterval) { clearInterval(alarmInterval); alarmInterval = null; }
+    return;
+  }
+  if (alarmInterval) return; // already active
+
+  let toggle = false;
+  alarmInterval = setInterval(() => {
+    if (!audioEnabled || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(toggle ? 880 : 660, now);
+    gain.gain.setValueAtTime(0.06, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.2);
+    toggle = !toggle;
+  }, 240);
+}
+
+function updateAudioTelemetry(g) {
+  if (!audioEnabled || !audioCtx) return;
+
+  // 1. Mud pump cadence
+  const spm = g.pump_spm || 0;
+  if (spm > 0 && g.speed > 0) {
+    const intervalSec = Math.max(0.12, (60.0 / spm) / Math.max(1, Math.min(g.speed, 20)));
+    const nowWall = Date.now();
+    if (nowWall - lastPumpStrokeTime >= intervalSec * 1000) {
+      lastPumpStrokeTime = nowWall;
+      playPumpStroke();
+    }
+  }
+
+  // 2. Choke flow hiss
+  if (chokeGainNode && chokeFilterNode) {
+    const chk = g.choke_percent || 0;
+    const csg = g.casing_psi || 0;
+    const dp = g.drill_pipe_psi || 0;
+    const pDrop = g.reverse_circulating ? dp : csg;
+    const onChoke = (g.returns || "").indexOf("choke") >= 0;
+
+    if (chk > 0 && pDrop > 20 && onChoke) {
+      const targetGain = Math.min(0.25, (chk / 100) * (pDrop / 1500) * 0.25);
+      chokeGainNode.gain.linearRampToValueAtTime(targetGain, audioCtx.currentTime + 0.15);
+
+      const targetFreq = g.gas_at_surface ? 2400 : 1200;
+      chokeFilterNode.frequency.linearRampToValueAtTime(targetFreq, audioCtx.currentTime + 0.2);
+    } else {
+      chokeGainNode.gain.linearRampToValueAtTime(0.0, audioCtx.currentTime + 0.15);
+    }
+  }
+
+  // 3. Critical alarm siren
+  const hasAlarm = (g.bottomhole_psi && g.formation_psi && Math.abs(g.bottomhole_psi - g.formation_psi) > 200) ||
+                   (g.frac_psi && g.shoe_psi && g.shoe_psi >= g.frac_psi - 50);
+  playAlarmSiren(hasAlarm);
+}
+
+if ($("btn-audio")) {
+  $("btn-audio").onclick = toggleAudio;
+}
+
+async function init() {
+  await loadScenarios();
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionParam = urlParams.get("session");
+  const scenarioParam = urlParams.get("scenario");
+
+  if (scenarioParam && $("scenario")) {
+    $("scenario").value = scenarioParam;
+  }
+
+  if (sessionParam) {
+    try {
+      const snap = await api(`/api/sessions/${sessionParam}`);
+      sessionId = sessionParam;
+      paint(snap.gauges);
+      lineupCache = snap.lineup;
+      drawLineup(snap.lineup);
+      if (snap.scenario) {
+        showBriefing(snap.scenario.key);
+        if ($("scenario")) $("scenario").value = snap.scenario.key;
+      }
+      loadSheet();
+      setInterval(poll, 250);
+      return;
+    } catch (e) {
+      console.warn("Could not attach to session from URL:", e);
+    }
+  }
+  await start();
+  setInterval(poll, 250);
+}
+
+init();
 </script>
 </body>
 </html>

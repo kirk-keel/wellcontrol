@@ -185,6 +185,18 @@ class TestControls:
     def test_the_available_speeds_are_published(self, client):
         assert 0.0 in client.get("/api/speeds").json()["speeds"]
 
+    def test_mud_weight_can_be_commanded(self, client, session_id):
+        body = client.post(
+            f"/api/sessions/{session_id}/mud-weight", json={"ppg": 11.5}
+        ).json()
+        assert body["gauges"]["active_mud_weight_ppg"] == pytest.approx(11.5)
+
+    def test_trip_tank_and_pits_can_be_zeroed(self, client, session_id):
+        res_tt = client.post(f"/api/sessions/{session_id}/zero-trip-tank")
+        assert res_tt.status_code == 200
+        res_pit = client.post(f"/api/sessions/{session_id}/zero-pits")
+        assert res_pit.status_code == 200
+
 
 class TestTheRigScreenEndpoints:
     def test_pipe_can_be_stripped(self, client, session_id):
@@ -216,9 +228,12 @@ class TestTheRigScreenEndpoints:
     def test_the_kill_sheet_is_the_librarys_own(self, client, session_id):
         body = client.get(f"/api/sessions/{session_id}/killsheet").json()
         for key in ("kill_mud_weight_ppg", "icp_psi", "fcp_psi",
-                    "total_strokes", "maasp_psi"):
+                    "total_strokes", "maasp_psi", "schedule", "target_dp_psi"):
             assert body[key] is not None
         assert body["icp_psi"] > body["fcp_psi"]
+        assert len(body["schedule"]) > 0
+        assert body["schedule"][0]["strokes"] == 0
+        assert body["schedule"][0]["target_dp_psi"] == body["icp_psi"]
 
     def test_a_drilling_session_has_no_kill_sheet_yet(self, client):
         """Inventing one would hand over the exercise."""
@@ -441,6 +456,20 @@ class TestScreens:
             # Rams that meet across the bore when shut and draw back when open.
             assert "shut ?" in body
 
+    def test_the_guide_screen_is_present(self, client):
+        text = client.get("/").text
+        assert 'data-screen="guide"' in text
+        assert 'id="s-guide"' in text
+        assert "guide-checklist" in text
+        assert "function renderGuide(" in text
+
+    def test_mud_weight_and_schedule_controls_in_panel(self, client):
+        text = client.get("/").text
+        assert 'id="btn-set-mw"' in text
+        assert 'id="btn-zero-pit"' in text
+        assert 'id="btn-zero-tt"' in text
+        assert 'id="sheet-schedule"' in text
+
 
 class TestPanel:
 
@@ -487,3 +516,171 @@ class TestWhatTheStudentCanSee:
         ).json()["gauges"]
         assert gauges["downhole_visible"] is True
         assert gauges["bottomhole_psi"] is not None
+
+
+class TestTeacherConsole:
+    def test_teacher_page_is_served(self, client):
+        r = client.get("/teacher")
+        assert r.status_code == 200
+        text = r.text
+        assert "INSTRUCTOR MASTER STATION" in text
+        assert "student-grid" in text
+        assert "modal-fault" in text
+        assert "modal-whiteboard" in text
+
+    def test_multi_student_dashboard_endpoint(self, client):
+        client.post("/api/sessions", json={"scenario": "drillers", "student_name": "Alice"})
+        client.post("/api/sessions", json={"scenario": "wait_and_weight", "student_name": "Bob"})
+        r = client.get("/api/teacher/sessions")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total"] >= 2
+        names = [s["student_name"] for s in data["sessions"]]
+        assert "Alice" in names
+        assert "Bob" in names
+
+        # Verify key metrics are present
+        alice = next(s for s in data["sessions"] if s["student_name"] == "Alice")
+        assert "bottomhole_psi" in alice
+        assert "shoe_margin_psi" in alice
+        assert "status" in alice
+        assert "alarms" in alice
+        assert "speed" in alice
+        assert "is_frozen" in alice
+
+    def test_spawn_demo_class(self, client):
+        r = client.post("/api/teacher/spawn-demo-class")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["ok"] is True
+        assert data["spawned"] == 5
+        assert len(data["sessions"]) >= 5
+
+    def test_live_fault_injection(self, client):
+        created = client.post("/api/sessions", json={"scenario": "drillers"}).json()
+        sid = created["session_id"]
+
+        # Inject pump failure
+        r = client.post(
+            f"/api/teacher/sessions/{sid}/fault",
+            json={"kind": "pump_failure", "message": "Fluid end cracked"},
+        )
+        assert r.status_code == 200
+        res = r.json()
+        assert res["ok"] is True
+        assert any("pump" in a["text"].lower() or "fault" in a["text"].lower() for a in res["session"]["alarms"])
+
+        # Inject choke plugged
+        r2 = client.post(
+            f"/api/teacher/sessions/{sid}/fault",
+            json={"kind": "choke_plugged"},
+        )
+        assert r2.status_code == 200
+
+        # Inject mud weight drop
+        r3 = client.post(
+            f"/api/teacher/sessions/{sid}/fault",
+            json={"kind": "mud_weight_drop"},
+        )
+        assert r3.status_code == 200
+
+    def test_master_freeze_and_resume_all(self, client):
+        client.post("/api/sessions", json={"student_name": "S1"})
+        client.post("/api/sessions", json={"student_name": "S2"})
+
+        # Master freeze
+        r = client.post("/api/teacher/freeze-all")
+        assert r.status_code == 200
+        assert all(s["is_frozen"] is True for s in r.json()["sessions"])
+        assert all(s["speed"] == 0.0 for s in r.json()["sessions"])
+
+        # Master resume
+        r2 = client.post("/api/teacher/resume-all")
+        assert r2.status_code == 200
+        assert all(s["is_frozen"] is False for s in r2.json()["sessions"])
+
+    def test_remote_freeze_individual_student(self, client):
+        created = client.post("/api/sessions", json={"student_name": "Target"}).json()
+        sid = created["session_id"]
+
+        # Freeze
+        r = client.post(f"/api/teacher/sessions/{sid}/freeze", json={"freeze": True})
+        assert r.status_code == 200
+        assert r.json()["session"]["is_frozen"] is True
+        assert r.json()["session"]["speed"] == 0.0
+
+        # Resume
+        r2 = client.post(f"/api/teacher/sessions/{sid}/freeze", json={"freeze": False})
+        assert r2.status_code == 200
+        assert r2.json()["session"]["is_frozen"] is False
+
+    def test_rename_student_session(self, client):
+        created = client.post("/api/sessions", json={}).json()
+        sid = created["session_id"]
+
+        r = client.post(f"/api/teacher/sessions/{sid}/name", json={"name": "Captain Morgan"})
+        assert r.status_code == 200
+        assert r.json()["session"]["student_name"] == "Captain Morgan"
+
+    def test_ai_debrief_endpoint(self, client):
+        created = client.post("/api/sessions", json={"scenario": "wait_and_weight"}).json()
+        sid = created["session_id"]
+        r = client.get(f"/api/sessions/{sid}/ai-debrief")
+        assert r.status_code == 200
+        data = r.json()
+        assert "score" in data
+        assert "letter_grade" in data
+        assert "iwcf_standard" in data
+        assert "executive_summary" in data
+        assert len(data["categories"]) == 4
+        assert isinstance(data["strengths"], list)
+        assert isinstance(data["deductions"], list)
+        assert isinstance(data["coaching_timeline"], list)
+
+    def test_ai_debrief_with_drilling_kick(self, client):
+        created = client.post("/api/sessions", json={"start": "drilling"}).json()
+        sid = created["session_id"]
+        # Induce kick and leave un-shut in
+        client.post(f"/api/sessions/{sid}/pump", json={"spm": 60.0})
+        client.post(f"/api/sessions/{sid}/speed", json={"speed": 10.0})
+        r = client.get(f"/api/sessions/{sid}/ai-debrief")
+        assert r.status_code == 200
+        data = r.json()
+        # Should have point deductions for kick detection or shut-in
+        assert len(data["deductions"]) > 0
+        assert data["score"] < 100
+
+    def test_session_replay_endpoint(self, client):
+        created = client.post("/api/sessions", json={"scenario": "drillers"}).json()
+        sid = created["session_id"]
+        # Advance slightly to log samples
+        client.post(f"/api/sessions/{sid}/pump", json={"spm": 30.0})
+        client.post(f"/api/sessions/{sid}/speed", json={"speed": 10.0})
+        client.get(f"/api/sessions/{sid}")
+        r = client.get(f"/api/sessions/{sid}/replay")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["session_id"] == sid
+        assert "trace" in data
+        assert "events" in data
+        assert isinstance(data["trace"], list)
+
+    def test_gradebook_endpoints(self, client):
+        client.post("/api/sessions", json={"scenario": "drillers", "student_name": "Gradebook Test"})
+        # JSON gradebook
+        r = client.get("/api/teacher/gradebook")
+        assert r.status_code == 200
+        data = r.json()
+        assert "entries" in data
+        assert len(data["entries"]) >= 1
+        entry = next(e for e in data["entries"] if e["student_name"] == "Gradebook Test")
+        assert "score" in entry
+        assert "letter_grade" in entry
+        assert "iwcf_standard" in entry
+
+        # CSV export
+        r_csv = client.get("/api/teacher/gradebook.csv")
+        assert r_csv.status_code == 200
+        assert "text/csv" in r_csv.headers["content-type"]
+        assert "Gradebook Test" in r_csv.text
+        assert "student_name" in r_csv.text

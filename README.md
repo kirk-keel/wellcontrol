@@ -72,12 +72,15 @@ uvicorn wellcontrol.sim.api:app --reload --port 8000
 Open `http://127.0.0.1:8000` (or double-click **`Launch Choke Panel.bat`** on Windows) to operate the 7-screen self-contained rig console:
 
 1. **Driller's Console (`driller`)** — Standpipe pressure, SPM, pit gain, flow out, hookload (including buoyed string weight minus wellhead ejection force), trip tank, and stripping controls.
-2. **Remote Choke Panel (`choke`)** — Four-dial instrument scan (Drill Pipe PSI, Casing PSI, Pump Strokes, Choke Position %) with realistic valve travel lag and pump ramp rates.
-3. **BOP Stack & Koomey Panel (`bop`)** — Switches automatically between a red surface remote panel and a deepwater subsea pod monitoring screen, tracking hydraulic accumulator drawdowns per function.
-4. **Standpipe & Choke/Kill Manifolds (`manifolds`)** — Interactive 21-node valve lineup supporting forward circulation, reverse circulation, volumetric bleeding, and top-down kill-line lubrication.
-5. **Wellbore & P&ID Schematic (`well`)** — Live fluid zones, gas bubble expansion, and bit position (withheld during kick-detection exercises until the student shuts the well in).
+2. **Remote Choke Panel (`choke`)** — Four-dial instrument scan (Drill Pipe PSI, Casing PSI, Pump Strokes, Choke Position %) with realistic valve travel lag, pump ramp rates, and procedural audio toggle.
+3. **BOP Stack & Remote Panel (`bop`)** — Realistic Cameron/Shaffer surface stack and deepwater subsea stack with dual control pods and hydraulic accumulator drawdowns.
+4. **Standpipe & Choke/Kill Manifolds (`manifolds`)** — High-fidelity P&ID and manifold synoptics with API 6A flanged gate valves, triplex mud pumps, poor-boy MGS, agitated active pits, and calibrated trip tank.
+5. **Wellbore & P&ID Schematic (`well`)** — Live fluid zones with Taylor gas bubble dynamics, casing cement sheath, drill bit nozzles, and formation stratigraphy.
 6. **Kill Sheet (`sheet`)** — Built from the student's own latched shut-in readings (`SIDPP`, `SICP`, `pit gain`).
-7. **Post-Run Debrief (`debrief`)** — Automated grading (`excellent`, `pass`, `marginal`, `fail`) against scenario limits for BHP excursions, additional influx taken, and peak shoe pressure. See [`docs/simulator-design.md`](docs/simulator-design.md) for the mathematical formulation.
+7. **Post-Run Debrief (`debrief`)** — Automated grading (`excellent`, `pass`, `marginal`, `fail`) against scenario limits for BHP excursions, additional influx taken, and peak shoe pressure.
+8. **AI Intelligent Coach & Scoring** — Automated IADC/IWCF scoring (0–100, letter grade, category breakdowns, point deductions with physical justifications, strengths, and chronological timeline).
+9. **Instructor Master Station (`/teacher`)** — Live multi-student grid dashboard, remote master freeze / whiteboard mode, dynamic fault injection (pump failure, choke plug, accumulator leak, mud weight drop), cohort gradebook export (JSON & RFC 4180 CSV), and flight-recorder telemetry replay scrubbing.
+10. **Procedural Rig Audio Engine** — 100% offline Web Audio synthesis of triplex mud pump thumps, choke fluid/gas shearing hiss, BOP mechanical actuation clunks, and alarm sirens.
 
 ## Model Context Protocol (MCP) Server for AI Agents
 

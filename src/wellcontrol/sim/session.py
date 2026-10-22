@@ -37,7 +37,7 @@ from typing import Callable
 
 from .. import examples
 from ..wellconfig import BOPLocation, Trajectory, WellConfiguration
-from .assessment import Assessment, EventKind, Severity, Standard
+from .assessment import Assessment, EventKind, Severity, Standard, clock
 from .engine import Simulator, StartState
 from .flowpath import ValveState
 
@@ -73,6 +73,9 @@ class Session:
     speed: float = 0.0
     clock: Callable[[], float] = time.monotonic
     session_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    student_name: str = "Student"
+    is_frozen: bool = False
+    _unfrozen_speed: float = 1.0
     #: The exercise this session is running, if it came from one.
     scenario: object | None = None
     #: Drop to real time once, when the well first flows. See _should_slow_down.
@@ -146,6 +149,12 @@ class Session:
         session = cls(simulator=simulator, **kwargs)
         session.scenario = scenario
 
+        if key in ("wait_and_weight", "bullhead"):
+            # In Wait and Weight, the well is shut in while kill mud is weighted
+            # up in the pits; when circulation begins, kill mud is ready.
+            # In Bullheading, kill mud is mixed to bullhead into the hole.
+            simulator.set_kill_mud_weight(well.kill_mud_weight_ppg)
+
         path = simulator.flow_path
         if scenario.start is StartState.SHUT_IN:
             path.close("annular")
@@ -194,6 +203,144 @@ class Session:
         """
         self.advance()
         self.speed = max(0.0, float(speed))
+        if self.speed > 0.0:
+            self.is_frozen = False
+
+    def freeze(self, freeze: bool = True) -> None:
+        """Instructor freeze: pause the student's simulator to explain or review."""
+        self.advance()
+        if freeze:
+            if self.speed > 0.0:
+                self._unfrozen_speed = self.speed
+            self.speed = 0.0
+            self.is_frozen = True
+            self.simulator.state.record(
+                EventKind.INSTRUCTOR_ACTION,
+                "Simulator frozen by instructor (Whiteboard Review Mode).",
+                severity=Severity.INFO,
+            )
+        else:
+            self.speed = getattr(self, "_unfrozen_speed", 1.0) or 1.0
+            self.is_frozen = False
+            self.simulator.state.record(
+                EventKind.INSTRUCTOR_ACTION,
+                f"Simulator resumed by instructor ({self.speed:.0f}x).",
+                severity=Severity.INFO,
+            )
+
+    def inject_fault(self, kind: str, message: str = "") -> None:
+        """Instructor injects an equipment failure on the fly."""
+        from .scenario import Fault, FaultKind
+
+        self.advance()
+        fault_kind = FaultKind(kind)
+        default_messages = {
+            FaultKind.PUMP_FAILURE: "Mud pump stopped — fluid end failure.",
+            FaultKind.CHOKE_PLUGGED: "Choke 1 is not responding — pressure climbing.",
+            FaultKind.CHOKE_WASHOUT: "Choke washed out — unable to maintain backpressure.",
+            FaultKind.ACCUMULATOR_LEAK: "BOP accumulator pressure drop — hydraulic fluid loss.",
+            FaultKind.WEAK_SHOE: "Formation breakdown detected — shoe integrity degraded.",
+            FaultKind.MUD_WEIGHT_DROP: "Active mud pits diluted — active mud weight dropped by 2.0 ppg.",
+        }
+        msg = message or default_messages.get(fault_kind, f"Equipment failure: {fault_kind.label}")
+        fault = Fault(
+            kind=fault_kind,
+            at_seconds=self.simulator.state.time_s,
+            message=msg,
+            severity=Severity.CRITICAL if fault_kind != FaultKind.WEAK_SHOE else Severity.WARNING,
+        )
+        self.simulator._break_equipment(fault)
+        self.simulator.state.record(
+            EventKind.EQUIPMENT_FAILURE,
+            msg,
+            severity=fault.severity,
+            fault=fault.kind.value,
+        )
+
+    def summary(self) -> dict:
+        """Overview of the student's session for the multi-student teacher dashboard."""
+        self.advance()
+        state = self.simulator.state
+        sim = self.simulator
+
+        # Determine operational status
+        if state.well_is_dead:
+            status = "Dead"
+        elif self.is_frozen:
+            status = "Frozen"
+        elif self.speed == 0.0:
+            status = "Paused"
+        elif not sim.flow_path.bop_is_closed:
+            status = "Drilling" if sim.pump.running else "Flow Check"
+        else:
+            if sim.flow_path.is_reverse_circulating:
+                status = "Reverse Circulating"
+            elif sim.flow_path.injecting_into_the_annulus:
+                status = "Lubricating"
+            elif sim.flow_path.is_closed_in:
+                status = "Bullheading" if sim.pump.running else "Shut-In"
+            elif sim.pump.running:
+                status = "Circulating"
+            else:
+                status = "Shut-In"
+
+        # Determine alarms
+        alarms: list[dict] = []
+        if not sim.flow_path.bop_is_closed and (state.flow_out_bpm > state.flow_in_bpm + 0.3):
+            alarms.append({"severity": "critical", "text": f"KICK FLOWING: Flow out +{(state.flow_out_bpm - state.flow_in_bpm):.1f} bpm"})
+        elif state.influx_rate_bpm > 0:
+            alarms.append({"severity": "critical", "text": f"Active Influx: +{state.influx_rate_bpm:.1f} bpm into well"})
+
+        bhp_err = abs(state.bottomhole_pressure_psi - sim.formation_pressure_psi)
+        if sim.kick_taken and bhp_err > sim.bhp_band_psi:
+            direction = "Underbalanced" if state.bottomhole_pressure_psi < sim.formation_pressure_psi else "Overbalance High"
+            alarms.append({"severity": "warning" if bhp_err < 150 else "critical", "text": f"BHP Excursion ({direction} by {bhp_err:.0f} psi)"})
+
+        if sim.frac_pressure_psi is not None:
+            margin = sim.frac_pressure_psi - state.shoe_pressure_psi
+            if margin <= 0:
+                alarms.append({"severity": "critical", "text": f"SHOE FRACTURED: Exceeded limit by {abs(margin):.0f} psi!"})
+            elif margin < 150:
+                alarms.append({"severity": "warning", "text": f"Low Shoe Margin ({margin:.0f} psi remaining)"})
+
+        if sim.flow_path.pump_is_deadheaded and sim.pump.running:
+            alarms.append({"severity": "critical", "text": "PUMP DEADHEADED: Discharge line blocked!"})
+
+        failures = state.event_log.of_kind(EventKind.EQUIPMENT_FAILURE)
+        if failures:
+            alarms.append({"severity": "critical", "text": f"Fault: {failures[-1].message}"})
+
+        shoe_margin = round(sim.frac_pressure_psi - state.shoe_pressure_psi) if sim.frac_pressure_psi is not None else None
+
+        return {
+            "session_id": self.session_id,
+            "student_name": self.student_name,
+            "scenario_key": self.scenario.key if self.scenario else "custom",
+            "scenario_name": self.scenario.name if self.scenario else "Custom Configuration",
+            "status": status,
+            "speed": self.speed,
+            "is_frozen": self.is_frozen,
+            "well_is_dead": state.well_is_dead,
+            "bop_closed": sim.flow_path.bop_is_closed,
+            "bottomhole_psi": round(state.bottomhole_pressure_psi),
+            "formation_psi": round(sim.formation_pressure_psi),
+            "overbalance_psi": round(state.bottomhole_pressure_psi - sim.formation_pressure_psi),
+            "shoe_psi": round(state.shoe_pressure_psi),
+            "frac_psi": round(sim.frac_pressure_psi) if sim.frac_pressure_psi is not None else None,
+            "shoe_margin_psi": shoe_margin,
+            "standpipe_psi": round(state.standpipe_pressure_psi),
+            "casing_psi": round(state.casing_pressure_psi),
+            "pump_spm": round(sim.pump.spm, 1),
+            "choke_percent": round(sim.choke.position, 1),
+            "strokes": round(state.strokes),
+            "influx_volume_bbl": round(state.influx_volume_bbl, 1),
+            "pit_gain_bbl": round(sim.pits.gain_bbl, 1),
+            "injected_bbl": round(state.injected_bbl, 1),
+            "lubricated_bbl": round(state.lubricated_bbl, 1),
+            "active_mud_weight_ppg": round(sim.kill_mud_weight_ppg or sim.well.mud_weight_ppg, 2),
+            "alarms": alarms,
+            "clock": clock(state.time_s),
+        }
 
     @property
     def paused(self) -> bool:
@@ -286,6 +433,19 @@ class Session:
         self.advance()
         self.simulator.strip(feet_per_min)
 
+    def set_mud_weight(self, ppg: float) -> None:
+        """Update mud weight in the active pits."""
+        self.advance()
+        self.simulator.set_kill_mud_weight(ppg)
+
+    def zero_trip_tank(self) -> None:
+        """Zero the trip tank baseline."""
+        self.simulator.zero_trip_tank()
+
+    def zero_pits(self) -> None:
+        """Zero the pit gain baseline."""
+        self.simulator.zero_pits()
+
     # -- readouts ------------------------------------------------------------
 
     def gauges(self) -> dict:
@@ -341,7 +501,13 @@ class Session:
             "pipe_moved_ft": round(state.pipe_moved_ft, 1),
             "pipe_displacement_bbl": round(state.pipe_displacement_bbl, 2),
             "lubricated_bbl": round(state.lubricated_bbl, 2),
+            "injected_bbl": round(state.injected_bbl, 2),
+            "scenario": self.scenario.key if self.scenario else None,
             "reverse_circulating": self.simulator.flow_path.is_reverse_circulating,
+            "active_mud_weight_ppg": round(self.simulator.kill_mud_weight_ppg, 2),
+            "original_mud_weight_ppg": round(self.simulator.well.mud_weight_ppg, 2),
+            "target_kill_mud_weight_ppg": round(self.simulator.well.kill_mud_weight_ppg, 2),
+            "trip_tank_volume_bbl": round(self.simulator.trip_tank.volume_bbl, 1),
 
             # Downhole truth. No rig has these; see downhole_visible.
             "downhole_visible": visible,
@@ -479,6 +645,31 @@ class Session:
         scr = sim.well.slow_circulating_rate.pressure_psi
         exact_kmw = mud + sidpp / (PSI_PER_PPG_FT * sim.well.bit_tvd_ft)
         kmw = rounding.kill_mud_weight(exact_kmw)
+        icp = rounding.pressure(sidpp + scr)
+        fcp = rounding.pressure(scr * kmw / mud)
+        stk_bit = round(sheet.strokes_to_bit)
+
+        schedule = []
+        if stk_bit > 0:
+            num_steps = 10
+            step_stk = max(1, stk_bit // num_steps)
+            for s in range(0, stk_bit + 1, step_stk):
+                frac = s / stk_bit
+                target_p = rounding.pressure(icp - frac * (icp - fcp))
+                schedule.append({"strokes": s, "target_dp_psi": target_p})
+            if schedule[-1]["strokes"] < stk_bit:
+                schedule.append({"strokes": stk_bit, "target_dp_psi": fcp})
+        else:
+            schedule.append({"strokes": 0, "target_dp_psi": icp})
+
+        current_strokes = round(state.strokes)
+        if current_strokes <= 0:
+            target_dp_now = icp
+        elif stk_bit > 0 and current_strokes < stk_bit:
+            frac_now = current_strokes / stk_bit
+            target_dp_now = rounding.pressure(icp - frac_now * (icp - fcp))
+        else:
+            target_dp_now = fcp
 
         return {
             "available": True,
@@ -490,9 +681,9 @@ class Session:
             "sidpp_psi": round(sidpp),
             "sicp_psi": round(sicp),
             "pit_gain_bbl": round(pit_gain, 1),
-            "icp_psi": rounding.pressure(sidpp + scr),
+            "icp_psi": icp,
             # Built from the weight actually mixed, not the calculated one.
-            "fcp_psi": rounding.pressure(scr * kmw / mud),
+            "fcp_psi": fcp,
             "formation_psi": round(sim.formation_pressure_psi),
             "maasp_psi": (
                 None if sim.maasp_psi is None else round(sim.maasp_psi)
@@ -501,13 +692,15 @@ class Session:
                 None if sim.frac_pressure_psi is None
                 else round(sim.frac_pressure_psi)
             ),
-            "strokes_to_bit": round(sheet.strokes_to_bit),
+            "strokes_to_bit": stk_bit,
             "strokes_bit_to_surface": round(sheet.strokes_bit_to_surface),
             "total_strokes": round(sheet.total_strokes),
             "scr_psi": round(sim.well.slow_circulating_rate.pressure_psi),
             "scr_spm": round(sim.well.slow_circulating_rate.spm),
+            "schedule": schedule,
+            "target_dp_psi": target_dp_now,
             # Live, for comparison against the plan.
-            "actual_strokes": round(state.strokes),
+            "actual_strokes": current_strokes,
             "actual_drill_pipe_psi": round(state.standpipe_pressure_psi),
             "actual_casing_psi": round(state.casing_pressure_psi),
         }
@@ -623,6 +816,52 @@ class Session:
             "report": assessment.format_report(),
         }
 
+    def ai_debrief(self) -> dict:
+        """Automated IADC/IWCF competency scoring, narrative diagnosis, and coaching tips."""
+        from .ai_coach import evaluate_student_session
+
+        self.advance()
+        return evaluate_student_session(self).to_dict()
+
+    def replay_data(self) -> dict:
+        """Full flight-recorder telemetry history and events for timeline review."""
+        self.advance()
+        state = self.simulator.state
+        return {
+            "session_id": self.session_id,
+            "student_name": self.student_name,
+            "scenario_key": self.scenario.key if self.scenario else "custom",
+            "scenario_name": self.scenario.name if self.scenario else "Custom Configuration",
+            "total_samples": len(state.trace),
+            "trace": [
+                {
+                    "time_s": round(s.time_s, 1),
+                    "clock": clock(s.time_s),
+                    "strokes": round(s.strokes),
+                    "pumped_bbl": round(s.pumped_bbl, 2),
+                    "bottomhole_psi": round(s.bottomhole_psi),
+                    "casing_psi": round(s.casing_psi),
+                    "standpipe_psi": round(s.standpipe_psi),
+                    "shoe_psi": round(s.shoe_psi),
+                    "influx_bbl": round(s.influx_bbl, 2),
+                    "choke_percent": round(s.choke_percent, 1),
+                    "pump_spm": round(s.pump_spm, 1),
+                    "pit_gain_bbl": round(s.pit_gain_bbl, 2),
+                }
+                for s in state.trace
+            ],
+            "events": [
+                {
+                    "time_s": round(e.time_s, 1),
+                    "clock": e.clock,
+                    "kind": e.kind.value,
+                    "severity": e.severity.value,
+                    "message": e.message,
+                }
+                for e in state.event_log.events
+            ],
+        }
+
 
 class SessionStore:
     """In-memory sessions, keyed by id.
@@ -634,13 +873,56 @@ class SessionStore:
     def __init__(self) -> None:
         self._sessions: dict[str, Session] = {}
 
-    def create(self, scenario: str | None = None, **kwargs) -> Session:
+    def create(
+        self,
+        scenario: str | None = None,
+        student_name: str | None = None,
+        **kwargs,
+    ) -> Session:
         session = (
             Session.for_scenario(scenario, **kwargs) if scenario
             else Session.for_configuration(**kwargs)
         )
+        if student_name:
+            session.student_name = student_name
+        else:
+            session.student_name = f"Student {len(self._sessions) + 1}"
         self._sessions[session.session_id] = session
         return session
+
+    def list(self) -> list[Session]:
+        """All active sessions in store."""
+        return list(self._sessions.values())
+
+    def freeze_all(self, freeze: bool = True) -> None:
+        """Master freeze/unfreeze across all active sessions."""
+        for session in self._sessions.values():
+            session.freeze(freeze)
+
+    def gradebook(self) -> list[dict]:
+        """Cohort gradebook entries for all active sessions."""
+        rows = []
+        for s in self._sessions.values():
+            ai = s.ai_debrief()
+            state = s.simulator.state
+            sim = s.simulator
+            rows.append({
+                "session_id": s.session_id,
+                "student_name": s.student_name,
+                "scenario": s.scenario.name if s.scenario else "Custom",
+                "scenario_key": s.scenario.key if s.scenario else "custom",
+                "score": ai["score"],
+                "letter_grade": ai["letter_grade"],
+                "iwcf_standard": ai["iwcf_standard"],
+                "well_killed": state.well_is_dead,
+                "duration_min": round(state.time_s / 60.0, 1),
+                "peak_shoe_psi": round(state.peak_shoe_pressure_psi),
+                "frac_margin_psi": round(sim.frac_pressure_psi - state.peak_shoe_pressure_psi) if sim.frac_pressure_psi is not None else None,
+                "max_bhp_excursion_psi": round(state.max_bhp_excursion_psi),
+                "influx_taken_bbl": round(state.influx_taken_bbl, 2),
+                "losses_bbl": round(state.lost_bbl, 2),
+            })
+        return rows
 
     def add(self, session: Session) -> Session:
         self._sessions[session.session_id] = session
