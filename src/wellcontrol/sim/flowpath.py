@@ -33,7 +33,8 @@ from enum import Enum
 class Node(str, Enum):
     """A piece of equipment fluid can be in or pass through."""
 
-    PUMP = "mud pump"
+    PUMP = "mud pump 1"
+    PUMP_2 = "mud pump 2"
     STANDPIPE = "standpipe"
     STRING = "drill string"
     BIT = "bit"
@@ -42,8 +43,14 @@ class Node(str, Enum):
     FLOWLINE = "flowline"
     CHOKE_LINE = "choke line"
     KILL_LINE = "kill line"
-    CHOKE_MANIFOLD = "choke manifold"
+    CHOKE_MANIFOLD = "choke manifold inlet header"
+    CHOKE_1_IN = "choke 1 run (upstream)"
+    CHOKE_1_OUT = "choke 1 run (downstream)"
+    CHOKE_2_IN = "choke 2 run (upstream)"
+    CHOKE_2_OUT = "choke 2 run (downstream)"
+    CHOKE_BUFFER = "choke manifold downstream header"
     SEPARATOR = "mud gas separator"
+    FLARE = "flare / overboard"
     PITS = "active pits"
     TRIP_TANK = "trip tank"
 
@@ -88,34 +95,36 @@ class Valve:
 
 
 def default_valves() -> list[Valve]:
-    """The simplified lineup: the dozen or so valves that change the outcome.
-
-    Deliberately not a full choke manifold. Every valve here has a consequence
-    a student can feel; adding the rest would add tedium without adding
-    lessons.
-    """
+    """Authentic drilling rig circulating, standpipe, and API 16C choke manifold lineup."""
     return [
-        Valve("pump_discharge", "Mud pump discharge", Node.PUMP, Node.STANDPIPE),
-        Valve("standpipe_valve", "Standpipe valve", Node.STANDPIPE, Node.STRING,
-              bidirectional=True),
-        # Deliberately one-way. Making this bidirectional would hand reverse
-        # flow a route back into the string that bypasses the float, which is
-        # the one thing actually standing in the way.
+        # --- Standpipe Manifold (matching authentic 9-valve rig arrangement) ---
+        Valve("pump_discharge", "MP1 discharge valve", Node.PUMP, Node.STANDPIPE,
+              state=ValveState.CLOSED),
+        Valve("mp2_discharge", "MP2 discharge valve", Node.PUMP_2, Node.STANDPIPE,
+              state=ValveState.CLOSED),
+        Valve("standpipe_bleed_valve", "Standpipe bleed / fill valve", Node.STANDPIPE, Node.PITS,
+              state=ValveState.CLOSED),
+        Valve("standpipe_valve", "Main standpipe valve", Node.STANDPIPE, Node.STRING,
+              bidirectional=True, state=ValveState.CLOSED),
+        Valve("sp_cross_1", "Standpipe cross-over 1 (Tap 1 to Choke)", Node.STANDPIPE, Node.STANDPIPE,
+              bidirectional=True, state=ValveState.OPEN),
+        Valve("standpipe_to_manifold", "Standpipe to choke line takeoff", Node.STANDPIPE, Node.CHOKE_MANIFOLD,
+              bidirectional=True, state=ValveState.CLOSED),
+        Valve("sp_cross_2", "Standpipe cross-over 2 (Choke to Tap 2)", Node.STANDPIPE, Node.STANDPIPE,
+              bidirectional=True, state=ValveState.OPEN),
+        Valve("pump_to_kill_line", "Pump to kill line takeoff", Node.PUMP, Node.KILL_LINE,
+              bidirectional=True, state=ValveState.CLOSED),
+        Valve("sp_cross_3", "Standpipe cross-over 3 (Tap 2 to MP2)", Node.STANDPIPE, Node.STANDPIPE,
+              bidirectional=True, state=ValveState.OPEN),
+
+        # --- Drill String & Downhole ---
         Valve("kelly_cock", "Kelly cock", Node.STRING, Node.BIT,
               state=ValveState.OPEN),
-        # The bit is always open to the annulus unless the nozzles plug.
         Valve("bit_nozzles", "Bit nozzles", Node.BIT, Node.ANNULUS,
               state=ValveState.OPEN, bidirectional=True),
-
-        # A non-return valve in the string. Shut is the normal state -- most
-        # strings run one -- and it passes mud down and nothing back up, which
-        # is precisely what makes reverse circulation impossible until it is
-        # pulled or ported. Modelled as the only route from the bit back into
-        # the string, so opening it is what a ported float buys you.
         Valve("float_valve", "String float valve", Node.BIT, Node.STRING),
 
-        # BOP elements. Closed means the annulus is sealed, so the sense is
-        # inverted relative to every other valve.
+        # --- BOP Elements (Annular & Rams) ---
         Valve("annular", "Annular preventer", Node.ANNULUS, Node.BOP,
               state=ValveState.OPEN, is_bop=True),
         Valve("upper_rams", "Upper pipe rams", Node.ANNULUS, Node.BOP,
@@ -123,45 +132,65 @@ def default_valves() -> list[Valve]:
         Valve("lower_rams", "Lower pipe rams", Node.ANNULUS, Node.BOP,
               state=ValveState.OPEN, is_bop=True),
 
-        # Returns with the stack open.
+        # --- Surface Flowline (BOP Open) ---
         Valve("flowline", "Flowline to shakers", Node.BOP, Node.FLOWLINE,
               state=ValveState.OPEN),
         Valve("shakers_to_pits", "Shakers to pits", Node.FLOWLINE, Node.PITS,
               state=ValveState.OPEN),
 
-        # Returns with the stack closed.
-        Valve("choke_line_valve", "Choke line valve", Node.ANNULUS,
-              Node.CHOKE_LINE, bidirectional=True),
-        Valve("kill_line_valve", "Kill line valve", Node.ANNULUS,
-              Node.KILL_LINE, bidirectional=True),
-        Valve("choke_line_to_manifold", "Choke line to manifold",
-              Node.CHOKE_LINE, Node.CHOKE_MANIFOLD),
-        Valve("kill_line_to_manifold", "Kill line to manifold",
-              Node.KILL_LINE, Node.CHOKE_MANIFOLD),
+        # --- BOP Stack Wing Outlets ---
+        Valve("choke_line_valve", "Choke line valve (HCR)", Node.ANNULUS, Node.CHOKE_LINE,
+              bidirectional=True, state=ValveState.CLOSED),
+        Valve("kill_line_valve", "Kill line valve (HCR)", Node.ANNULUS, Node.KILL_LINE,
+              bidirectional=True, state=ValveState.CLOSED),
 
-        Valve("choke_1", "Adjustable choke 1", Node.CHOKE_MANIFOLD,
-              Node.SEPARATOR, throttling=True),
-        Valve("choke_2", "Adjustable choke 2", Node.CHOKE_MANIFOLD,
-              Node.SEPARATOR, throttling=True),
-        Valve("choke_bypass", "Choke manifold bypass", Node.CHOKE_MANIFOLD,
-              Node.SEPARATOR),
-        Valve("separator_to_pits", "Separator to pits", Node.SEPARATOR,
-              Node.PITS, state=ValveState.OPEN),
+        # --- Choke & Kill Manifold (API Spec 16C Standard) ---
+        Valve("choke_line_to_manifold", "Choke line inlet master", Node.CHOKE_LINE, Node.CHOKE_MANIFOLD,
+              bidirectional=True, state=ValveState.OPEN),
+        Valve("kill_line_to_manifold", "Kill line inlet master", Node.KILL_LINE, Node.CHOKE_MANIFOLD,
+              bidirectional=True, state=ValveState.CLOSED),
+        Valve("manifold_crossover", "Kill/Choke manifold cross-over", Node.KILL_LINE, Node.CHOKE_MANIFOLD,
+              bidirectional=True, state=ValveState.CLOSED),
+        Valve("kill_bleed_valve", "Kill line bleed-off valve", Node.KILL_LINE, Node.PITS,
+              state=ValveState.CLOSED),
 
-        Valve("trip_tank_valve", "Trip tank to annulus", Node.TRIP_TANK,
-              Node.ANNULUS),
+        # Remote / Hydraulic Choke Leg (Double Isolation)
+        Valve("choke_1_upstream", "Auto choke upstream gate valve", Node.CHOKE_MANIFOLD, Node.CHOKE_1_IN,
+              state=ValveState.OPEN),
+        Valve("choke_1", "Adjustable hydraulic choke 1", Node.CHOKE_1_IN, Node.CHOKE_1_OUT,
+              throttling=True, state=ValveState.CLOSED),
+        Valve("choke_1_downstream", "Auto choke downstream gate valve", Node.CHOKE_1_OUT, Node.CHOKE_BUFFER,
+              state=ValveState.OPEN),
 
-        # Lubricating: the pump lined up to the kill line rather than the
-        # standpipe, to put mud into the annulus on top of a gas cap. Shut
-        # during any circulating kill, where mud goes down the string.
-        Valve("pump_to_kill_line", "Pump to kill line", Node.PUMP,
-              Node.KILL_LINE),
+        # Manual Choke Leg (Double Isolation)
+        Valve("choke_2_upstream", "Manual choke upstream gate valve", Node.CHOKE_MANIFOLD, Node.CHOKE_2_IN,
+              state=ValveState.OPEN),
+        Valve("choke_2", "Adjustable manual choke 2", Node.CHOKE_2_IN, Node.CHOKE_2_OUT,
+              throttling=True, state=ValveState.CLOSED),
+        Valve("choke_2_downstream", "Manual choke downstream gate valve", Node.CHOKE_2_OUT, Node.CHOKE_BUFFER,
+              state=ValveState.OPEN),
 
-        # Reverse circulation takes returns up the drill pipe, so they leave
-        # through the standpipe rather than the annulus and have to be routed
-        # to the choke manifold to be controlled at all.
-        Valve("standpipe_to_manifold", "Standpipe to choke manifold",
-              Node.STANDPIPE, Node.CHOKE_MANIFOLD),
+        # Emergency Straight Bypass (Panic Line)
+        Valve("choke_bypass", "Choke manifold emergency bypass", Node.CHOKE_MANIFOLD, Node.CHOKE_BUFFER,
+              state=ValveState.CLOSED),
+
+        # Downstream Buffer Header Outlets
+        Valve("to_mgs_valve", "Manifold to Mud Gas Separator", Node.CHOKE_BUFFER, Node.SEPARATOR,
+              state=ValveState.OPEN),
+        Valve("to_shakers_valve", "Manifold direct to shakers", Node.CHOKE_BUFFER, Node.FLOWLINE,
+              state=ValveState.CLOSED),
+        Valve("to_flare_valve", "Manifold to emergency flare line", Node.CHOKE_BUFFER, Node.FLARE,
+              state=ValveState.CLOSED),
+        Valve("flare_to_atmosphere", "Flare line overboard discharge", Node.FLARE, Node.PITS,
+              state=ValveState.OPEN),
+
+        # Mud Gas Separator U-Tube Drain
+        Valve("separator_to_pits", "Separator to pits", Node.SEPARATOR, Node.PITS,
+              state=ValveState.OPEN),
+
+        # Auxiliary Lines
+        Valve("trip_tank_valve", "Trip tank to annulus", Node.TRIP_TANK, Node.ANNULUS,
+              state=ValveState.CLOSED),
     ]
 
 

@@ -235,8 +235,8 @@
   #schematic { height: min(76vh, 640px); }
   #pid { height: min(60vh, 480px); }
   #bop-panel { height: min(78vh, 580px); }
-  #standpipe { height: min(74vh, 560px); }
-  #ckmanifold { height: min(48vh, 360px); }
+  #standpipe { height: min(65vh, 480px); }
+  #ckmanifold { height: min(55vh, 420px); }
 
   /* Dials. Two big ones for the pressures a kill is flown on, three smaller
      for the settings, exactly as the panel is laid out on a rig. */
@@ -750,12 +750,12 @@
     <div>
       <div class="card">
         <h2>Standpipe manifold</h2>
-        <svg id="standpipe" viewBox="0 0 470 460" role="img"
+        <svg id="standpipe" viewBox="0 0 540 480" role="img"
              aria-label="Standpipe manifold"></svg>
       </div>
       <div class="card">
-        <h2>Choke and kill manifold</h2>
-        <svg id="ckmanifold" viewBox="0 0 640 330" role="img"
+        <h2>Choke and kill manifold (API Spec 16C)</h2>
+        <svg id="ckmanifold" viewBox="0 0 760 380" role="img"
              aria-label="Choke and kill manifold"></svg>
         <div class="note">
           Click any handwheel to work it. A wrong lineup is not marked wrong —
@@ -2125,45 +2125,93 @@ function valveState(name) {
 
 function drawStandpipeManifold() {
   const svg = $("standpipe"); if (!svg || !lineupCache.length) return;
-  const bits = [`<rect width="470" height="460" fill="#b9c0c6"/>`];
-  bits.push(`<text x="235" y="24" text-anchor="middle" fill="#22282e" font-size="13"
+  const bits = [`<rect width="540" height="480" fill="#b9c0c6"/>`];
+  bits.push(`<text x="270" y="24" text-anchor="middle" fill="#22282e" font-size="14"
     font-weight="700" font-family="system-ui, sans-serif">STANDPIPE MANIFOLD</text>`);
 
-  bits.push(digitalTag(60, 38, "Standpipe", Math.round(drillPipePsi), "psi"));
-  bits.push(digitalTag(310, 38, "Choke", Math.round(chokePsi), "psi"));
+  // Digital pressure readouts for Tap 1 and Tap 2
+  bits.push(digitalTag(80, 36, "Tap 1", Math.round(drillPipePsi), "psi"));
+  bits.push(digitalTag(340, 36, "Tap 2", Math.round(chokePsi), "psi"));
 
-  // Header across the middle, risers up to the taps, and the two pumps below.
-  const HEADER = 240, LEFT = 75, RIGHT = 395;
+  // Main horizontal manifold header (matching standpipe_manifold_screen.jpg)
+  const HEADER = 230, LEFT = 75, RIGHT = 465;
   bits.push(pipe(LEFT, HEADER, RIGHT, HEADER));
-  bits.push(pipe(150, HEADER, 150, 110));       // standpipe riser
-  bits.push(pipe(320, HEADER, 320, 110));       // choke/kill riser
-  bits.push(pipe(LEFT, HEADER, LEFT, 335));     // down to MP1
-  bits.push(pipe(RIGHT, HEADER, RIGHT, 335));   // down to MP2
-  bits.push(pipe(235, HEADER, 235, 410));       // kill line take-off
 
-  bits.push(`<text x="150" y="102" text-anchor="middle" fill="#22282e" font-size="10"
-    font-weight="700" font-family="system-ui, sans-serif">TO STANDPIPE</text>`);
-  bits.push(`<text x="320" y="102" text-anchor="middle" fill="#22282e" font-size="10"
-    font-weight="700" font-family="system-ui, sans-serif">TO KILL LINE</text>`);
+  // Vertical pipe lines:
+  // 1. Far left vertical line (Bleed / Fill-up line)
+  bits.push(pipe(LEFT, HEADER, LEFT, 335));
 
-  bits.push(gateValve(150, 135, "standpipe_to_manifold", "Standpipe to manifold",
-    valveState("standpipe_to_manifold"), true));
-  bits.push(gateValve(150, 185, "standpipe_valve", "Standpipe valve",
+  // 2. Standpipe riser up to derrick and down to Mud Pump 1
+  bits.push(pipe(165, HEADER, 165, 95));        // Riser up to rotary hose / derrick
+  bits.push(pipe(165, HEADER, 165, 345));       // Down to MP1
+
+  // 3. Center line: Choke manifold takeoff (labeled C H O K E)
+  bits.push(pipe(265, HEADER, 265, 370));
+  bits.push(pipe(265, 370, 520, 370));          // Route across to Choke Manifold
+
+  // 4. Kill line takeoff (labeled K I L L)
+  bits.push(pipe(365, HEADER, 365, 435));
+  bits.push(pipe(340, 435, 520, 435));          // Heavy bottom header: KILL LINE
+
+  // 5. Far right line: Mud Pump 2
+  bits.push(pipe(RIGHT, HEADER, RIGHT, 345));   // Down to MP2
+
+  // Labels for lines
+  const lbl = (x, y, txt, anchor = "middle") =>
+    `<text x="${x}" y="${y}" text-anchor="${anchor}" fill="#22282e" font-size="10"
+      font-weight="700" font-family="system-ui, sans-serif">${txt}</text>`;
+
+  bits.push(lbl(165, 88, "TO STANDPIPE (DERRICK)"));
+  bits.push(lbl(LEFT, 350, "BLEED / FILL"));
+  bits.push(lbl(520, 366, "TO CHOKE MANIFOLD", "end"));
+  bits.push(lbl(430, 452, "KILL LINE", "middle"));
+
+  // Vertical text for C H O K E and K I L L lines (exactly as in real screen)
+  bits.push(`<g font-size="9" font-weight="700" fill="#22282e" font-family="system-ui, sans-serif" text-anchor="middle">
+    <text x="250" y="275">C</text><text x="250" y="290">H</text><text x="250" y="305">O</text><text x="250" y="320">K</text><text x="250" y="335">E</text>
+    <text x="350" y="280">K</text><text x="350" y="295">I</text><text x="350" y="310">L</text><text x="350" y="325">L</text>
+  </g>`);
+
+  // Sensor taps
+  bits.push(`<circle cx="120" cy="${HEADER}" r="7" fill="#dc2626" stroke="#991b1b" stroke-width="2"/>
+    <text x="120" y="${HEADER - 11}" text-anchor="middle" fill="#22282e" font-size="9" font-weight="700">TAP 1</text>`);
+  bits.push(`<circle cx="365" cy="${HEADER - 45}" r="7" fill="#dc2626" stroke="#991b1b" stroke-width="2"/>
+    <line x1="365" y1="${HEADER}" x2="365" y2="${HEADER - 45}" stroke="#dc2626" stroke-width="3"/>
+    <text x="365" y="${HEADER - 56}" text-anchor="middle" fill="#22282e" font-size="9" font-weight="700">TAP 2</text>`);
+
+  // The 9 Gate Valves on the Standpipe Manifold
+  // Upper vertical valve to derrick
+  bits.push(gateValve(165, 140, "standpipe_valve", "Main standpipe valve",
     valveState("standpipe_valve"), true));
-  bits.push(gateValve(320, 175, "pump_to_kill_line", "Pump to kill line",
-    valveState("pump_to_kill_line"), true));
-  bits.push(gateValve(LEFT, 290, "pump_discharge", "Mud pump discharge",
+  // Far left bleed/fill valve
+  bits.push(gateValve(LEFT, 285, "standpipe_bleed_valve", "Standpipe bleed / fill valve",
+    valveState("standpipe_bleed_valve"), true));
+  // MP1 discharge valve
+  bits.push(gateValve(165, 285, "pump_discharge", "MP1 discharge valve",
     valveState("pump_discharge"), true));
-  bits.push(gateValve(235, 325, "kill_line_valve", "Kill line valve",
-    valveState("kill_line_valve"), true));
+  // Header Cross-over 1 (between Tap 1 and Choke takeoff)
+  bits.push(gateValve(215, HEADER, "sp_cross_1", "Standpipe cross-over 1",
+    valveState("sp_cross_1"), false));
+  // Choke line takeoff valve
+  bits.push(gateValve(265, 285, "standpipe_to_manifold", "Standpipe to choke line takeoff",
+    valveState("standpipe_to_manifold"), true));
+  // Header Cross-over 2 (between Choke takeoff and Tap 2)
+  bits.push(gateValve(315, HEADER, "sp_cross_2", "Standpipe cross-over 2",
+    valveState("sp_cross_2"), false));
+  // Kill line takeoff valve
+  bits.push(gateValve(365, 285, "pump_to_kill_line", "Standpipe to kill line takeoff",
+    valveState("pump_to_kill_line"), true));
+  // Header Cross-over 3 (between Tap 2 and MP2)
+  bits.push(gateValve(415, HEADER, "sp_cross_3", "Standpipe cross-over 3",
+    valveState("sp_cross_3"), false));
+  // MP2 discharge valve
+  bits.push(gateValve(RIGHT, 285, "mp2_discharge", "MP2 discharge valve",
+    valveState("mp2_discharge"), true));
 
   // Authentic Triplex Mud Pumps for MP1 and MP2
   const g = currentGauges || {};
-  bits.push(renderMudPumpGraphic(LEFT - 48, 335, 96, 56, "MP1 (MAIN)", true, g.pump_spm || 0));
-  bits.push(renderMudPumpGraphic(RIGHT - 48, 335, 96, 56, "MP2 (AUX)", false, 0));
-
-  bits.push(`<text x="235" y="432" text-anchor="middle" fill="#22282e" font-size="11"
-    font-weight="700" font-family="system-ui, sans-serif">KILL LINE</text>`);
+  bits.push(renderMudPumpGraphic(165 - 48, 345, 96, 56, "MP1 (MAIN)", true, g.pump_spm || 0));
+  bits.push(renderMudPumpGraphic(RIGHT - 48, 345, 96, 56, "MP2 (AUX)", false, 0));
 
   svg.innerHTML = bits.join("");
   svg.querySelectorAll(".pv").forEach(g =>
@@ -2172,50 +2220,107 @@ function drawStandpipeManifold() {
 
 function drawChokeKillManifold() {
   const svg = $("ckmanifold"); if (!svg || !lineupCache.length) return;
-  const bits = [`<rect width="640" height="330" fill="#b9c0c6"/>`];
-  bits.push(`<text x="320" y="22" text-anchor="middle" fill="#22282e" font-size="13"
-    font-weight="700" font-family="system-ui, sans-serif">CHOKE AND KILL MANIFOLD</text>`);
+  const bits = [`<rect width="760" height="380" fill="#b9c0c6"/>`];
+  bits.push(`<text x="380" y="24" text-anchor="middle" fill="#22282e" font-size="14"
+    font-weight="700" font-family="system-ui, sans-serif">CHOKE AND KILL MANIFOLD (API SPEC 16C)</text>`);
 
-  const IN = 60, HEADER = 150, OUT = 590;
-  // Two lines in from the stack, a common header, three ways out.
-  bits.push(pipe(IN, 78, 250, 78));
-  bits.push(pipe(IN, 232, 250, 232));
-  bits.push(pipe(250, 78, 250, 232));
-  bits.push(pipe(250, HEADER, 430, HEADER));
-  bits.push(pipe(430, 78, 430, 232));
-  bits.push(pipe(430, 78, OUT, 78));
-  bits.push(pipe(430, HEADER, OUT, HEADER));
-  bits.push(pipe(430, 232, OUT, 232));
+  const tag = (x, y, text, anchor = "middle", sz = 10, fill = "#22282e") =>
+    `<text x="${x}" y="${y}" text-anchor="${anchor}" fill="${fill}"
+      font-size="${sz}" font-weight="700" font-family="system-ui, sans-serif">${text}</text>`;
 
-  const tag = (x, y, text, anchor) =>
-    `<text x="${x}" y="${y}" text-anchor="${anchor || "middle"}" fill="#22282e"
-      font-size="10" font-weight="700"
-      font-family="system-ui, sans-serif">${text}</text>`;
-  bits.push(tag(IN - 4, 74, "CHOKE LINE", "end"));
-  bits.push(tag(IN - 4, 228, "KILL LINE", "end"));
-  bits.push(tag(OUT + 6, 74, "CHOKE 1 (AUTO)", "start"));
-  bits.push(tag(OUT + 6, 146, "BYPASS", "start"));
-  bits.push(tag(OUT + 6, 228, "CHOKE 2 (MANUAL)", "start"));
+  // Inlets from stack
+  const CHOKE_Y = 85, BYPASS_Y = 185, KILL_Y = 285;
+  const INLET_X = 40, TIE_X = 220, DIST_X = 270, OUTLET_X = 540, TERM_X = 730;
 
-  bits.push(gateValve(105, 78, "choke_line_valve", "Choke line valve",
+  // Pipe routing:
+  // Inlets from BOP
+  bits.push(pipe(INLET_X, CHOKE_Y, DIST_X, CHOKE_Y));       // Choke line in
+  bits.push(pipe(INLET_X, KILL_Y, DIST_X, KILL_Y));         // Kill line in
+
+  // Cross-over vertical tie between Choke and Kill lines
+  bits.push(pipe(TIE_X, CHOKE_Y, TIE_X, KILL_Y));
+  bits.push(pipe(TIE_X, KILL_Y, TIE_X, 355));               // Bleed line to pits
+
+  // Distribution header across the 3 parallel legs
+  bits.push(pipe(DIST_X, CHOKE_Y, DIST_X, KILL_Y));
+
+  // The 3 parallel legs
+  bits.push(pipe(DIST_X, CHOKE_Y, OUTLET_X, CHOKE_Y));       // Auto choke leg
+  bits.push(pipe(DIST_X, BYPASS_Y, OUTLET_X, BYPASS_Y));     // Emergency bypass leg
+  bits.push(pipe(DIST_X, KILL_Y, OUTLET_X, KILL_Y));         // Manual choke leg
+
+  // Downstream collecting header
+  bits.push(pipe(OUTLET_X, CHOKE_Y, OUTLET_X, KILL_Y));
+
+  // Three discharge routes out to rig equipment
+  bits.push(pipe(OUTLET_X, CHOKE_Y, TERM_X, CHOKE_Y));       // To MGS
+  bits.push(pipe(OUTLET_X, BYPASS_Y, TERM_X, BYPASS_Y));     // Direct to Shakers
+  bits.push(pipe(OUTLET_X, KILL_Y, TERM_X, KILL_Y));         // To Flare / Overboard
+
+  // Inlet labels
+  bits.push(tag(INLET_X, CHOKE_Y - 14, "CHOKE LINE (BOP)", "start"));
+  bits.push(tag(INLET_X, KILL_Y - 14, "KILL LINE (BOP)", "start"));
+  bits.push(tag(TIE_X, 370, "BLEED TO PITS", "middle", 9, "#475569"));
+
+  // Outlet labels
+  bits.push(tag(TERM_X - 6, CHOKE_Y - 12, "TO MUD-GAS SEPARATOR (MGS)", "end"));
+  bits.push(tag(TERM_X - 6, BYPASS_Y - 12, "DIRECT TO SHAKERS / PITS", "end"));
+  bits.push(tag(TERM_X - 6, KILL_Y - 12, "TO FLARE / OVERBOARD LINE", "end"));
+
+  // Leg section labels
+  bits.push(tag(385, CHOKE_Y - 26, "REMOTE AUTO CHOKE LEG", "middle", 10, "#1e3a8a"));
+  bits.push(tag(405, BYPASS_Y - 14, "STRAIGHT EMERGENCY BYPASS (PANIC LINE)", "middle", 9, "#991b1b"));
+  bits.push(tag(385, KILL_Y - 24, "MANUAL CHOKE LEG", "middle", 10, "#374151"));
+
+  // --- VALVES ---
+  // Inlets
+  bits.push(gateValve(85, CHOKE_Y, "choke_line_valve", "Choke line HCR valve",
     valveState("choke_line_valve"), false, true));
-  bits.push(gateValve(180, 78, "choke_line_to_manifold", "Choke line to manifold",
+  bits.push(gateValve(155, CHOKE_Y, "choke_line_to_manifold", "Choke line inlet master",
     valveState("choke_line_to_manifold"), false));
-  bits.push(gateValve(180, 232, "kill_line_to_manifold", "Kill line to manifold",
-    valveState("kill_line_to_manifold"), false));
-  bits.push(gateValve(515, 78, "choke_1", "Adjustable choke 1",
-    valveState("choke_1"), false, true));
-  bits.push(gateValve(515, HEADER, "choke_bypass", "Choke manifold bypass",
-    valveState("choke_bypass"), false));
-  bits.push(gateValve(515, 232, "choke_2", "Adjustable choke 2",
-    valveState("choke_2"), false, true));
 
-  // The adjustable choke's opening, with industrial digital badge
-  bits.push(`<rect x="235" y="266" width="170" height="32" rx="3" fill="#0b0f14"
-    stroke="#334155" stroke-width="1.5"/>`);
-  bits.push(`<text x="320" y="287" text-anchor="middle" fill="#5df08a" font-size="13"
-    font-weight="700" font-family="Consolas, monospace">CHOKE POS: ${chokePercent.toFixed(1)}%</text>`);
-  bits.push(tag(320, 316, "ADJUSTABLE HYDRAULIC CHOKE POSITION"));
+  bits.push(gateValve(85, KILL_Y, "kill_line_valve", "Kill line HCR valve",
+    valveState("kill_line_valve"), false, true));
+  bits.push(gateValve(155, KILL_Y, "kill_line_to_manifold", "Kill line inlet master",
+    valveState("kill_line_to_manifold"), false));
+
+  // Cross-over & Bleed
+  bits.push(gateValve(TIE_X, 185, "manifold_crossover", "Kill/Choke manifold cross-over",
+    valveState("manifold_crossover"), true));
+  bits.push(gateValve(TIE_X, 330, "kill_bleed_valve", "Kill line bleed-off valve",
+    valveState("kill_bleed_valve"), true));
+
+  // Leg 1: Remote Hydraulic Choke (Upstream Isolation, Actuated Choke, Downstream Isolation)
+  bits.push(gateValve(320, CHOKE_Y, "choke_1_upstream", "Auto choke upstream gate valve",
+    valveState("choke_1_upstream"), false));
+  bits.push(gateValve(405, CHOKE_Y, "choke_1", "Adjustable hydraulic choke 1",
+    valveState("choke_1"), false, true));
+  bits.push(gateValve(490, CHOKE_Y, "choke_1_downstream", "Auto choke downstream gate valve",
+    valveState("choke_1_downstream"), false));
+
+  // Leg 2: Emergency Straight Bypass
+  bits.push(gateValve(405, BYPASS_Y, "choke_bypass", "Choke manifold emergency bypass",
+    valveState("choke_bypass"), false));
+
+  // Leg 3: Manual Adjustable Choke (Upstream Isolation, Handwheel Choke, Downstream Isolation)
+  bits.push(gateValve(320, KILL_Y, "choke_2_upstream", "Manual choke upstream gate valve",
+    valveState("choke_2_upstream"), false));
+  bits.push(gateValve(405, KILL_Y, "choke_2", "Adjustable manual choke 2",
+    valveState("choke_2"), false, false));
+  bits.push(gateValve(490, KILL_Y, "choke_2_downstream", "Manual choke downstream gate valve",
+    valveState("choke_2_downstream"), false));
+
+  // Downstream Discharge Routing Valves
+  bits.push(gateValve(600, CHOKE_Y, "to_mgs_valve", "Manifold to Mud-Gas Separator",
+    valveState("to_mgs_valve"), false));
+  bits.push(gateValve(600, BYPASS_Y, "to_shakers_valve", "Manifold direct to shakers",
+    valveState("to_shakers_valve"), false));
+  bits.push(gateValve(600, KILL_Y, "to_flare_valve", "Manifold to emergency flare line",
+    valveState("to_flare_valve"), false));
+
+  // Choke position badge
+  bits.push(`<rect x="330" y="${CHOKE_Y + 16}" width="150" height="24" rx="3" fill="#0b0f14" stroke="#334155" stroke-width="1.5"/>`);
+  bits.push(`<text x="405" y="${CHOKE_Y + 32}" text-anchor="middle" fill="#5df08a" font-size="11" font-weight="700" font-family="Consolas, monospace">POS: ${chokePercent.toFixed(1)}%</text>`);
 
   svg.innerHTML = bits.join("");
   svg.querySelectorAll(".pv").forEach(g =>
