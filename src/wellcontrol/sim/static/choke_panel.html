@@ -5,32 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Well Control Simulator</title>
 <style>
-  /* The instrument face. A choke panel is an orange console carrying white
-     dials, black digital windows with green lettering, and grey switchgear --
-     see simulator_screens/choke_panel_example. Everything below is that,
-     rather than a dashboard that happens to show well control numbers. */
+  /* Modern cyber-rig console styling: slate/graphite workstation with high-contrast
+     industrial indicators, paired with authentic physical SWACO choke panel styling. */
   :root {
-    --bg: #e8760f;              /* the console itself */
-    --panel: #ef8320;           /* a raised area of it */
-    --sunk: #0b0f13;            /* a digital window cut into it */
-    --edge: #a8540a;            /* shadow line between panel sections */
-    --edge-soft: #c96a0e;
-    --ink: #17120c;             /* lettering silkscreened on the console */
-    --dim: #4a3311;
-    --faint: #6b4a1c;
-    --readout: #4bf07e;         /* the green of a seven-segment window */
-    --metal: #c9ccd0;           /* switchgear */
-    --metal-dark: #8f959c;
-    --good: #2f9e4a;
-    --caution: #b8860b;
-    --warning: #b4530e;
-    --critical: #c4302a;
-    --dp: #4f7fe8;
-    --csg: #c98a12;
-    --bhp: #2f9e6a;
-    --shoe: #7f5fc0;
-    --gas: #c2703c;
-    --killmud: #3f7a5a;
+    --bg: #0b0f17;              /* modern dark industrial cyber rig floor */
+    --panel: #111827;           /* cyber console slate panel */
+    --sunk: #06090e;            /* digital readout window */
+    --edge: #1e293b;            /* subtle border */
+    --edge-soft: #334155;
+    --ink: #f1f5f9;             /* crisp off-white silkscreen lettering */
+    --dim: #94a3b8;             /* secondary readouts */
+    --faint: #64748b;
+    --readout: #4bf07e;         /* high-contrast green */
+    --metal: #1e293b;           /* switchgear */
+    --metal-dark: #0f172a;
+    --good: #22c55e;
+    --caution: #eab308;
+    --warning: #f97316;
+    --critical: #ef4444;
+    --dp: #60a5fa;
+    --csg: #f59e0b;
+    --bhp: #10b981;
+    --shoe: #a855f7;
+    --gas: #fb923c;
+    --killmud: #34d399;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -44,59 +42,57 @@
   /* ---- chrome ---- */
   header {
     display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-    padding: 9px 16px; background: var(--panel);
-    border-bottom: 1px solid var(--edge);
+    padding: 9px 16px; background: #0f172a;
+    border-bottom: 1px solid #1e293b;
   }
   header h1 {
     font-size: 14px; margin: 0; font-weight: 700; letter-spacing: .06em;
-    text-transform: uppercase; color: var(--ink);
+    text-transform: uppercase; color: #f8fafc;
   }
   .grow { flex: 1 1 auto; }
   .pill {
     font-size: 11px; padding: 3px 10px; border-radius: 999px;
-    border: 1.5px solid var(--ink); color: var(--ink); white-space: nowrap;
-    font-weight: 600; background: rgba(255, 255, 255, .14);
+    border: 1.5px solid #475569; color: #cbd5e1; white-space: nowrap;
+    font-weight: 600; background: rgba(15, 23, 42, .7);
   }
   .pill.warn { border-color: var(--warning); color: var(--warning); }
   .pill.bad { border-color: var(--critical); color: var(--critical); }
   .pill.ok { border-color: var(--good); color: var(--good); }
-  /* Switchgear: grey mouldings with a highlight along the top edge and a
-     shadow under, so they read as things you press rather than as links. */
+  /* Switchgear: sleek industrial mouldings */
   select, button {
-    background: linear-gradient(#e2e5e8, var(--metal) 55%, var(--metal-dark));
-    color: #14181c; border: 1px solid #6e747b;
+    background: linear-gradient(#1e293b, #0f172a);
+    color: #e2e8f0; border: 1px solid #334155;
     border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer;
     font-family: inherit; font-weight: 600;
-    box-shadow: inset 0 1px 0 #fff, 0 1px 2px rgba(0, 0, 0, .35);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .4);
   }
-  select:hover, button:hover { filter: brightness(1.06); }
-  button:active { box-shadow: inset 0 2px 4px rgba(0, 0, 0, .4); }
+  select:hover, button:hover { filter: brightness(1.2); }
+  button:active { box-shadow: inset 0 2px 4px rgba(0, 0, 0, .5); }
   button.on {
-    background: linear-gradient(#5fd47c, #2f9e4a 60%, #24793a);
-    border-color: #1d6330; color: #fff;
+    background: linear-gradient(#16a34a, #15803d);
+    border-color: #22c55e; color: #fff;
   }
   button.danger {
-    background: linear-gradient(#e06b65, var(--critical) 60%, #9c2620);
-    border-color: #7d1e19; color: #fff;
+    background: linear-gradient(#dc2626, #991b1b);
+    border-color: #ef4444; color: #fff;
   }
   button:disabled { opacity: .45; cursor: not-allowed; }
   label.lbl { font-size: 11px; color: var(--ink); font-weight: 600; }
 
-  /* The dark strip of screen-select keys along the bottom of the reference
-     panel, brought to the top because that is where a browser expects tabs. */
+  /* Dark navigation ribbon */
   nav {
-    display: flex; gap: 0; padding: 0 10px; background: #14181c;
-    border-bottom: 2px solid #000; overflow-x: auto;
+    display: flex; gap: 0; padding: 0 10px; background: #0a0d14;
+    border-bottom: 2px solid #1e293b; overflow-x: auto;
   }
   nav button {
     background: none; border: none; border-bottom: 3px solid transparent;
-    border-radius: 0; padding: 10px 16px; color: #b6bfc7; font-size: 13px;
+    border-radius: 0; padding: 10px 16px; color: #94a3b8; font-size: 13px;
     white-space: nowrap; box-shadow: none; font-weight: 600;
     letter-spacing: .03em;
   }
-  nav button:hover { color: #fff; background: #1e242a; filter: none; }
+  nav button:hover { color: #f8fafc; background: #131b28; filter: none; }
   nav button.active {
-    color: #fff; border-bottom-color: var(--bg); background: #1e242a;
+    color: #38bdf8; border-bottom-color: #38bdf8; background: #131b28;
   }
 
   main { padding: 16px; }
@@ -105,21 +101,44 @@
   .cols { display: grid; gap: 16px; grid-template-columns: 1fr 330px; align-items: start; }
   @media (max-width: 980px) { .cols { grid-template-columns: 1fr; } }
 
-  /* A card is a raised area of the console, not a floating panel: a hairline
-     highlight along the top and a shadow line beneath, no heavy border. */
+  /* High-end cyber console card */
   .card {
     background: var(--panel);
     border: 1px solid var(--edge);
-    border-top-color: #f7a04d;
+    border-top-color: #334155;
     border-radius: 6px; padding: 14px; margin-bottom: 16px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, .22);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, .4), 0 2px 4px -2px rgba(0, 0, 0, .3);
   }
   .card:last-child { margin-bottom: 0; }
   .card h2 {
     font-size: 11px; text-transform: uppercase; letter-spacing: .12em;
-    color: var(--ink); margin: 0 0 12px; font-weight: 700;
+    color: #94a3b8; margin: 0 0 12px; font-weight: 700;
   }
   .note { font-size: 11px; color: var(--dim); margin-top: 10px; line-height: 1.5; }
+
+  /* Crisp cyber dark scrollbars */
+  ::-webkit-scrollbar { width: 7px; height: 7px; }
+  ::-webkit-scrollbar-track { background: #070a0e; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; border: 1px solid #334155; }
+  ::-webkit-scrollbar-thumb:hover { background: #334155; }
+  * { scrollbar-color: #334155 #070a0e; scrollbar-width: thin; }
+
+  /* Authentic SWACO physical choke console face styling */
+  #s-choke .card {
+    background: #ef8320;
+    border: 1px solid #a8540a;
+    border-top-color: #f7a04d;
+    color: #17120c;
+  }
+  #s-choke .card h2 { color: #17120c; }
+  #s-choke .card .note { color: #4a3311; }
+  #s-choke .card .lbl { color: #17120c; }
+  #s-choke .g .k, #s-choke .s .k { color: #17120c; }
+  #s-choke .legend { color: #17120c; }
+  #s-choke .card button {
+    background: linear-gradient(#e2e5e8, #c9ccd0 55%, #8f959c);
+    color: #14181c; border: 1px solid #6e747b;
+  }
 
   /* ---- gauges ---- */
   .gauges { display: grid; gap: 10px; grid-template-columns: repeat(4, 1fr); }
@@ -204,10 +223,10 @@
 
   /* ---- lineup list ---- */
   .valves { display: grid; gap: 5px; font-size: 12px; color: var(--ink); font-weight: 600; }
-  .valve { display: flex; align-items: center; gap: 8px; }
+  .valve { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: #070a0e; border: 1px solid #1e293b; border-radius: 4px; }
   .valve span { flex: 1; }
   .valve button { padding: 3px 9px; font-size: 11px; min-width: 66px; }
-  .bop { color: #5a2f04; font-weight: 700; }
+  .bop { color: #f97316; font-weight: 700; }
 
   /* ---- tables ---- */
   table {
@@ -523,9 +542,8 @@
         <div style="font-weight:700;margin-bottom:5px;font-size:15px" id="brief-name">—</div>
         <!-- Dark on the console, not gold: a mid-tone accent that reads well on
              a dark page disappears entirely on orange. -->
-        <div style="font-size:13px;margin-bottom:8px;font-weight:700;
-                    color:#4a1d02" id="brief-obj"></div>
-        <div style="font-size:13px;color:var(--dim)" id="brief-text"></div>
+        <div style="font-size:13px;margin-bottom:8px;font-weight:700;color:#38bdf8" id="brief-obj"></div>
+        <div style="font-size:13px;color:#cbd5e1" id="brief-text"></div>
         <div class="note" id="brief-warn"></div>
       </div>
 
@@ -781,7 +799,7 @@
       </div>
       <div class="card">
         <h2>All valves</h2>
-        <div class="valves" id="valve-list"></div>
+        <div class="valves" id="valve-list" style="max-height:480px;overflow-y:auto;padding-right:6px"></div>
       </div>
     </div>
   </div>
@@ -828,7 +846,7 @@
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <h2>Mud Pits &amp; Calibrated Trip Tank Console</h2>
-          <span style="font-size:11px;color:var(--dim);font-family:Consolas,monospace">API SPEC 13C / IADC PVT WORKSTATION</span>
+          <span style="font-size:11px;color:#94a3b8;font-family:Consolas,monospace">API SPEC 13C / IADC PVT WORKSTATION</span>
         </div>
         <svg id="pit-schematic" viewBox="0 0 920 520" role="img" aria-label="Mud pits and trip tank schematic"></svg>
         <div class="note">
@@ -840,7 +858,7 @@
         <h2>PVT Alarm Settings &amp; Mixing Hopper</h2>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:center;margin-top:6px">
           <div>
-            <div style="font-size:11px;color:var(--dim);margin-bottom:4px">PIT VOLUME ALARM LIMITS</div>
+            <div style="font-size:11px;color:#94a3b8;margin-bottom:4px">PIT VOLUME ALARM LIMITS</div>
             <div style="display:flex;gap:10px;align-items:center">
               <span style="font-size:12px;color:#f8fafc">High Alarm: <b id="lbl-hi-alarm" style="color:#ef4444">+5.0</b> bbl</span>
               <button id="btn-hi-alarm-dec" style="padding:2px 7px;font-size:11px">-</button>
@@ -853,7 +871,7 @@
             </div>
           </div>
           <div>
-            <div style="font-size:11px;color:var(--dim);margin-bottom:4px">MUD WEIGHT HOPPER ADJUSTER</div>
+            <div style="font-size:11px;color:#94a3b8;margin-bottom:4px">MUD WEIGHT HOPPER ADJUSTER</div>
             <div style="display:flex;gap:8px;align-items:center">
               <input type="number" id="pvt-mw-input" min="5" max="25" step="0.1" style="width:75px;padding:4px 6px;font-weight:700">
               <button id="pvt-btn-set-mw">Set Density</button>
@@ -875,8 +893,8 @@
           <button id="btn-ts-auto" style="font-size:11px;padding:4px 10px;font-weight:700;background:#1e293b;color:#38bdf8;border:1px solid #38bdf8;border-radius:4px;cursor:pointer">⚡ Auto-Log Every 90 ft: ON</button>
           <button id="btn-ts-reset" style="font-size:11px;padding:4px 10px;background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:4px;cursor:pointer">🗑️ Reset Sheet</button>
         </div>
-        <div style="max-height:360px;overflow-y:auto;border:1px solid #1e293b;border-radius:4px">
-          <table id="trip-sheet-table" style="margin:0;font-size:12px">
+        <div style="max-height:360px;overflow-x:auto;overflow-y:auto;border:1px solid #1e293b;border-radius:4px">
+          <table id="trip-sheet-table" style="min-width:620px;margin:0;font-size:12px;width:100%">
             <thead>
               <tr>
                 <th style="padding:6px 8px">Stand</th>
@@ -1273,10 +1291,12 @@ async function start() {
   await api(`/api/sessions/${sessionId}/speed`, {
     method: "POST", body: JSON.stringify({speed: Number($("speed").value)})
   });
+  lineupCache = created.lineup || [];
   drawLineup(created.lineup);
   paint(created.gauges);
   loadSheet();
   if (typeof notifyCockpitState === "function") notifyCockpitState("restart", { sessionId });
+  redraw();
 }
 
 async function poll() {
@@ -2304,8 +2324,8 @@ function valveState(name) {
 }
 
 function drawStandpipeManifold() {
-  const svg = $("standpipe"); if (!svg || !lineupCache.length) return;
-  const bits = [`<rect width="540" height="480" fill="#b9c0c6"/>`];
+  const svg = $("standpipe"); if (!svg) return;
+  const bits = [`<rect width="540" height="480" rx="6" fill="#b9c0c6" stroke="#475569" stroke-width="2"/>`];
   bits.push(`<text x="270" y="24" text-anchor="middle" fill="#22282e" font-size="14"
     font-weight="700" font-family="system-ui, sans-serif">STANDPIPE MANIFOLD</text>`);
 
@@ -2399,8 +2419,8 @@ function drawStandpipeManifold() {
 }
 
 function drawChokeKillManifold() {
-  const svg = $("ckmanifold"); if (!svg || !lineupCache.length) return;
-  const bits = [`<rect width="760" height="380" fill="#b9c0c6"/>`];
+  const svg = $("ckmanifold"); if (!svg) return;
+  const bits = [`<rect width="760" height="380" rx="6" fill="#b9c0c6" stroke="#475569" stroke-width="2"/>`];
   bits.push(`<text x="380" y="24" text-anchor="middle" fill="#22282e" font-size="14"
     font-weight="700" font-family="system-ui, sans-serif">CHOKE AND KILL MANIFOLD (API SPEC 16C)</text>`);
 
@@ -2538,7 +2558,6 @@ function updateBopToggleBtns() {
 }
 
 function drawBopPanel() {
-  if (!lineupCache.length) return;
   const current = (bopViewMode === null) ? (isSubsea ? "subsea" : "surface") : bopViewMode;
   $("bop-title").textContent = current === "subsea"
     ? "Subsea BOP — MUX Terminal" : "BOP Remote Control Console";
@@ -2598,6 +2617,7 @@ function gaugeArc(cx, cy, r, startAngle, endAngle) {
 
 function renderKoomeyModule(x, y, w, h, name, label, open, isShear = false) {
   const bits = [];
+  const isCompact = h < 58;
   const cx = x + w / 2;
   const isShut = !open;
 
@@ -2609,37 +2629,40 @@ function renderKoomeyModule(x, y, w, h, name, label, open, isShear = false) {
   }
 
   // Nameplate at top
-  bits.push(`<rect x="${x + 6}" y="${y + 6}" width="${w - 12}" height="17" rx="2" fill="${isShear ? '#450a0a' : '#0f172a'}" stroke="#334155"/>`);
-  bits.push(`<text x="${cx}" y="${y + 18}" text-anchor="middle" fill="${isShear ? '#fca5a5' : '#f8fafc'}" font-size="8.5" font-weight="700" letter-spacing="0.04em" font-family="system-ui, sans-serif">${label.toUpperCase()}</text>`);
+  const nameH = isCompact ? 13 : 17;
+  bits.push(`<rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="${nameH}" rx="2" fill="${isShear ? '#450a0a' : '#0f172a'}" stroke="#334155"/>`);
+  bits.push(`<text x="${cx}" y="${y + (isCompact ? 13 : 18)}" text-anchor="middle" fill="${isShear ? '#fca5a5' : '#f8fafc'}" font-size="${isCompact ? 7.5 : 8.5}" font-weight="700" letter-spacing="0.04em" font-family="system-ui, sans-serif">${label.toUpperCase()}</text>`);
 
   // Status Indicator Lamps: Left = OPEN (GREEN), Right = CLOSED (RED)
-  const lampY = y + 33;
-  bits.push(`<circle cx="${x + 22}" cy="${lampY}" r="6" fill="${open ? '#22c55e' : '#14532d'}" stroke="#0f172a" stroke-width="1.2"/>`);
-  if (open) bits.push(`<circle cx="${x + 22}" cy="${lampY}" r="9" fill="none" stroke="#22c55e" stroke-width="1.5" opacity="0.6"/>`);
-  bits.push(`<text x="${x + 32}" y="${lampY + 3}" fill="#cbd5e1" font-size="7.5" font-weight="700">OPEN</text>`);
+  const lampY = isCompact ? (y + 24) : (y + 33);
+  const lampR = isCompact ? 4.5 : 6;
+  bits.push(`<circle cx="${x + (isCompact ? 14 : 22)}" cy="${lampY}" r="${lampR}" fill="${open ? '#22c55e' : '#14532d'}" stroke="#0f172a" stroke-width="1.2"/>`);
+  if (open) bits.push(`<circle cx="${x + (isCompact ? 14 : 22)}" cy="${lampY}" r="${lampR + 3}" fill="none" stroke="#22c55e" stroke-width="1.5" opacity="0.6"/>`);
+  bits.push(`<text x="${x + (isCompact ? 22 : 32)}" y="${lampY + 3}" fill="#cbd5e1" font-size="${isCompact ? 6.5 : 7.5}" font-weight="700">OPEN</text>`);
 
-  bits.push(`<circle cx="${x + w - 22}" cy="${lampY}" r="6" fill="${isShut ? '#dc2626' : '#7f1d1d'}" stroke="#0f172a" stroke-width="1.2"/>`);
-  if (isShut) bits.push(`<circle cx="${x + w - 22}" cy="${lampY}" r="9" fill="none" stroke="#dc2626" stroke-width="1.5" opacity="0.6"/>`);
-  bits.push(`<text x="${x + w - 32}" y="${lampY + 3}" text-anchor="end" fill="#cbd5e1" font-size="7.5" font-weight="700">CLOSE</text>`);
+  bits.push(`<circle cx="${x + w - (isCompact ? 14 : 22)}" cy="${lampY}" r="${lampR}" fill="${isShut ? '#dc2626' : '#7f1d1d'}" stroke="#0f172a" stroke-width="1.2"/>`);
+  if (isShut) bits.push(`<circle cx="${x + w - (isCompact ? 14 : 22)}" cy="${lampY}" r="${lampR + 3}" fill="none" stroke="#dc2626" stroke-width="1.5" opacity="0.6"/>`);
+  bits.push(`<text x="${x + w - (isCompact ? 22 : 32)}" y="${lampY + 3}" text-anchor="end" fill="#cbd5e1" font-size="${isCompact ? 6.5 : 7.5}" font-weight="700">CLOSE</text>`);
 
   // Heavy 4-way valve lever handle
-  const handleCy = y + h - 18;
+  const handleCy = isCompact ? (y + h - 14) : (y + h - 18);
+  const handleR = isCompact ? 14 : 20;
   const angle = isShut ? -40 : -140; // points right for CLOSE, points left for OPEN
-  const [hx, hy] = polar(cx, handleCy, 20, angle);
+  const [hx, hy] = polar(cx, handleCy, handleR, angle);
 
   bits.push(`<g class="bopsel" data-valve="${name}" style="cursor:pointer">
-    <circle cx="${cx}" cy="${handleCy}" r="22" fill="transparent"/>
+    <circle cx="${cx}" cy="${handleCy}" r="${handleR + 2}" fill="transparent"/>
     <!-- Handle slot -->
-    <path d="M ${cx - 20} ${handleCy - 4} A 20 20 0 0 1 ${cx + 20} ${handleCy - 4}" fill="none" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
-    <path d="M ${cx - 20} ${handleCy - 4} A 20 20 0 0 1 ${cx + 20} ${handleCy - 4}" fill="none" stroke="#334155" stroke-width="3" stroke-linecap="round"/>
+    <path d="M ${cx - handleR} ${handleCy - 4} A ${handleR} ${handleR} 0 0 1 ${cx + handleR} ${handleCy - 4}" fill="none" stroke="#0f172a" stroke-width="${isCompact ? 4.5 : 6}" stroke-linecap="round"/>
+    <path d="M ${cx - handleR} ${handleCy - 4} A ${handleR} ${handleR} 0 0 1 ${cx + handleR} ${handleCy - 4}" fill="none" stroke="#334155" stroke-width="${isCompact ? 2 : 3}" stroke-linecap="round"/>
     <!-- Handle lever -->
-    <line x1="${cx}" y1="${handleCy}" x2="${hx}" y2="${hy}" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
-    <line x1="${cx}" y1="${handleCy}" x2="${hx}" y2="${hy}" stroke="#cbd5e1" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="${cx}" y1="${handleCy}" x2="${hx}" y2="${hy}" stroke="#0f172a" stroke-width="${isCompact ? 4.5 : 6}" stroke-linecap="round"/>
+    <line x1="${cx}" y1="${handleCy}" x2="${hx}" y2="${hy}" stroke="#cbd5e1" stroke-width="${isCompact ? 2.5 : 3.5}" stroke-linecap="round"/>
     <!-- Handle ball knob -->
-    <circle cx="${hx}" cy="${hy}" r="5" fill="${isShear ? '#dc2626' : '#64748b'}" stroke="#0f172a" stroke-width="1.5"/>
+    <circle cx="${hx}" cy="${hy}" r="${isCompact ? 4 : 5}" fill="${isShear ? '#dc2626' : '#64748b'}" stroke="#0f172a" stroke-width="1.5"/>
     <!-- Center pivot nut -->
-    <circle cx="${cx}" cy="${handleCy}" r="7" fill="#1e293b" stroke="#0f172a" stroke-width="1.5"/>
-    <circle cx="${cx}" cy="${handleCy}" r="2.5" fill="#cbd5e1"/>
+    <circle cx="${cx}" cy="${handleCy}" r="${isCompact ? 5 : 7}" fill="#1e293b" stroke="#0f172a" stroke-width="1.5"/>
+    <circle cx="${cx}" cy="${handleCy}" r="${isCompact ? 2 : 2.5}" fill="#cbd5e1"/>
     ${isShear ? `<rect x="${cx + 8}" y="${handleCy - 14}" width="16" height="20" rx="2" fill="#ef4444" stroke="#991b1b" opacity="0.85"/>
       <text x="${cx + 16}" y="${handleCy}" text-anchor="middle" fill="#fff" font-size="5.5" font-weight="700">GUARD</text>` : ""}
     <title>${label} — ${isShut ? 'CLOSED' : 'OPEN'}. Click to toggle lever.</title>
@@ -2726,11 +2749,11 @@ function drawSurfaceBop() {
   // Mud Cross Wing Outlets at bottom
   // Left Wing: Choke Line HCR
   bits.push(`<line x1="345" y1="500" x2="250" y2="500" stroke="#b8322c" stroke-width="10"/>`);
-  bits.push(renderKoomeyModule(240, 485, 95, 42, "choke_line_valve", "CHOKE HCR", valveState("choke_line_valve")));
+  bits.push(renderKoomeyModule(240, 474, 95, 52, "choke_line_valve", "CHOKE HCR", valveState("choke_line_valve")));
 
   // Right Wing: Kill Line HCR
   bits.push(`<line x1="535" y1="500" x2="630" y2="500" stroke="#b8322c" stroke-width="10"/>`);
-  bits.push(renderKoomeyModule(545, 485, 95, 42, "kill_line_valve", "KILL HCR", valveState("kill_line_valve")));
+  bits.push(renderKoomeyModule(545, 474, 95, 52, "kill_line_valve", "KILL HCR", valveState("kill_line_valve")));
 
   // Wellhead Base at bottom center
   bits.push(`<rect x="410" y="482" width="60" height="22" rx="2" fill="#374151" stroke="#0f172a" stroke-width="1.5"/>`);
@@ -3110,10 +3133,10 @@ function drawPitSchematic() {
     // Top Header Ribbon
     `<rect x="18" y="16" width="884" height="28" rx="3" fill="#0f172a" stroke="#334155" stroke-width="1"/>`,
     `<text x="32" y="34" fill="#38bdf8" font-size="10.5" font-weight="700" letter-spacing="0.08em" font-family="system-ui, sans-serif">ACTIVE MUD CIRCULATION SYSTEM &bull; CALIBRATED TRIP TANK &bull; PVT MONITOR</text>`,
-    `<circle cx="750" cy="30" r="4.5" fill="#22c55e"/>`,
-    `<text x="760" y="34" fill="#cbd5e1" font-size="9" font-weight="600">PVT TOTALIZER: ACTIVE</text>`,
-    `<circle cx="855" cy="30" r="4.5" fill="${ttOpen ? '#22c55e' : '#64748b'}"/>`,
-    `<text x="865" y="34" fill="${ttOpen ? '#86efac' : '#94a3b8'}" font-size="9" font-weight="600">TRIP VALVE: ${ttOpen ? 'OPEN' : 'SHUT'}</text>`
+    `<circle cx="620" cy="30" r="4.5" fill="#22c55e"/>`,
+    `<text x="630" y="34" fill="#cbd5e1" font-size="9" font-weight="600">PVT TOTALIZER: ACTIVE</text>`,
+    `<circle cx="770" cy="30" r="4.5" fill="${ttOpen ? '#22c55e' : '#64748b'}"/>`,
+    `<text x="780" y="34" fill="${ttOpen ? '#86efac' : '#94a3b8'}" font-size="9" font-weight="600">TRIP VALVE: ${ttOpen ? 'OPEN' : 'SHUT'}</text>`
   ];
 
   // --- TANK 1: ACTIVE SUCTION PIT (x = 25, y = 60, w = 205, h = 260) ---
@@ -3304,8 +3327,9 @@ function drawLineup(valves) {
   if (!valves) return;
   lineupCache = valves;
   const bopHost = $("bop-list"), valveHost = $("valve-list");
-  if (!bopHost || !valveHost) return;
-  bopHost.innerHTML = ""; valveHost.innerHTML = "";
+  if (!bopHost && !valveHost) return;
+  if (bopHost) bopHost.innerHTML = "";
+  if (valveHost) valveHost.innerHTML = "";
   valves.forEach(v => {
     const row = document.createElement("div");
     row.className = "valve";
@@ -3316,7 +3340,8 @@ function drawLineup(valves) {
     b.className = v.is_bop ? (open ? "" : "danger") : (open ? "on" : "");
     b.onclick = () => toggleValve(v.name);
     row.appendChild(b);
-    (v.is_bop ? bopHost : valveHost).appendChild(row);
+    const targetHost = v.is_bop ? bopHost : valveHost;
+    if (targetHost) targetHost.appendChild(row);
   });
 }
 
@@ -4875,6 +4900,13 @@ async function init() {
     switchScreen(screenParam);
   }
 
+  const viewParam = urlParams.get("view");
+  if (viewParam === "subsea" || viewParam === "surface") {
+    bopViewMode = viewParam;
+    updateBopToggleBtns();
+    if (screen === "bop") drawBopPanel();
+  }
+
   if (sessionParam) {
     try {
       const snap = await api(`/api/sessions/${sessionParam}`);
@@ -4887,6 +4919,7 @@ async function init() {
         if ($("scenario")) $("scenario").value = snap.scenario.key;
       }
       loadSheet();
+      redraw();
       setInterval(poll, 250);
       return;
     } catch (e) {
@@ -4894,6 +4927,7 @@ async function init() {
     }
   }
   await start();
+  redraw();
   setInterval(poll, 250);
 }
 
