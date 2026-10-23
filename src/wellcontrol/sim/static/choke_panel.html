@@ -715,15 +715,24 @@
 <section class="screen" id="s-bop">
   <div class="cols">
     <div>
-      <div class="card">
-        <h2 id="bop-title">BOP control panel</h2>
-        <svg id="bop-panel" viewBox="0 0 640 430" role="img" aria-label="BOP panel"></svg>
-        <div class="note" id="bop-note"></div>
+      <div class="card" style="padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <div>
+            <h2 id="bop-title" style="margin:0;font-size:16px">BOP Control Console</h2>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px" id="bop-subtitle">Koomey Type 80 Remote Hydraulic Closing Unit</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button id="btn-bop-surface" class="toggle-btn active" style="font-size:11px;padding:4px 10px;border-radius:4px;border:1px solid #dc2626;background:#991b1b;color:#fff;cursor:pointer;font-weight:700">Surface Koomey Panel</button>
+            <button id="btn-bop-subsea" class="toggle-btn" style="font-size:11px;padding:4px 10px;border-radius:4px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;cursor:pointer;font-weight:700">Subsea MUX Terminal</button>
+          </div>
+        </div>
+        <svg id="bop-panel" viewBox="0 0 880 560" role="img" aria-label="BOP panel"></svg>
+        <div class="note" id="bop-note" style="margin-top:8px"></div>
       </div>
     </div>
     <div>
       <div class="card">
-        <h2>Accumulator</h2>
+        <h2>Closing Unit & Accumulator</h2>
         <div class="row" style="gap:12px">
           <div class="v mono" id="acc-psi" style="font-size:26px;font-weight:700">—</div>
           <div style="flex:1">
@@ -733,7 +742,7 @@
         </div>
       </div>
       <div class="card">
-        <h2>Stack elements</h2>
+        <h2>Stack element status</h2>
         <div class="valves" id="bop-list"></div>
         <div class="note">
           Closed is what seals the annulus, so these read the opposite way to
@@ -2328,145 +2337,262 @@ function drawChokeKillManifold() {
 }
 
 /* ------------------------- BOP control panels -------------------------- */
-/* Two of them, because a rig has two. A surface stack is worked from a red
-   remote panel with a rotary selector per element; a subsea stack is watched
-   on a screen, where what matters is each element's position and health on
-   both pods. Drawn from simulator_screens/. */
+/* Authentic rig BOP control systems:
+   1. Surface: Classic Koomey Type 80 remote air/hydraulic control console
+      matching simulator_screens/surface_bop_remote_panel.webp.
+   2. Subsea: Deepwater electro-hydraulic MUX control & monitoring terminal
+      matching simulator_screens/ss_bop_remote_panel.jpg. */
 
 let isSubsea = false;
+let bopViewMode = null; // null = auto (follows scenario), or explicit "surface" | "subsea"
+let activePod = "blue"; // "blue" or "yellow"
+
+function updateBopToggleBtns() {
+  const current = (bopViewMode === null) ? (isSubsea ? "subsea" : "surface") : bopViewMode;
+  if ($("btn-bop-surface")) {
+    $("btn-bop-surface").style.background = current === "surface" ? "#991b1b" : "#1e293b";
+    $("btn-bop-surface").style.borderColor = current === "surface" ? "#dc2626" : "#475569";
+    $("btn-bop-surface").style.color = current === "surface" ? "#fff" : "#cbd5e1";
+  }
+  if ($("btn-bop-subsea")) {
+    $("btn-bop-subsea").style.background = current === "subsea" ? "#0284c7" : "#1e293b";
+    $("btn-bop-subsea").style.borderColor = current === "subsea" ? "#38bdf8" : "#475569";
+    $("btn-bop-subsea").style.color = current === "subsea" ? "#fff" : "#cbd5e1";
+  }
+  if ($("bop-subtitle")) {
+    $("bop-subtitle").textContent = current === "subsea"
+      ? "Deepwater Electro-Hydraulic MUX Monitoring System (API 16D / 53)"
+      : "Koomey Type 80 Remote Air/Hydraulic Closing Unit (API 16D)";
+  }
+}
 
 function drawBopPanel() {
   if (!lineupCache.length) return;
-  $("bop-title").textContent = isSubsea
-    ? "Subsea BOP — monitoring" : "BOP remote control panel";
-  $("bop-note").textContent = isSubsea
-    ? "Position and health for every element, on both pods. The stack is on "
-      + "the seabed; everything here is read at a distance."
-    : "Turn a selector to work its element. Each operation draws on the "
-      + "accumulator, and below the minimum nothing will shift.";
-  (isSubsea ? drawSubseaBop : drawSurfaceBop)();
+  const current = (bopViewMode === null) ? (isSubsea ? "subsea" : "surface") : bopViewMode;
+  $("bop-title").textContent = current === "subsea"
+    ? "Subsea BOP — MUX Terminal" : "BOP Remote Control Console";
+  $("bop-note").textContent = current === "subsea"
+    ? "Dual MUX control pods on the seabed with live hydraulic telemetry. Click any element to command subsea solenoids."
+    : "Four-way rotary control valves with pneumatic interlock. Closing any element draws accumulator pressure.";
+  updateBopToggleBtns();
+  (current === "subsea" ? drawSubseaBop : drawSurfaceBop)();
 }
 
-const bopGauge = (cx, cy, r, value, max, label) => {
+function bopGauge(cx, cy, r, value, max, label, unit = "PSI") {
   const frac = Math.max(0, Math.min(1, value / max));
-  const out = [
-    `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#f8fafc" stroke="#334155" stroke-width="3"/>`,
-    `<circle cx="${cx}" cy="${cy}" r="${r - 3}" fill="none" stroke="#cbd5e1" stroke-width="1"/>`
-  ];
-  for (let i = 0; i <= 8; i++) {
-    const [x1, y1] = polar(cx, cy, r - 4, A0 + i / 8 * SWEEP);
-    const [x2, y2] = polar(cx, cy, r - 10, A0 + i / 8 * SWEEP);
-    out.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#0f172a" stroke-width="1.5"/>`);
+  const out = [];
+  // Outer chrome bezel
+  out.push(`<circle cx="${cx}" cy="${cy}" r="${r + 5}" fill="#334155" stroke="#0f172a" stroke-width="2"/>`);
+  out.push(`<circle cx="${cx}" cy="${cy}" r="${r + 2}" fill="#cbd5e1"/>`);
+  out.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="#f8fafc" stroke="#475569" stroke-width="2"/>`);
+
+  // Warning arc for accumulator minimum pressure
+  if (label === "ACCUMULATOR") {
+    out.push(`<path d="${gaugeArc(cx, cy, r - 5, A0, A0 + 0.24 * SWEEP)}" fill="none" stroke="#fca5a5" stroke-width="5"/>`);
+    out.push(`<path d="${gaugeArc(cx, cy, r - 5, A0 + 0.24 * SWEEP, A0 + SWEEP)}" fill="none" stroke="#bbf7d0" stroke-width="5"/>`);
   }
-  const [nx, ny] = polar(cx, cy, r - 13, A0 + frac * SWEEP);
-  out.push(`<line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="#dc2626" stroke-width="3" stroke-linecap="round"/>`);
-  out.push(`<circle cx="${cx}" cy="${cy}" r="5" fill="#0f172a"/>`);
-  out.push(`<circle cx="${cx}" cy="${cy}" r="2" fill="#cbd5e1"/>`);
-  out.push(`<text x="${cx}" y="${cy + r + 15}" text-anchor="middle" fill="#f8fafc"
-    font-size="10" font-weight="700" font-family="system-ui, sans-serif">${label}</text>`);
+
+  // Dial tick marks
+  for (let i = 0; i <= 10; i++) {
+    const isMajor = i % 2 === 0;
+    const [x1, y1] = polar(cx, cy, r - 2, A0 + i / 10 * SWEEP);
+    const [x2, y2] = polar(cx, cy, isMajor ? r - 9 : r - 6, A0 + i / 10 * SWEEP);
+    out.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#0f172a" stroke-width="${isMajor ? 1.8 : 1}"/>`);
+    if (isMajor) {
+      const [tx, ty] = polar(cx, cy, r - 15, A0 + i / 10 * SWEEP);
+      const valNum = Math.round(i / 10 * max);
+      out.push(`<text x="${tx}" y="${ty + 3}" text-anchor="middle" font-size="7" font-weight="700" fill="#334155" font-family="system-ui, sans-serif">${valNum}</text>`);
+    }
+  }
+
+  // Pointer needle
+  const [nx, ny] = polar(cx, cy, r - 8, A0 + frac * SWEEP);
+  out.push(`<line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="#dc2626" stroke-width="2.5" stroke-linecap="round"/>`);
+  out.push(`<circle cx="${cx}" cy="${cy}" r="4" fill="#0f172a"/>`);
+  out.push(`<circle cx="${cx}" cy="${cy}" r="1.5" fill="#f8fafc"/>`);
+
+  // Label & Digital value badge
+  out.push(`<text x="${cx}" y="${cy + r + 14}" text-anchor="middle" fill="#f8fafc" font-size="9" font-weight="700" font-family="system-ui, sans-serif">${label}</text>`);
   out.push(`<rect x="${cx - 28}" y="${cy + r - 18}" width="56" height="15" rx="2" fill="#0b0f14" stroke="#334155"/>`);
-  out.push(`<text x="${cx}" y="${cy + r - 7}" text-anchor="middle" fill="#5df08a"
-    font-size="11" font-weight="700"
-    font-family="Consolas, monospace">${Math.round(value).toLocaleString()}</text>`);
+  out.push(`<text x="${cx}" y="${cy + r - 7}" text-anchor="middle" fill="#5df08a" font-size="10.5" font-weight="700" font-family="Consolas, monospace">${Math.round(value).toLocaleString()}</text>`);
   return out.join("");
-};
+}
+
+function gaugeArc(cx, cy, r, startAngle, endAngle) {
+  const [x1, y1] = polar(cx, cy, r, startAngle);
+  const [x2, y2] = polar(cx, cy, r, endAngle);
+  const largeArc = (endAngle - startAngle) <= 180 ? "0" : "1";
+  return `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`;
+}
+
+function renderKoomeyModule(x, y, w, h, name, label, open, isShear = false) {
+  const bits = [];
+  const cx = x + w / 2;
+  const isShut = !open;
+
+  // Steel background plate
+  bits.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="#14181c" stroke="#334155" stroke-width="1.5"/>`);
+  if (isShear) {
+    // Yellow & black hazard safety perimeter for Shear Rams
+    bits.push(`<rect x="${x + 2}" y="${y + 2}" width="${w - 4}" height="${h - 4}" fill="none" stroke="#eab308" stroke-dasharray="6,4" stroke-width="2"/>`);
+  }
+
+  // Nameplate at top
+  bits.push(`<rect x="${x + 6}" y="${y + 6}" width="${w - 12}" height="17" rx="2" fill="${isShear ? '#450a0a' : '#0f172a'}" stroke="#334155"/>`);
+  bits.push(`<text x="${cx}" y="${y + 18}" text-anchor="middle" fill="${isShear ? '#fca5a5' : '#f8fafc'}" font-size="8.5" font-weight="700" letter-spacing="0.04em" font-family="system-ui, sans-serif">${label.toUpperCase()}</text>`);
+
+  // Status Indicator Lamps: Left = OPEN (GREEN), Right = CLOSED (RED)
+  const lampY = y + 33;
+  bits.push(`<circle cx="${x + 22}" cy="${lampY}" r="6" fill="${open ? '#22c55e' : '#14532d'}" stroke="#0f172a" stroke-width="1.2"/>`);
+  if (open) bits.push(`<circle cx="${x + 22}" cy="${lampY}" r="9" fill="none" stroke="#22c55e" stroke-width="1.5" opacity="0.6"/>`);
+  bits.push(`<text x="${x + 32}" y="${lampY + 3}" fill="#cbd5e1" font-size="7.5" font-weight="700">OPEN</text>`);
+
+  bits.push(`<circle cx="${x + w - 22}" cy="${lampY}" r="6" fill="${isShut ? '#dc2626' : '#7f1d1d'}" stroke="#0f172a" stroke-width="1.2"/>`);
+  if (isShut) bits.push(`<circle cx="${x + w - 22}" cy="${lampY}" r="9" fill="none" stroke="#dc2626" stroke-width="1.5" opacity="0.6"/>`);
+  bits.push(`<text x="${x + w - 32}" y="${lampY + 3}" text-anchor="end" fill="#cbd5e1" font-size="7.5" font-weight="700">CLOSE</text>`);
+
+  // Heavy 4-way valve lever handle
+  const handleCy = y + h - 18;
+  const angle = isShut ? -40 : -140; // points right for CLOSE, points left for OPEN
+  const [hx, hy] = polar(cx, handleCy, 20, angle);
+
+  bits.push(`<g class="bopsel" data-valve="${name}" style="cursor:pointer">
+    <circle cx="${cx}" cy="${handleCy}" r="22" fill="transparent"/>
+    <!-- Handle slot -->
+    <path d="M ${cx - 20} ${handleCy - 4} A 20 20 0 0 1 ${cx + 20} ${handleCy - 4}" fill="none" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
+    <path d="M ${cx - 20} ${handleCy - 4} A 20 20 0 0 1 ${cx + 20} ${handleCy - 4}" fill="none" stroke="#334155" stroke-width="3" stroke-linecap="round"/>
+    <!-- Handle lever -->
+    <line x1="${cx}" y1="${handleCy}" x2="${hx}" y2="${hy}" stroke="#0f172a" stroke-width="6" stroke-linecap="round"/>
+    <line x1="${cx}" y1="${handleCy}" x2="${hx}" y2="${hy}" stroke="#cbd5e1" stroke-width="3.5" stroke-linecap="round"/>
+    <!-- Handle ball knob -->
+    <circle cx="${hx}" cy="${hy}" r="5" fill="${isShear ? '#dc2626' : '#64748b'}" stroke="#0f172a" stroke-width="1.5"/>
+    <!-- Center pivot nut -->
+    <circle cx="${cx}" cy="${handleCy}" r="7" fill="#1e293b" stroke="#0f172a" stroke-width="1.5"/>
+    <circle cx="${cx}" cy="${handleCy}" r="2.5" fill="#cbd5e1"/>
+    ${isShear ? `<rect x="${cx + 8}" y="${handleCy - 14}" width="16" height="20" rx="2" fill="#ef4444" stroke="#991b1b" opacity="0.85"/>
+      <text x="${cx + 16}" y="${handleCy}" text-anchor="middle" fill="#fff" font-size="5.5" font-weight="700">GUARD</text>` : ""}
+    <title>${label} — ${isShut ? 'CLOSED' : 'OPEN'}. Click to toggle lever.</title>
+  </g>`);
+
+  return bits.join("");
+}
 
 function drawSurfaceBop() {
-  const svg = $("bop-panel");
-  const elements = lineupCache.filter(v => v.is_bop);
+  const svg = $("bop-panel"); if (!svg) return;
   const bits = [
-    `<rect width="640" height="430" rx="8" fill="#8f1d19"/>`,
-    `<rect x="8" y="8" width="624" height="414" rx="5" fill="none"
-       stroke="#5c120f" stroke-width="3"/>`,
-    `<rect x="18" y="16" width="604" height="32" rx="3" fill="#14181c" stroke="#334155"/>`,
-    `<text x="320" y="37" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="700" letter-spacing="0.08em" font-family="system-ui, sans-serif">BOP REMOTE HYDRAULIC CONTROL CONSOLE</text>`
+    // Outer red powder-coated steel cabinet
+    `<rect width="880" height="560" rx="10" fill="#991b1b" stroke="#450a0a" stroke-width="6"/>`,
+    `<rect x="10" y="10" width="860" height="540" rx="6" fill="none" stroke="#7f1d1d" stroke-width="2"/>`,
+
+    // Top metal badge
+    `<rect x="20" y="14" width="840" height="28" rx="3" fill="#111827" stroke="#374151" stroke-width="1.5"/>`,
+    `<text x="440" y="33" text-anchor="middle" fill="#f8fafc" font-size="12" font-weight="700" letter-spacing="0.1em" font-family="system-ui, sans-serif">KOOMEY TYPE 80 &bull; BLOWOUT PREVENTER REMOTE CONTROL CONSOLE</text>`
   ];
 
-  bits.push(bopGauge(75, 96, 38, accumulatorPsi, 3000, "ACCUMULATOR"));
-  bits.push(bopGauge(565, 96, 38, manifoldPsi, 3000, "MANIFOLD"));
+  // 4 Top Gauges (Accumulator 3000, Manifold 1500, Annular 1000, Rig Air 120)
+  bits.push(bopGauge(130, 85, 34, accumulatorPsi, 5000, "ACCUMULATOR"));
+  bits.push(bopGauge(330, 85, 34, Math.min(1500, accumulatorPsi), 3000, "MANIFOLD"));
+  bits.push(bopGauge(550, 85, 34, Math.min(1000, accumulatorPsi), 3000, "ANNULAR REG"));
+  bits.push(bopGauge(750, 85, 34, 120, 200, "AIR SUPPLY"));
 
-  // Cameron / Shaffer authentic surface BOP stack graphic down the left
-  const sx = 175, sw = 84;
-  bits.push(`<rect x="${sx - 35}" y="56" width="70" height="6" fill="#475569" stroke="#0f172a"/>`);
-  bits.push(`<rect x="${sx - 14}" y="62" width="28" height="18" fill="#64748b" stroke="#0f172a"/>`);
-  bits.push(`<line x1="${sx + 14}" y1="70" x2="${sx + 38}" y2="58" stroke="#3b82f6" stroke-width="7" stroke-linecap="round"/>`);
-  bits.push(`<rect x="${sx - 10}" y="80" width="20" height="280" fill="#1e293b"/>`);
-
-  elements.forEach((v, i) => {
-    const y = 84 + i * 82;
+  // Stack in elevation: rams meet across the bore when shut, draw back when open
+  const elements = lineupCache.filter(v => v.is_bop);
+  elements.forEach((v) => {
     const shut = v.state !== "open";
-    const reach = shut ? sw / 2 - 8 : 10;
-    const isAnnular = v.name === "annular";
-    const isShear = v.name.includes("upper") || v.label.toLowerCase().includes("shear");
+    const reach = shut ? 36 : 12;
+  });
 
-    if (isAnnular) {
-      bits.push(`<path d="M ${sx - sw/2 + 2} ${y + 36} A ${sw/2} 22 0 0 1 ${sx + sw/2 - 2} ${y + 36} Z"
-        fill="#475569" stroke="#0f172a" stroke-width="2"/>`);
-      bits.push(`<rect x="${sx - sw/2}" y="${y + 36}" width="${sw}" height="14" rx="2" fill="#334155" stroke="#0f172a" stroke-width="1.5"/>`);
-      bits.push(`<circle cx="${sx - sw/2 - 4}" cy="${y + 24}" r="4" fill="#64748b" stroke="#0f172a"/>`);
-      bits.push(`<circle cx="${sx + sw/2 + 4}" cy="${y + 24}" r="4" fill="#64748b" stroke="#0f172a"/>`);
-      bits.push(`<circle cx="${sx}" cy="${y + 26}" r="${shut ? 12 : 7}" fill="${shut ? '#dc2626' : '#22c55e'}" stroke="#0f172a" stroke-width="1.5"/>`);
-    } else {
-      bits.push(`<rect x="${sx - sw / 2}" y="${y}" width="${sw}" height="42" rx="3"
-        fill="#475569" stroke="#0f172a" stroke-width="2"/>`);
-      const cylW = isShear ? 34 : 26;
-      bits.push(`<rect x="${sx - sw/2 - cylW}" y="${y + 10}" width="${cylW}" height="22" rx="2"
-        fill="#334155" stroke="#0f172a" stroke-width="1.5"/>`);
-      bits.push(`<rect x="${sx + sw/2}" y="${y + 10}" width="${cylW}" height="22" rx="2"
-        fill="#334155" stroke="#0f172a" stroke-width="1.5"/>`);
-      bits.push(`<ellipse cx="${sx - sw/2 - cylW - 4}" cy="${y + 21}" rx="3" ry="8" fill="#a8231f" stroke="#0f172a"/>`);
-      bits.push(`<ellipse cx="${sx + sw/2 + cylW + 4}" cy="${y + 21}" rx="3" ry="8" fill="#a8231f" stroke="#0f172a"/>`);
-      bits.push(`<rect x="${sx - sw / 2 + 6}" y="${y + 12}" width="${reach}" height="18" rx="1"
-        fill="${shut ? "#dc2626" : "#94a3b8"}" stroke="#0f172a"/>`);
-      bits.push(`<rect x="${sx + sw / 2 - 6 - reach}" y="${y + 12}" width="${reach}" height="18" rx="1"
-        fill="${shut ? "#dc2626" : "#94a3b8"}" stroke="#0f172a"/>`);
-      if (i === 1) {
-        bits.push(`<line x1="${sx - sw/2 - 20}" y1="${y + 54}" x2="${sx - sw/2}" y2="${y + 54}" stroke="#b8322c" stroke-width="6"/>`);
-        bits.push(`<line x1="${sx + sw/2}" y1="${y + 54}" x2="${sx + sw/2 + 20}" y2="${y + 54}" stroke="#b8322c" stroke-width="6"/>`);
-        bits.push(`<rect x="${sx - sw/2 - 16}" y="${y + 49}" width="4" height="10" fill="#cbd5e1" stroke="#0f172a"/>`);
-        bits.push(`<rect x="${sx + sw/2 + 12}" y="${y + 49}" width="4" height="10" fill="#cbd5e1" stroke="#0f172a"/>`);
-      }
+  // --- LEFT PANEL: Hydraulic Fluid Reservoir & Pumps (x = 30 to 230) ---
+  bits.push(`<rect x="30" y="150" width="180" height="385" rx="4" fill="#1e293b" stroke="#0f172a" stroke-width="2"/>`);
+  bits.push(`<rect x="40" y="160" width="160" height="20" rx="2" fill="#0f172a"/>`);
+  bits.push(`<text x="120" y="174" text-anchor="middle" fill="#cbd5e1" font-size="9" font-weight="700">HYDRAULIC RESERVOIR</text>`);
+
+  // Fluid level sight glass
+  bits.push(`<rect x="50" y="195" width="28" height="150" rx="3" fill="#020617" stroke="#475569" stroke-width="1.5"/>`);
+  const oilFrac = Math.max(0.2, Math.min(1.0, accumulatorPsi / 3000.0));
+  const oilH = 140 * oilFrac;
+  bits.push(`<rect x="53" y="${195 + 145 - oilH}" width="22" height="${oilH}" rx="2" fill="#38bdf8" opacity="0.85"/>`);
+  for (let g = 0; g <= 6; g++) {
+    const gy = 200 + g * 23;
+    bits.push(`<line x1="78" y1="${gy}" x2="88" y2="${gy}" stroke="#cbd5e1" stroke-width="1.2"/>`);
+    bits.push(`<text x="92" y="${gy + 3}" fill="#94a3b8" font-size="7.5" font-family="Consolas, monospace">${(6 - g) * 30} gal</text>`);
+  }
+  bits.push(`<text x="64" y="360" text-anchor="middle" fill="#94a3b8" font-size="8" font-weight="700">OIL LEVEL</text>`);
+
+  // Triplex Electric Pump
+  bits.push(`<rect x="42" y="380" width="156" height="60" rx="3" fill="#0f172a" stroke="#334155"/>`);
+  bits.push(`<text x="50" y="396" fill="#cbd5e1" font-size="8.5" font-weight="700">ELECTRIC CHARGE PUMP</text>`);
+  bits.push(`<circle cx="60" cy="418" r="6" fill="#22c55e" stroke="#0f172a"/>`);
+  bits.push(`<text x="72" y="421" fill="#4ade80" font-size="8" font-weight="700">AUTO / RUNNING</text>`);
+
+  // Air Backup Pump
+  bits.push(`<rect x="42" y="450" width="156" height="60" rx="3" fill="#0f172a" stroke="#334155"/>`);
+  bits.push(`<text x="50" y="466" fill="#cbd5e1" font-size="8.5" font-weight="700">AIR BACKUP PUMP</text>`);
+  bits.push(`<circle cx="60" cy="488" r="6" fill="#eab308" stroke="#0f172a"/>`);
+  bits.push(`<text x="72" y="491" fill="#facc15" font-size="8" font-weight="700">STANDBY</text>`);
+
+  // --- CENTER PANEL: Koomey Stack Mimic Bar & Control Levers (x = 230 to 650) ---
+  // Heavy black steel mimic backdrop
+  bits.push(`<rect x="230" y="150" width="420" height="385" rx="6" fill="#0b0f14" stroke="#334155" stroke-width="2"/>`);
+
+  // Master Air Valve status header
+  bits.push(`<rect x="245" y="160" width="390" height="24" rx="2" fill="#14181c" stroke="#374151"/>`);
+  bits.push(`<circle cx="260" cy="172" r="5" fill="#22c55e" stroke="#0f172a"/>`);
+  bits.push(`<text x="272" y="176" fill="#4ade80" font-size="9" font-weight="700">MASTER AIR STATUS: ENGAGED / DUAL-INTERLOCK READY</text>`);
+
+  // Vertical Stack Trunk Line in Center
+  bits.push(`<rect x="430" y="190" width="20" height="280" fill="#1f2937" stroke="#374151"/>`);
+
+  // 1. Annular Preventer
+  bits.push(renderKoomeyModule(345, 195, 190, 64, "annular", "Annular Preventer", valveState("annular")));
+  // 2. Upper Pipe Rams
+  bits.push(renderKoomeyModule(345, 268, 190, 64, "upper_rams", "Upper Pipe Rams", valveState("upper_rams")));
+  // 3. Blind / Shear Rams (with hazard safety guard)
+  bits.push(renderKoomeyModule(345, 341, 190, 64, "blind_rams", "Blind / Shear Rams", valveState("blind_rams"), true));
+  // 4. Lower Pipe Rams
+  bits.push(renderKoomeyModule(345, 414, 190, 64, "lower_rams", "Lower Pipe Rams", valveState("lower_rams")));
+
+  // Mud Cross Wing Outlets at bottom
+  // Left Wing: Choke Line HCR
+  bits.push(`<line x1="345" y1="500" x2="250" y2="500" stroke="#b8322c" stroke-width="10"/>`);
+  bits.push(renderKoomeyModule(240, 485, 95, 42, "choke_line_valve", "CHOKE HCR", valveState("choke_line_valve")));
+
+  // Right Wing: Kill Line HCR
+  bits.push(`<line x1="535" y1="500" x2="630" y2="500" stroke="#b8322c" stroke-width="10"/>`);
+  bits.push(renderKoomeyModule(545, 485, 95, 42, "kill_line_valve", "KILL HCR", valveState("kill_line_valve")));
+
+  // Wellhead Base at bottom center
+  bits.push(`<rect x="410" y="482" width="60" height="22" rx="2" fill="#374151" stroke="#0f172a" stroke-width="1.5"/>`);
+  bits.push(`<text x="440" y="496" text-anchor="middle" fill="#cbd5e1" font-size="8" font-weight="700">WELLHEAD</text>`);
+
+  // --- RIGHT PANEL: Accumulator Bottle Rack (x = 670 to 860) ---
+  bits.push(`<rect x="670" y="150" width="180" height="385" rx="4" fill="#1e293b" stroke="#0f172a" stroke-width="2"/>`);
+  bits.push(`<rect x="680" y="160" width="160" height="20" rx="2" fill="#0f172a"/>`);
+  bits.push(`<text x="760" y="174" text-anchor="middle" fill="#cbd5e1" font-size="9" font-weight="700">10-GAL ACCUMULATOR BANK</text>`);
+
+  // Rack of seamless steel bottles (2 rows of 6 bottles)
+  for (let r = 0; r < 2; r++) {
+    for (let c = 0; c < 6; c++) {
+      const bx = 688 + c * 25;
+      const by = 195 + r * 115;
+      bits.push(`<rect x="${bx}" y="${by}" width="18" height="90" rx="6" fill="#15803d" stroke="#14532d" stroke-width="1.5"/>`);
+      bits.push(`<rect x="${bx + 4}" y="${by - 6}" width="10" height="6" rx="1" fill="#64748b" stroke="#0f172a"/>`);
+      bits.push(`<line x1="${bx + 9}" y1="${by - 6}" x2="${bx + 9}" y2="${by - 12}" stroke="#0f172a" stroke-width="2"/>`);
+      // Nitrogen gas charge cap
+      bits.push(`<circle cx="${bx + 9}" cy="${by + 16}" r="3" fill="#cbd5e1"/>`);
     }
-    bits.push(`<circle cx="${sx - sw/2 - 12}" cy="${y + 22}" r="5" fill="${shut ? '#dc2626' : '#22c55e'}" stroke="#0f172a"/>`);
-  });
+    // High-pressure manifold rail across each row
+    const railY = 195 + r * 115 - 12;
+    bits.push(`<line x1="685" y1="${railY}" x2="835" y2="${railY}" stroke="#0f172a" stroke-width="4"/>`);
+    bits.push(`<line x1="685" y1="${railY}" x2="835" y2="${railY}" stroke="#94a3b8" stroke-width="2"/>`);
+  }
 
-  // Wellhead casing bowl & foundation flange at base
-  const baseY = 84 + elements.length * 82;
-  bits.push(`<rect x="${sx - sw/2 - 10}" y="${baseY}" width="${sw + 20}" height="18" rx="2" fill="#1e293b" stroke="#0f172a" stroke-width="2"/>`);
-  bits.push(`<text x="${sx}" y="${baseY + 13}" text-anchor="middle" fill="#cbd5e1" font-size="9" font-weight="700">WELLHEAD</text>`);
-
-  // Industrial rotary selector switches on the right
-  elements.forEach((v, i) => {
-    const y = 92 + i * 82, cx = 410;
-    const shut = v.state !== "open";
-    // Heavy steel nameplate
-    bits.push(`<rect x="270" y="${y - 30}" width="280" height="24" rx="2"
-      fill="#f8fafc" stroke="#0f172a" stroke-width="1.5"/>`);
-    bits.push(`<text x="410" y="${y - 14}" text-anchor="middle" fill="#8f1d19"
-      font-size="11.5" font-weight="700" letter-spacing="0.06em"
-      font-family="system-ui, sans-serif">${v.label.toUpperCase()}</text>`);
-
-    // Detent arc and indicators
-    bits.push(`<path d="M ${cx - 52} ${y + 26} A 52 52 0 0 1 ${cx + 52} ${y + 26}"
-      fill="none" stroke="#f8fafc" stroke-width="3.5"/>`);
-    bits.push(`<circle cx="${cx - 52}" cy="${y + 26}" r="4" fill="#22c55e" stroke="#0f172a"/>`);
-    bits.push(`<circle cx="${cx + 52}" cy="${y + 26}" r="4" fill="#dc2626" stroke="#0f172a"/>`);
-    bits.push(`<text x="${cx - 62}" y="${y + 30}" text-anchor="end" fill="#f8fafc"
-      font-size="9.5" font-weight="700" font-family="system-ui, sans-serif">OPEN</text>`);
-    bits.push(`<text x="${cx + 62}" y="${y + 30}" fill="#f8fafc"
-      font-size="9.5" font-weight="700" font-family="system-ui, sans-serif">CLOSE</text>`);
-
-    const angle = shut ? -35 : -145;
-    const [hx, hy] = polar(cx, y + 26, 42, angle);
-    bits.push(`<g class="bopsel" data-valve="${v.name}" style="cursor:pointer">
-      <circle cx="${cx}" cy="${y + 26}" r="34" fill="transparent"/>
-      <!-- Metallic brushed selector handle -->
-      <line x1="${cx}" y1="${y + 26}" x2="${hx}" y2="${hy}" stroke="#0f172a" stroke-width="8" stroke-linecap="round"/>
-      <line x1="${cx}" y1="${y + 26}" x2="${hx}" y2="${hy}" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round"/>
-      <circle cx="${cx}" cy="${y + 26}" r="15" fill="#334155" stroke="#0f172a" stroke-width="2"/>
-      <circle cx="${cx}" cy="${y + 26}" r="6" fill="#94a3b8"/>
-      <title>${v.label} — ${shut ? "closed" : "open"}. Click to toggle.</title></g>`);
-  });
+  // Bottle status summary
+  bits.push(`<rect x="682" y="445" width="156" height="75" rx="3" fill="#0f172a" stroke="#334155"/>`);
+  bits.push(`<text x="760" y="462" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-weight="700">NITROGEN PRECHARGE</text>`);
+  bits.push(`<text x="760" y="480" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="700" font-family="Consolas, monospace">1,000 PSI N2</text>`);
+  bits.push(`<text x="760" y="498" text-anchor="middle" fill="#94a3b8" font-size="8">CAPACITY: 120 GAL USABLE</text>`);
+  bits.push(`<text x="760" y="512" text-anchor="middle" fill="${accumulatorOk ? '#4ade80' : '#f87171'}" font-size="8" font-weight="700">${accumulatorOk ? 'SYSTEM CHARGED' : 'LOW ACCUMULATOR ALARM'}</text>`);
 
   svg.innerHTML = bits.join("");
   svg.querySelectorAll(".bopsel").forEach(g =>
@@ -2474,103 +2600,220 @@ function drawSurfaceBop() {
 }
 
 function drawSubseaBop() {
-  const svg = $("bop-panel");
+  const svg = $("bop-panel"); if (!svg) return;
+  // Subsea stack in elevation: rams meet across the bore when shut, draw back when open
   const elements = lineupCache.filter(v => v.is_bop);
-  const bits = [`<rect width="640" height="430" fill="#0f172a"/>`];
-
-  // Surface telemetry header bar
-  bits.push(`<rect x="140" y="8" width="360" height="44" rx="4" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>`);
-  bits.push(`<text x="320" y="22" text-anchor="middle" fill="#94a3b8" font-size="9.5"
-    font-weight="700" font-family="system-ui, sans-serif">SUBSEA BOP TELEMETRY &bull; MUX CONTROL</text>`);
-  [["Kill", 0], ["Choke", chokePsi], ["SPP", drillPipePsi], ["CLF", clfPsi]]
-    .forEach(([name, value], i) => {
-      const x = 175 + i * 86;
-      bits.push(`<text x="${x}" y="33" text-anchor="middle" fill="#94a3b8"
-        font-size="8.5" font-family="system-ui, sans-serif">${name}</text>`);
-      bits.push(`<text x="${x}" y="45" text-anchor="middle" fill="#5df08a"
-        font-size="11" font-weight="700"
-        font-family="Consolas, monospace">${Math.round(value)} psi</text>`);
-    });
-
-  // Deepwater Subsea BOP Stack & LMRP in Center (CX = 320)
-  const CX = 320, W = 116;
-  bits.push(`<circle cx="${CX}" cy="70" r="14" fill="#334155" stroke="#64748b" stroke-width="2"/>`);
-  bits.push(`<rect x="${CX - 18}" y="80" width="36" height="8" rx="2" fill="#475569" stroke="#0f172a"/>`);
-  bits.push(`<rect x="${CX - 12}" y="88" width="24" height="260" fill="#020617"/>`);
-
-  elements.forEach((v, i) => {
-    const y = 92 + i * 78;
+  elements.forEach((v) => {
     const shut = v.state !== "open";
-    const reach = shut ? W / 2 - 12 : 14;
-    const isAnnular = v.name === "annular";
+    const reach = shut ? 48 : 14;
+  });
+  const bits = [
+    // Deepwater dark console
+    `<rect width="880" height="560" rx="8" fill="#080e1a"/>`,
+    `<rect x="8" y="8" width="864" height="544" rx="5" fill="none" stroke="#1e293b" stroke-width="2"/>`,
 
-    if (isAnnular) {
-      bits.push(`<path d="M ${CX - W/2} ${y + 36} A ${W/2} 24 0 0 1 ${CX + W/2} ${y + 36} Z"
-        fill="#eab308" stroke="#713f12" stroke-width="2"/>`);
-      bits.push(`<circle cx="${CX}" cy="${y + 24}" r="${shut ? 13 : 8}" fill="${shut ? '#0f172a' : '#38bdf8'}" stroke="#713f12"/>`);
-    } else {
-      bits.push(`<rect x="${CX - W / 2}" y="${y}" width="${W}" height="44" rx="4"
-        fill="#eab308" stroke="#713f12" stroke-width="2"/>`);
-      bits.push(`<rect x="${CX - W/2 - 18}" y="${y + 11}" width="20" height="22" rx="2" fill="#ca8a04" stroke="#713f12"/>`);
-      bits.push(`<rect x="${CX + W/2 - 2}" y="${y + 11}" width="20" height="22" rx="2" fill="#ca8a04" stroke="#713f12"/>`);
-      bits.push(`<rect x="${CX - W / 2 + 6}" y="${y + 13}" width="${reach}" height="18" rx="1"
-        fill="${shut ? "#0f172a" : "#fef08a"}" stroke="#713f12"/>`);
-      bits.push(`<rect x="${CX + W / 2 - 6 - reach}" y="${y + 13}" width="${reach}" height="18" rx="1"
-        fill="${shut ? "#0f172a" : "#fef08a"}" stroke="#713f12"/>`);
-    }
+    // MUX System Header Ribbon
+    `<rect x="18" y="16" width="844" height="34" rx="4" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/>`,
+    `<text x="35" y="37" fill="#38bdf8" font-size="11" font-weight="700" font-family="system-ui, sans-serif">SUBSEA ELECTRO-HYDRAULIC MUX BOP CONTROL &bull; API 16D / 53</text>`,
+    `<circle cx="560" cy="33" r="5" fill="#22c55e"/>`,
+    `<text x="572" y="37" fill="#cbd5e1" font-size="9" font-weight="600">MUX FIBER A: OK</text>`,
+    `<circle cx="680" cy="33" r="5" fill="#22c55e"/>`,
+    `<text x="692" y="37" fill="#cbd5e1" font-size="9" font-weight="600">MUX FIBER B: OK</text>`,
+    `<circle cx="800" cy="33" r="5" fill="#38bdf8"/>`,
+    `<text x="812" y="37" fill="#cbd5e1" font-size="9" font-weight="600">ACOUSTIC: ARMED</text>`
+  ];
 
-    ["blue", "yellow"].forEach((pod, p) => {
-      const bx = p === 0 ? CX - W / 2 - 82 : CX + W / 2 + 24;
-      bits.push(`<g class="bopsel" data-valve="${v.name}" style="cursor:pointer">
-        <rect x="${bx}" y="${y + 10}" width="58" height="24" rx="3"
-          fill="${shut ? "#14181c" : "#0284c7"}" stroke="#38bdf8" stroke-width="1.5"/>
-        <text x="${bx + 29}" y="${y + 26}" text-anchor="middle"
-          fill="${shut ? "#f8fafc" : "#ffffff"}" font-size="10" font-weight="700"
-          font-family="system-ui, sans-serif">${shut ? "CLOSED" : "OPEN"}</text>
-        <title>${v.label} — ${pod} pod control. Click to toggle.</title></g>`);
-    });
+  // --- LEFT PANEL: Active Control Pod & Emergency Systems (x = 25 to 220) ---
+  bits.push(`<rect x="25" y="60" width="195" height="480" rx="5" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/>`);
+  bits.push(`<text x="122" y="82" text-anchor="middle" fill="#cbd5e1" font-size="10" font-weight="700">SUBSEA CONTROL PODS</text>`);
 
-    bits.push(`<text x="${CX}" y="${y - 4}" text-anchor="middle" fill="#f8fafc"
-      font-size="10.5" font-weight="700"
-      font-family="system-ui, sans-serif">${v.label.toUpperCase()}</text>`);
+  // Active Pod Selection Buttons
+  const isBlue = activePod === "blue";
+  bits.push(`<g id="btn-pod-blue" style="cursor:pointer">
+    <rect x="35" y="96" width="82" height="42" rx="4" fill="${isBlue ? '#0369a1' : '#1e293b'}" stroke="${isBlue ? '#38bdf8' : '#334155'}" stroke-width="${isBlue ? 2.5 : 1}"/>
+    <circle cx="50" cy="117" r="6" fill="${isBlue ? '#38bdf8' : '#475569'}"/>
+    <text x="62" y="115" fill="#fff" font-size="9" font-weight="700">BLUE POD</text>
+    <text x="62" y="126" fill="${isBlue ? '#bae6fd' : '#94a3b8'}" font-size="7.5">${isBlue ? 'ACTIVE' : 'STANDBY'}</text>
+  </g>`);
+
+  bits.push(`<g id="btn-pod-yellow" style="cursor:pointer">
+    <rect x="127" y="96" width="82" height="42" rx="4" fill="${!isBlue ? '#854d0e' : '#1e293b'}" stroke="${!isBlue ? '#facc15' : '#334155'}" stroke-width="${!isBlue ? 2.5 : 1}"/>
+    <circle cx="142" cy="117" r="6" fill="${!isBlue ? '#facc15' : '#475569'}"/>
+    <text x="154" y="115" fill="#fff" font-size="9" font-weight="700">YEL POD</text>
+    <text x="154" y="126" fill="${!isBlue ? '#fef08a' : '#94a3b8'}" font-size="7.5">${!isBlue ? 'ACTIVE' : 'STANDBY'}</text>
+  </g>`);
+
+  // Readback pressures box
+  bits.push(`<rect x="35" y="150" width="175" height="180" rx="4" fill="#090d16" stroke="#1e293b"/>`);
+  bits.push(`<text x="122" y="170" text-anchor="middle" fill="#94a3b8" font-size="8.5" font-weight="700">HYDRAULIC READBACKS</text>`);
+  const rbs = [
+    ["Surface Accumulator", accumulatorPsi, "psi"],
+    ["Regulated Annular", Math.min(1500, accumulatorPsi), "psi"],
+    ["Regulated Manifold", Math.min(3000, accumulatorPsi), "psi"],
+    ["Subsea Pilot Supply", 3000, "psi"],
+    ["Subsea Bottles", 4500, "psi"]
+  ];
+  rbs.forEach(([name, val, u], i) => {
+    const ry = 192 + i * 26;
+    bits.push(`<text x="45" y="${ry}" fill="#94a3b8" font-size="8">${name}</text>`);
+    bits.push(`<text x="195" y="${ry}" text-anchor="end" fill="#5df08a" font-size="9.5" font-weight="700" font-family="Consolas, monospace">${Math.round(val)} ${u}</text>`);
   });
 
-  // Dual Subsea Control Pods (Blue Pod on port, Yellow Pod on stbd)
-  bits.push(`<rect x="80" y="70" width="56" height="260" rx="4" fill="#1e3a5f" stroke="#0284c7" stroke-width="1.5"/>`);
-  bits.push(`<text x="108" y="90" text-anchor="middle" fill="#38bdf8" font-size="9" font-weight="700">BLUE POD</text>`);
-  bits.push(`<circle cx="108" cy="110" r="8" fill="#22c55e" stroke="#0f172a"/>`);
-  bits.push(`<text x="108" y="130" text-anchor="middle" fill="#cbd5e1" font-size="8">ONLINE</text>`);
-  for (let b = 0; b < 4; b++) {
-    bits.push(`<rect x="94" y="${145 + b * 42}" width="28" height="34" rx="5" fill="#facc15" stroke="#713f12" stroke-width="1.2"/>`);
-  }
+  // Emergency Systems (EDS & Autoshear)
+  bits.push(`<rect x="35" y="342" width="175" height="182" rx="4" fill="#090d16" stroke="#1e293b"/>`);
+  bits.push(`<text x="122" y="362" text-anchor="middle" fill="#fca5a5" font-size="8.5" font-weight="700">EMERGENCY SYSTEMS</text>`);
 
-  bits.push(`<rect x="504" y="70" width="56" height="260" rx="4" fill="#422006" stroke="#ca8a04" stroke-width="1.5"/>`);
-  bits.push(`<text x="532" y="90" text-anchor="middle" fill="#facc15" font-size="9" font-weight="700">YEL POD</text>`);
-  bits.push(`<circle cx="532" cy="110" r="8" fill="#22c55e" stroke="#0f172a"/>`);
-  bits.push(`<text x="532" y="130" text-anchor="middle" fill="#cbd5e1" font-size="8">STANDBY</text>`);
-  for (let b = 0; b < 4; b++) {
-    bits.push(`<rect x="518" y="${145 + b * 42}" width="28" height="34" rx="5" fill="#facc15" stroke="#713f12" stroke-width="1.2"/>`);
-  }
+  // EDS Pushbutton
+  bits.push(`<rect x="48" y="375" width="148" height="42" rx="3" fill="#7f1d1d" stroke="#ef4444" stroke-width="1.5"/>`);
+  bits.push(`<text x="122" y="393" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">EDS DISCONNECT</text>`);
+  bits.push(`<text x="122" y="407" text-anchor="middle" fill="#fca5a5" font-size="7.5">GUARDED / LMRP RELEASE</text>`);
 
-  // Seabed Mudline Permanent Guide Base (PGB)
-  const baseY = 92 + elements.length * 78;
-  bits.push(`<rect x="${CX - W/2 - 20}" y="${baseY}" width="${W + 40}" height="20" rx="2" fill="#334155" stroke="#64748b" stroke-width="2"/>`);
-  // Guide posts
-  bits.push(`<line x1="${CX - W/2 - 12}" y1="${baseY}" x2="${CX - W/2 - 12}" y2="${baseY - 24}" stroke="#94a3b8" stroke-width="4"/>`);
-  bits.push(`<line x1="${CX + W/2 + 12}" y1="${baseY}" x2="${CX + W/2 + 12}" y2="${baseY - 24}" stroke="#94a3b8" stroke-width="4"/>`);
-  bits.push(`<text x="${CX}" y="${baseY + 14}" text-anchor="middle" fill="#cbd5e1" font-size="9" font-weight="700">SEABED WELLHEAD TEMPLATE</text>`);
+  // Auto-shear & AMF
+  bits.push(`<circle cx="55" cy="442" r="5" fill="#22c55e"/>`);
+  bits.push(`<text x="68" y="445" fill="#cbd5e1" font-size="8.5">AUTOSHEAR: ARMED</text>`);
+  bits.push(`<circle cx="55" cy="466" r="5" fill="#22c55e"/>`);
+  bits.push(`<text x="68" y="469" fill="#cbd5e1" font-size="8.5">DEADMAN / AMF: READY</text>`);
+  bits.push(`<circle cx="55" cy="490" r="5" fill="#22c55e"/>`);
+  bits.push(`<text x="68" y="493" fill="#cbd5e1" font-size="8.5">ACOUSTIC BACKUP: OK</text>`);
 
-  // Position Legend
-  bits.push(`<rect x="16" y="360" width="128" height="58" rx="3" fill="#1e293b" stroke="#334155"/>`);
-  bits.push(`<text x="80" y="375" text-anchor="middle" fill="#cbd5e1" font-size="9" font-weight="700">STATUS LEGEND</text>`);
-  bits.push(`<circle cx="34" cy="390" r="5" fill="#0284c7" stroke="#38bdf8"/>`);
-  bits.push(`<text x="46" y="393" fill="#38bdf8" font-size="9" font-weight="600">Open</text>`);
-  bits.push(`<circle cx="34" cy="405" r="5" fill="#14181c" stroke="#cbd5e1"/>`);
-  bits.push(`<text x="46" y="408" fill="#f8fafc" font-size="9" font-weight="600">Closed</text>`);
+  // --- CENTER PANEL: Deepwater Subsea Stack Elevation Schematic (x = 230 to 650) ---
+  const CX = 440, SW = 150;
+  // Water column background
+  bits.push(`<rect x="230" y="60" width="420" height="480" rx="5" fill="#0a1220" stroke="#1e293b" stroke-width="1.5"/>`);
+
+  // Marine Riser Adapter & Flex Joint
+  bits.push(`<rect x="${CX - 15}" y="68" width="30" height="18" fill="#475569" stroke="#1e293b"/>`);
+  bits.push(`<circle cx="${CX}" cy="94" r="16" fill="#334155" stroke="#64748b" stroke-width="2"/>`);
+  bits.push(`<text x="${CX}" y="${97}" text-anchor="middle" fill="#cbd5e1" font-size="7.5" font-weight="700">FLEX JOINT</text>`);
+
+  // LMRP Package header
+  bits.push(`<rect x="${CX - SW/2}" y="112" width="${SW}" height="14" rx="2" fill="#ca8a04" stroke="#713f12"/>`);
+  bits.push(`<text x="${CX}" y="122" text-anchor="middle" fill="#000" font-size="8" font-weight="700">LOWER MARINE RISER PACKAGE (LMRP)</text>`);
+
+  // Subsea elements list in elevation:
+  const subseaStack = [
+    { name: "annular", label: "Upper Annular Preventer", y: 130, h: 36, isAnnular: true },
+    { name: "lmrp_conn", label: "LMRP Hydraulic Collet Connector", y: 170, h: 22, isConn: true },
+    { name: "lower_annular", label: "Lower Annular (Stripping)", y: 196, h: 36, isAnnular: true },
+    { name: "blind_rams", label: "Blind / Shear Rams", y: 236, h: 34, isShear: true },
+    { name: "casing_shear", label: "Casing Shear Rams (Non-Sealing)", y: 274, h: 32, isRam: true },
+    { name: "upper_rams", label: "Upper Variable Bore Rams (VBR)", y: 310, h: 34, isRam: true },
+    { name: "middle_vbr", label: "Middle Variable Bore Rams (VBR)", y: 348, h: 32, isRam: true },
+    { name: "lower_rams", label: "Lower Pipe / Test Rams", y: 384, h: 34, isRam: true },
+    { name: "wh_conn", label: "Wellhead Collet Connector (18-3/4\" 15K)", y: 422, h: 26, isConn: true }
+  ];
+
+  subseaStack.forEach(el => {
+    const isRealValve = lineupCache.some(v => v.name === el.name);
+    const open = isRealValve ? valveState(el.name) : true;
+    const isShut = !open;
+
+    // Body
+    if (el.isAnnular) {
+      bits.push(`<path d="M ${CX - SW/2 + 10} ${el.y + el.h} A ${SW/2 - 10} 22 0 0 1 ${CX + SW/2 - 10} ${el.y + el.h} Z"
+        fill="#eab308" stroke="#713f12" stroke-width="2"/>`);
+      bits.push(`<circle cx="${CX}" cy="${el.y + 18}" r="${isShut ? 12 : 7}" fill="${isShut ? '#dc2626' : '#0284c7'}" stroke="#0f172a"/>`);
+    } else if (el.isConn) {
+      bits.push(`<rect x="${CX - SW/2 + 14}" y="${el.y}" width="${SW - 28}" height="${el.h}" rx="3" fill="#475569" stroke="#1e293b" stroke-width="2"/>`);
+      bits.push(`<circle cx="${CX - 40}" cy="${el.y + el.h/2}" r="4" fill="#22c55e"/>`);
+      bits.push(`<circle cx="${CX + 40}" cy="${el.y + el.h/2}" r="4" fill="#22c55e"/>`);
+    } else {
+      // Ram body
+      bits.push(`<rect x="${CX - SW/2}" y="${el.y}" width="${SW}" height="${el.h}" rx="3" fill="#eab308" stroke="#713f12" stroke-width="1.8"/>`);
+      // Hydraulic ram cylinders on sides
+      bits.push(`<rect x="${CX - SW/2 - 24}" y="${el.y + 6}" width="26" height="${el.h - 12}" rx="2" fill="#ca8a04" stroke="#713f12"/>`);
+      bits.push(`<rect x="${CX + SW/2 - 2}" y="${el.y + 6}" width="26" height="${el.h - 12}" rx="2" fill="#ca8a04" stroke="#713f12"/>`);
+      // Center bore & rams
+      const reach = isShut ? SW/2 - 16 : 14;
+      bits.push(`<rect x="${CX - SW/2 + 6}" y="${el.y + 8}" width="${reach}" height="${el.h - 16}" fill="${isShut ? '#dc2626' : '#0284c7'}"/>`);
+      bits.push(`<rect x="${CX + SW/2 - 6 - reach}" y="${el.y + 8}" width="${reach}" height="${el.h - 16}" fill="${isShut ? '#dc2626' : '#0284c7'}"/>`);
+    }
+
+    // Label & clickable button
+    bits.push(`<text x="${CX}" y="${el.y + el.h/2 + 3.5}" text-anchor="middle" fill="#000" font-size="8" font-weight="700">${el.label}</text>`);
+
+    if (isRealValve) {
+      bits.push(`<g class="bopsel" data-valve="${el.name}" style="cursor:pointer">
+        <rect x="${CX + SW/2 + 30}" y="${el.y + 5}" width="54" height="22" rx="3" fill="${isShut ? '#dc2626' : '#0284c7'}" stroke="#38bdf8"/>
+        <text x="${CX + SW/2 + 57}" y="${el.y + 19}" text-anchor="middle" fill="#fff" font-size="8.5" font-weight="700">${isShut ? 'CLOSED' : 'OPEN'}</text>
+        <title>${el.label} — click to shift position via MUX</title>
+      </g>`);
+    }
+  });
+
+  // Choke and Kill Conduit Lines down the sides
+  // Choke line on left
+  bits.push(`<line x1="${CX - SW/2 - 34}" y1="110" x2="${CX - SW/2 - 34}" y2="420" stroke="#b8322c" stroke-width="6"/>`);
+  bits.push(gateValve(CX - SW/2 - 34, 380, "choke_line_valve", "Subsea Choke Failsafe", valveState("choke_line_valve"), true, true));
+  bits.push(`<text x="${CX - SW/2 - 42}" y="360" text-anchor="end" fill="#fca5a5" font-size="8" font-weight="700">CHOKE LINE</text>`);
+
+  // Kill line on right
+  bits.push(`<line x1="${CX + SW/2 + 34}" y1="110" x2="${CX + SW/2 + 34}" y2="420" stroke="#b8322c" stroke-width="6"/>`);
+  bits.push(gateValve(CX + SW/2 + 34, 380, "kill_line_valve", "Subsea Kill Failsafe", valveState("kill_line_valve"), true, true));
+  bits.push(`<text x="${CX + SW/2 + 42}" y="360" fill="#fca5a5" font-size="8" font-weight="700">KILL LINE</text>`);
+
+  // Seabed Mudline & Wellhead Template at bottom
+  bits.push(`<rect x="230" y="456" width="420" height="84" fill="#332414"/>`);
+  bits.push(`<line x1="230" y1="456" x2="650" y2="456" stroke="#ca8a04" stroke-width="3"/>`);
+  bits.push(`<text x="245" y="472" fill="#eab308" font-size="9" font-weight="700">MUDLINE SEABED (DEPTH: 5,280 FT)</text>`);
+
+  // Casing conductor strings into seabed
+  bits.push(`<rect x="${CX - 24}" y="448" width="48" height="92" fill="#475569" stroke="#1e293b"/>`);
+  bits.push(`<rect x="${CX - 12}" y="448" width="24" height="92" fill="#0f172a"/>`);
+
+  // --- RIGHT PANEL: Telemetry Sensors & Position History (x = 660 to 865) ---
+  bits.push(`<rect x="660" y="60" width="205" height="480" rx="5" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/>`);
+  bits.push(`<text x="762" y="82" text-anchor="middle" fill="#cbd5e1" font-size="10" font-weight="700">SUBSEA TELEMETRY</text>`);
+
+  // Transducers
+  bits.push(`<rect x="670" y="96" width="185" height="110" rx="4" fill="#090d16" stroke="#1e293b"/>`);
+  bits.push(`<text x="680" y="114" fill="#38bdf8" font-size="8.5" font-weight="700">PT-1 (WELLHEAD MUDLINE)</text>`);
+  bits.push(`<text x="680" y="132" fill="#94a3b8" font-size="8">Pressure: <tspan fill="#5df08a" font-weight="700" font-family="Consolas">${Math.round(chokePsi)} psi</tspan></text>`);
+  bits.push(`<text x="680" y="148" fill="#94a3b8" font-size="8">Temperature: <tspan fill="#cbd5e1" font-weight="700">104 °F</tspan></text>`);
+
+  bits.push(`<text x="680" y="172" fill="#38bdf8" font-size="8.5" font-weight="700">PT-2 (SUBSEA CHOKE CONDUIT)</text>`);
+  bits.push(`<text x="680" y="190" fill="#94a3b8" font-size="8">Pressure: <tspan fill="#5df08a" font-weight="700" font-family="Consolas">${Math.round(chokePsi + clfPsi)} psi</tspan></text>`);
+
+  // Pod Health & Position Legend
+  bits.push(`<rect x="670" y="216" width="185" height="150" rx="4" fill="#090d16" stroke="#1e293b"/>`);
+  bits.push(`<text x="762" y="234" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-weight="700">POD FUNCTION VERIFICATION</text>`);
+  const vrf = [
+    ["Regulator Pilots", "1,500 psi", true],
+    ["Main Accumulators", `${Math.round(accumulatorPsi)} psi`, accumulatorOk],
+    ["Solvent Flush", "STANDBY", true],
+    ["LMRP Connector Lock", "LATCHED", true],
+    ["Wellhead Connector Lock", "LATCHED", true]
+  ];
+  vrf.forEach(([lbl, st, ok], i) => {
+    const vy = 254 + i * 22;
+    bits.push(`<circle cx="682" cy="${vy}" r="4" fill="${ok ? '#22c55e' : '#ef4444'}"/>`);
+    bits.push(`<text x="692" y="${vy + 3}" fill="#94a3b8" font-size="7.5">${lbl}</text>`);
+    bits.push(`<text x="845" y="${vy + 3}" text-anchor="end" fill="#cbd5e1" font-size="8" font-weight="700">${st}</text>`);
+  });
+
+  // Legend box
+  bits.push(`<rect x="670" y="376" width="185" height="148" rx="4" fill="#090d16" stroke="#1e293b"/>`);
+  bits.push(`<text x="762" y="394" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-weight="700">POSITION LEGEND</text>`);
+  bits.push(`<rect x="682" y="408" width="16" height="16" rx="2" fill="#0284c7" stroke="#38bdf8"/>`);
+  bits.push(`<text x="706" y="420" fill="#cbd5e1" font-size="8">ELEMENT OPEN / PASSING</text>`);
+  bits.push(`<rect x="682" y="432" width="16" height="16" rx="2" fill="#dc2626" stroke="#ef4444"/>`);
+  bits.push(`<text x="706" y="444" fill="#cbd5e1" font-size="8">ELEMENT CLOSED / SEALED</text>`);
+  bits.push(`<circle cx="690" cy="466" r="6" fill="#ca8a04"/>`);
+  bits.push(`<text x="706" y="469" fill="#cbd5e1" font-size="8">LMRP / SUBSEA COLLET</text>`);
+  bits.push(`<text x="762" y="504" text-anchor="middle" fill="#38bdf8" font-size="8" font-weight="700">CLICK ANY ELEMENT TO SHIFT</text>`);
 
   svg.innerHTML = bits.join("");
+
+  // Event handlers
   svg.querySelectorAll(".bopsel").forEach(g =>
     g.onclick = () => toggleValve(g.dataset.valve));
+
+  if ($("btn-pod-blue")) {
+    $("btn-pod-blue").onclick = () => { activePod = "blue"; drawBopPanel(); };
+  }
+  if ($("btn-pod-yellow")) {
+    $("btn-pod-yellow").onclick = () => { activePod = "yellow"; drawBopPanel(); };
+  }
 }
 
 /* -------------------------------- lineup ------------------------------- */

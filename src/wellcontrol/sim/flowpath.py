@@ -129,6 +129,8 @@ def default_valves() -> list[Valve]:
               state=ValveState.OPEN, is_bop=True),
         Valve("upper_rams", "Upper pipe rams", Node.ANNULUS, Node.BOP,
               state=ValveState.OPEN, is_bop=True),
+        Valve("blind_rams", "Blind / shear rams", Node.ANNULUS, Node.BOP,
+              state=ValveState.OPEN, is_bop=True),
         Valve("lower_rams", "Lower pipe rams", Node.ANNULUS, Node.BOP,
               state=ValveState.OPEN, is_bop=True),
 

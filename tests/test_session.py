@@ -171,7 +171,7 @@ class TestReadouts:
     def test_bop_elements_are_marked(self, session):
         bops = [v for v in session.lineup() if v["is_bop"]]
         assert {v["name"] for v in bops} == {
-            "annular", "upper_rams", "lower_rams"
+            "annular", "upper_rams", "blind_rams", "lower_rams"
         }
 
     def test_events_can_be_fetched_incrementally(self, session, clock):
