@@ -731,6 +731,15 @@ class Simulator:
         """Reset the trip tank baseline so change reads zero."""
         self.trip_tank.zero()
 
+    def refill_trip_tank(self, volume_bbl: float = 50.0) -> None:
+        """Top up the calibrated trip tank with active mud from suction pit."""
+        self.trip_tank.refill(volume_bbl)
+        self.state.record(
+            EventKind.PUMP_STARTED,
+            f"Trip tank refilled to {volume_bbl:.1f} bbl.",
+            severity=Severity.INFO,
+        )
+
     def zero_pits(self) -> None:
         """Reset the pit system baseline so pit gain reads zero."""
         self.pits.zero()

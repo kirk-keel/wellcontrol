@@ -499,6 +499,10 @@ class Session:
         """Zero the trip tank baseline."""
         self.simulator.zero_trip_tank()
 
+    def refill_trip_tank(self, volume_bbl: float = 50.0) -> None:
+        """Refill trip tank to target volume."""
+        self.simulator.refill_trip_tank(volume_bbl)
+
     def zero_pits(self) -> None:
         """Zero the pit gain baseline."""
         self.simulator.zero_pits()

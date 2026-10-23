@@ -194,6 +194,9 @@ class TestControls:
     def test_trip_tank_and_pits_can_be_zeroed(self, client, session_id):
         res_tt = client.post(f"/api/sessions/{session_id}/zero-trip-tank")
         assert res_tt.status_code == 200
+        res_fill = client.post(f"/api/sessions/{session_id}/fill-trip-tank")
+        assert res_fill.status_code == 200
+        assert res_fill.json()["gauges"]["trip_tank_volume_bbl"] == pytest.approx(50.0)
         res_pit = client.post(f"/api/sessions/{session_id}/zero-pits")
         assert res_pit.status_code == 200
 
@@ -469,6 +472,17 @@ class TestScreens:
         assert 'id="btn-zero-pit"' in text
         assert 'id="btn-zero-tt"' in text
         assert 'id="sheet-schedule"' in text
+
+    def test_the_pit_and_trip_tank_screen_is_drawn(self, client):
+        text = client.get("/").text
+        assert 'data-screen="pits"' in text
+        assert 'id="s-pits"' in text
+        assert 'id="pit-schematic"' in text
+        assert 'id="trip-sheet-table"' in text
+        assert "function drawPitSchematic(" in text
+        assert "function renderTripSheet(" in text
+        assert 'id="pvt-btn-fill-tt"' in text
+        assert 'id="pvt-btn-zero-tt"' in text
 
 
 class TestPanel:

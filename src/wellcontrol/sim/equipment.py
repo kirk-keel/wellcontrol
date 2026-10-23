@@ -154,6 +154,10 @@ class TripTank:
     def zero(self) -> None:
         self.baseline_bbl = self.volume_bbl
 
+    def refill(self, target_bbl: float = 50.0) -> None:
+        self.volume_bbl = target_bbl
+        self.baseline_bbl = target_bbl
+
 
 @dataclass
 class Accumulator:

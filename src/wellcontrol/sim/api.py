@@ -380,6 +380,13 @@ def zero_trip_tank(session_id: str) -> dict:
     return {"gauges": session.gauges()}
 
 
+@app.post("/api/sessions/{session_id}/fill-trip-tank")
+def fill_trip_tank(session_id: str) -> dict:
+    session = _session(session_id)
+    session.refill_trip_tank()
+    return {"gauges": session.gauges()}
+
+
 @app.post("/api/sessions/{session_id}/zero-pits")
 def zero_pits(session_id: str) -> dict:
     session = _session(session_id)

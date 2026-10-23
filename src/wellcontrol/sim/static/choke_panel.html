@@ -237,6 +237,7 @@
   #bop-panel { height: min(78vh, 580px); }
   #standpipe { height: min(65vh, 480px); }
   #ckmanifold { height: min(55vh, 420px); }
+  #pit-schematic { height: min(68vh, 520px); }
 
   /* Dials. Two big ones for the pressures a kill is flown on, three smaller
      for the settings, exactly as the panel is laid out on a rig. */
@@ -500,6 +501,7 @@
   <button data-screen="edr">EDR Trends</button>
   <button data-screen="bop">BOP</button>
   <button data-screen="manifolds">Manifolds</button>
+  <button data-screen="pits">Pits &amp; Trip Tank</button>
   <button data-screen="well">Well</button>
   <button data-screen="sheet">Kill sheet</button>
   <button data-screen="debrief">Debrief</button>
@@ -780,6 +782,133 @@
       <div class="card">
         <h2>All valves</h2>
         <div class="valves" id="valve-list"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================= PITS & TRIP TANK ========================= -->
+<section class="screen" id="s-pits">
+  <!-- Top PVT Dashboard Banner -->
+  <div class="card" style="margin-bottom:14px;padding:12px 18px;background:#0d121c;border:1px solid #1e293b;border-radius:6px">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
+      <div style="display:flex;gap:22px;align-items:center;flex-wrap:wrap">
+        <div>
+          <div style="font-size:10px;text-transform:uppercase;color:#94a3b8;font-weight:700;letter-spacing:0.04em">Active Mud Volume</div>
+          <div style="font-size:18px;font-weight:800;font-family:Consolas,monospace;color:#f8fafc"><span id="pvt-total-vol">800.0</span> <span style="font-size:11px;color:#94a3b8">bbl</span></div>
+        </div>
+        <div>
+          <div style="font-size:10px;text-transform:uppercase;color:#94a3b8;font-weight:700;letter-spacing:0.04em">Pit Gain / Loss</div>
+          <div id="pvt-gain-badge" style="font-size:20px;font-weight:800;font-family:Consolas,monospace;color:#4ade80"><span id="pvt-pit-gain">+0.0</span> <span style="font-size:12px">bbl</span></div>
+        </div>
+        <div>
+          <div style="font-size:10px;text-transform:uppercase;color:#94a3b8;font-weight:700;letter-spacing:0.04em">Differential Flow (Out - In)</div>
+          <div style="font-size:18px;font-weight:800;font-family:Consolas,monospace;color:#38bdf8"><span id="pvt-diff-flow">0.00</span> <span style="font-size:11px;color:#94a3b8">bpm</span></div>
+        </div>
+        <div>
+          <div style="font-size:10px;text-transform:uppercase;color:#94a3b8;font-weight:700;letter-spacing:0.04em">Calibrated Trip Tank</div>
+          <div style="font-size:18px;font-weight:800;font-family:Consolas,monospace;color:#f472b6"><span id="pvt-tt-vol">50.0</span> <span style="font-size:11px;color:#94a3b8">bbl</span> (<span id="pvt-tt-delta" style="font-size:13px;color:#ec4899">+0.0</span>)</div>
+        </div>
+        <div>
+          <div style="font-size:10px;text-transform:uppercase;color:#94a3b8;font-weight:700;letter-spacing:0.04em">Mud Weight</div>
+          <div style="font-size:16px;font-weight:800;font-family:Consolas,monospace;color:#facc15"><span id="pvt-mw-active">9.8</span> <span style="font-size:11px;color:#94a3b8">ppg</span> &nbsp;|&nbsp; Target: <b id="pvt-mw-target" style="color:#f8fafc">11.4</b></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button id="pvt-btn-zero-pit" style="padding:6px 12px;font-size:11px;font-weight:700;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:4px;cursor:pointer">⟲ Zero Pit</button>
+        <button id="pvt-btn-zero-tt" style="padding:6px 12px;font-size:11px;font-weight:700;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:4px;cursor:pointer">⟲ Zero Trip Tank</button>
+        <button id="pvt-btn-fill-tt" style="padding:6px 12px;font-size:11px;font-weight:700;background:linear-gradient(#0284c7,#0369a1);color:#fff;border:1px solid #0369a1;border-radius:4px;cursor:pointer">🛢️ Refill Trip Tank</button>
+        <button id="pvt-btn-fill-kmw" style="padding:6px 12px;font-size:11px;font-weight:700;background:linear-gradient(#854d0e,#713f12);color:#fef08a;border:1px solid #a16207;border-radius:4px;cursor:pointer">🎯 Fill Kill Mud</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <h2>Mud Pits &amp; Calibrated Trip Tank Console</h2>
+          <span style="font-size:11px;color:var(--dim);font-family:Consolas,monospace">API SPEC 13C / IADC PVT WORKSTATION</span>
+        </div>
+        <svg id="pit-schematic" viewBox="0 0 920 520" role="img" aria-label="Mud pits and trip tank schematic"></svg>
+        <div class="note">
+          Calibrated 50-bbl trip tank with 0.5-bbl sight-glass graduations and float indicator. Click the <b>Trip Tank to Annulus</b> valve to line up for stripping or tripping.
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <h2>PVT Alarm Settings &amp; Mixing Hopper</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:center;margin-top:6px">
+          <div>
+            <div style="font-size:11px;color:var(--dim);margin-bottom:4px">PIT VOLUME ALARM LIMITS</div>
+            <div style="display:flex;gap:10px;align-items:center">
+              <span style="font-size:12px;color:#f8fafc">High Alarm: <b id="lbl-hi-alarm" style="color:#ef4444">+5.0</b> bbl</span>
+              <button id="btn-hi-alarm-dec" style="padding:2px 7px;font-size:11px">-</button>
+              <button id="btn-hi-alarm-inc" style="padding:2px 7px;font-size:11px">+</button>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;margin-top:6px">
+              <span style="font-size:12px;color:#f8fafc">Low Alarm: <b id="lbl-lo-alarm" style="color:#38bdf8">-5.0</b> bbl</span>
+              <button id="btn-lo-alarm-dec" style="padding:2px 7px;font-size:11px">-</button>
+              <button id="btn-lo-alarm-inc" style="padding:2px 7px;font-size:11px">+</button>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--dim);margin-bottom:4px">MUD WEIGHT HOPPER ADJUSTER</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="number" id="pvt-mw-input" min="5" max="25" step="0.1" style="width:75px;padding:4px 6px;font-weight:700">
+              <button id="pvt-btn-set-mw">Set Density</button>
+              <button id="pvt-btn-step-mw">+0.5 ppg</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <h2>Stand-by-Stand Tripping Sheet</h2>
+          <div id="ts-status-badge" style="padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;background:#14532d;color:#86efac;border:1px solid #166534">HOLE FILLING NORMALLY</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+          <button id="btn-ts-log" style="font-size:11px;padding:4px 10px;font-weight:700;background:#0284c7;color:#fff;border:1px solid #0369a1;border-radius:4px;cursor:pointer">📥 Record Stand</button>
+          <button id="btn-ts-auto" style="font-size:11px;padding:4px 10px;font-weight:700;background:#1e293b;color:#38bdf8;border:1px solid #38bdf8;border-radius:4px;cursor:pointer">⚡ Auto-Log Every 90 ft: ON</button>
+          <button id="btn-ts-reset" style="font-size:11px;padding:4px 10px;background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:4px;cursor:pointer">🗑️ Reset Sheet</button>
+        </div>
+        <div style="max-height:360px;overflow-y:auto;border:1px solid #1e293b;border-radius:4px">
+          <table id="trip-sheet-table" style="margin:0;font-size:12px">
+            <thead>
+              <tr>
+                <th style="padding:6px 8px">Stand</th>
+                <th style="padding:6px 8px">Depth (ft)</th>
+                <th style="padding:6px 8px">Moved (ft)</th>
+                <th style="padding:6px 8px">Displ (bbl)</th>
+                <th style="padding:6px 8px">Fill (bbl)</th>
+                <th style="padding:6px 8px">Diff (bbl)</th>
+                <th style="padding:6px 8px">Cumul (bbl)</th>
+                <th style="padding:6px 8px">Diagnosis</th>
+              </tr>
+            </thead>
+            <tbody id="trip-sheet-body">
+              <tr>
+                <td colspan="8" style="text-align:center;color:#64748b;padding:24px 0">No stands logged yet. Move pipe and click "Record Stand" or toggle Auto-Log.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note" style="margin-top:10px">
+          <b>Swabbing Warning Rule:</b> When pulling pipe, if actual trip tank fill volume is <i>less</i> than theoretical pipe displacement, the well is swabbing influx into the hole. Stop tripping and perform flow check immediately!
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <h2>Live Pit &amp; Flow History</h2>
+        <canvas id="c-pits-detail" class="strip"></canvas>
+        <div class="legend">
+          <span><i class="key" style="background:var(--csg)"></i>Pit gain (bbl)</span>
+          <span><i class="key" style="background:var(--bhp)"></i>Flow out (bpm &times;10)</span>
+          <span><i class="key" style="background:var(--dp)"></i>Flow in (bpm &times;10)</span>
+        </div>
       </div>
     </div>
   </div>
@@ -1184,6 +1313,15 @@ function redraw() {
     drawStandpipeManifold(); drawChokeKillManifold(); drawPid();
     drawLineup(lineupCache);
   }
+  else if (screen === "pits") {
+    drawPitSchematic();
+    drawPanel("c-pits-detail", [
+      {key: "pit_gain_bbl", colour: css("--csg")},
+      {key: "flow_out_bpm", colour: css("--bhp"), scale: 10},
+      {key: "flow_in_bpm", colour: css("--dp"), scale: 10},
+    ], []);
+    drawLineup(lineupCache);
+  }
   else if (screen === "well") drawSchematic();
   else if (screen === "sheet") updateSheetThrottled();
   else if (screen === "guide") renderGuide();
@@ -1237,6 +1375,39 @@ function paint(g) {
       if (g.target_kill_mud_weight_ppg && !$("mw-val").value) {
         $("mw-val").value = g.target_kill_mud_weight_ppg.toFixed(1);
       }
+    }
+  }
+
+  /* --- pits & trip tank --- */
+  if ($("pvt-total-vol")) {
+    const totVol = 800.0 + (g.pit_gain_bbl || 0);
+    $("pvt-total-vol").textContent = totVol.toFixed(1);
+    const pg = g.pit_gain_bbl || 0;
+    $("pvt-pit-gain").textContent = (pg >= 0 ? "+" : "") + pg.toFixed(1);
+    const gainBadge = $("pvt-gain-badge");
+    if (gainBadge) {
+      if (pg >= pvtHighAlarm) {
+        gainBadge.style.color = "#ef4444";
+      } else if (pg <= pvtLowAlarm) {
+        gainBadge.style.color = "#38bdf8";
+      } else {
+        gainBadge.style.color = "#4ade80";
+      }
+    }
+    $("pvt-diff-flow").textContent = excess.toFixed(2);
+    const ttVol = g.trip_tank_volume_bbl !== undefined ? g.trip_tank_volume_bbl : (50.0 + (g.trip_tank_bbl || 0));
+    $("pvt-tt-vol").textContent = ttVol.toFixed(1);
+    const ttChg = g.trip_tank_bbl || 0;
+    $("pvt-tt-delta").textContent = (ttChg >= 0 ? "+" : "") + ttChg.toFixed(1);
+    if (g.active_mud_weight_ppg !== undefined) {
+      $("pvt-mw-active").textContent = g.active_mud_weight_ppg.toFixed(1);
+      $("pvt-mw-target").textContent = g.target_kill_mud_weight_ppg ? g.target_kill_mud_weight_ppg.toFixed(1) : "—";
+      if ($("pvt-mw-input") && !$("pvt-mw-input").value) {
+        $("pvt-mw-input").value = g.active_mud_weight_ppg.toFixed(1);
+      }
+    }
+    if (typeof updateTripSheetAuto === "function") {
+      updateTripSheetAuto(g);
     }
   }
 
@@ -2816,6 +2987,318 @@ function drawSubseaBop() {
   }
 }
 
+/* ----------------- Mud Pits & Calibrated Trip Tank ----------------- */
+let pvtHighAlarm = 5.0;
+let pvtLowAlarm = -5.0;
+let autoLogTrip = true;
+let tripSheetData = [];
+let lastTripPipeMoved = 0.0;
+let lastTripTankVol = 50.0;
+let tripTankAutoFill = true;
+
+function renderTripSheet() {
+  const tbody = $("trip-sheet-body");
+  if (!tbody) return;
+  if (!tripSheetData.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#64748b;padding:24px 0">No stands logged yet. Move pipe and click "Record Stand" or toggle Auto-Log.</td></tr>`;
+    const statusBadge = $("ts-status-badge");
+    if (statusBadge) {
+      statusBadge.textContent = "HOLE FILLING NORMALLY";
+      statusBadge.style.background = "#14532d";
+      statusBadge.style.color = "#86efac";
+      statusBadge.style.borderColor = "#166534";
+    }
+    return;
+  }
+
+  let html = "";
+  tripSheetData.forEach((row, i) => {
+    const isSwab = row.cumulDiff < -1.0;
+    const isLoss = row.cumulDiff > 2.0;
+    const diagBadge = isSwab
+      ? `<span style="color:#ef4444;font-weight:700">⚠️ SWABBING</span>`
+      : (isLoss ? `<span style="color:#f59e0b;font-weight:700">⚠️ LOSSES</span>` : `<span style="color:#4ade80;font-weight:600">✓ Normal</span>`);
+
+    html += `<tr style="border-bottom:1px solid #1e293b;background:${i % 2 === 0 ? 'rgba(15,23,42,0.4)' : 'transparent'}">
+      <td style="padding:5px 8px;font-weight:700;color:#94a3b8">${row.stand}</td>
+      <td style="padding:5px 8px;font-family:Consolas">${row.depth.toLocaleString()}</td>
+      <td style="padding:5px 8px;font-family:Consolas">${row.moved.toFixed(0)}</td>
+      <td style="padding:5px 8px;font-family:Consolas;color:#38bdf8">${row.theoryDisp.toFixed(2)}</td>
+      <td style="padding:5px 8px;font-family:Consolas;color:#f472b6">${row.actualFill.toFixed(2)}</td>
+      <td style="padding:5px 8px;font-family:Consolas;color:${row.diff < 0 ? '#ef4444' : '#4ade80'}">${(row.diff >= 0 ? '+' : '') + row.diff.toFixed(2)}</td>
+      <td style="padding:5px 8px;font-family:Consolas;font-weight:700;color:${row.cumulDiff < 0 ? '#ef4444' : '#4ade80'}">${(row.cumulDiff >= 0 ? '+' : '') + row.cumulDiff.toFixed(2)}</td>
+      <td style="padding:5px 8px">${diagBadge}</td>
+    </tr>`;
+  });
+  tbody.innerHTML = html;
+
+  const lastRow = tripSheetData[tripSheetData.length - 1];
+  const statusBadge = $("ts-status-badge");
+  if (statusBadge && lastRow) {
+    if (lastRow.cumulDiff < -1.0) {
+      statusBadge.textContent = "⚠️ INFLUX / SWABBING DETECTED";
+      statusBadge.style.background = "#7f1d1d";
+      statusBadge.style.color = "#fca5a5";
+      statusBadge.style.borderColor = "#991b1b";
+    } else if (lastRow.cumulDiff > 2.0) {
+      statusBadge.textContent = "⚠️ LOSSES / SURGING DETECTED";
+      statusBadge.style.background = "#78350f";
+      statusBadge.style.color = "#fde047";
+      statusBadge.style.borderColor = "#a16207";
+    } else {
+      statusBadge.textContent = "✓ HOLE FILLING NORMALLY";
+      statusBadge.style.background = "#14532d";
+      statusBadge.style.color = "#86efac";
+      statusBadge.style.borderColor = "#166534";
+    }
+  }
+}
+
+function logTripStand() {
+  if (!currentGauges) return;
+  const g = currentGauges;
+  const curMoved = g.pipe_moved_ft || 0;
+  const curVol = g.trip_tank_volume_bbl !== undefined ? g.trip_tank_volume_bbl : (50.0 + (g.trip_tank_bbl || 0));
+
+  const movedDelta = Math.abs(curMoved - lastTripPipeMoved);
+  const theoryDisp = Math.abs(g.pipe_displacement_bbl || 0) > 0.01
+    ? Math.abs(g.pipe_displacement_bbl) * (movedDelta / Math.max(1, Math.abs(curMoved)))
+    : movedDelta * 0.0075;
+  const actualFill = Math.abs(curVol - lastTripTankVol);
+  const diff = actualFill - theoryDisp;
+
+  const lastCumul = tripSheetData.length ? tripSheetData[tripSheetData.length - 1].cumulDiff : 0.0;
+  const cumulDiff = lastCumul + diff;
+
+  tripSheetData.push({
+    stand: tripSheetData.length + 1,
+    depth: g.bit_md_ft || 0,
+    moved: curMoved,
+    theoryDisp: theoryDisp,
+    actualFill: actualFill,
+    diff: diff,
+    cumulDiff: cumulDiff
+  });
+
+  lastTripPipeMoved = curMoved;
+  lastTripTankVol = curVol;
+  renderTripSheet();
+}
+
+function updateTripSheetAuto(g) {
+  if (!autoLogTrip) return;
+  const curMoved = Math.abs(g.pipe_moved_ft || 0);
+  if (Math.abs(curMoved - Math.abs(lastTripPipeMoved)) >= 90.0) {
+    logTripStand();
+  }
+}
+
+function drawPitSchematic() {
+  const svg = $("pit-schematic"); if (!svg) return;
+  const g = currentGauges || {};
+  const pg = g.pit_gain_bbl || 0.0;
+  const ttVol = Math.max(0, Math.min(50.0, g.trip_tank_volume_bbl !== undefined ? g.trip_tank_volume_bbl : (50.0 + (g.trip_tank_bbl || 0))));
+  const mw = g.active_mud_weight_ppg !== undefined ? g.active_mud_weight_ppg.toFixed(1) : "9.8";
+  const ttOpen = valveState("trip_tank_valve");
+  const isMovingPipe = Math.abs(g.strip_rate_ft_per_min || 0) > 0.1;
+
+  const bits = [
+    // Outer console backdrop
+    `<rect width="920" height="520" rx="8" fill="#0b0f17" stroke="#1e293b" stroke-width="2"/>`,
+    `<rect x="10" y="10" width="900" height="500" rx="6" fill="none" stroke="#161f2e" stroke-width="1.5"/>`,
+
+    // Top Header Ribbon
+    `<rect x="18" y="16" width="884" height="28" rx="3" fill="#0f172a" stroke="#334155" stroke-width="1"/>`,
+    `<text x="32" y="34" fill="#38bdf8" font-size="10.5" font-weight="700" letter-spacing="0.08em" font-family="system-ui, sans-serif">ACTIVE MUD CIRCULATION SYSTEM &bull; CALIBRATED TRIP TANK &bull; PVT MONITOR</text>`,
+    `<circle cx="750" cy="30" r="4.5" fill="#22c55e"/>`,
+    `<text x="760" y="34" fill="#cbd5e1" font-size="9" font-weight="600">PVT TOTALIZER: ACTIVE</text>`,
+    `<circle cx="855" cy="30" r="4.5" fill="${ttOpen ? '#22c55e' : '#64748b'}"/>`,
+    `<text x="865" y="34" fill="${ttOpen ? '#86efac' : '#94a3b8'}" font-size="9" font-weight="600">TRIP VALVE: ${ttOpen ? 'OPEN' : 'SHUT'}</text>`
+  ];
+
+  // --- TANK 1: ACTIVE SUCTION PIT (x = 25, y = 60, w = 205, h = 260) ---
+  const t1x = 25, t1y = 60, t1w = 205, t1h = 260;
+  bits.push(`<rect x="${t1x}" y="${t1y}" width="${t1w}" height="${t1h}" rx="4" fill="#131c2a" stroke="#334155" stroke-width="2"/>`);
+  // Structural ribs
+  for (let r = 0; r <= 3; r++) {
+    const rx = t1x + r * (t1w / 3);
+    bits.push(`<line x1="${rx}" y1="${t1y}" x2="${rx}" y2="${t1y + t1h}" stroke="#1e293b" stroke-width="2"/>`);
+  }
+  // Liquid Level in Tank 1
+  const maxCap1 = 350;
+  const vol1 = Math.max(50, Math.min(340, 270 + pg * 0.5));
+  const frac1 = vol1 / maxCap1;
+  const liqH1 = (t1h - 40) * frac1;
+  const liqY1 = t1y + t1h - liqH1;
+  bits.push(`<rect x="${t1x + 3}" y="${liqY1}" width="${t1w - 6}" height="${liqH1 - 3}" rx="2" fill="#0284c7" opacity="0.6"/>`);
+  // Liquid wave surface
+  bits.push(`<path d="M ${t1x + 3} ${liqY1} Q ${t1x + t1w * 0.25} ${liqY1 - 4} ${t1x + t1w * 0.5} ${liqY1} T ${t1x + t1w - 3} ${liqY1}" fill="none" stroke="#38bdf8" stroke-width="2"/>`);
+
+  // Motor Agitator at top
+  const ag1x = t1x + t1w / 2;
+  bits.push(`<rect x="${ag1x - 18}" y="${t1y - 12}" width="36" height="20" rx="3" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>`);
+  bits.push(`<rect x="${ag1x - 12}" y="${t1y - 20}" width="24" height="9" rx="2" fill="#0284c7"/>`);
+  bits.push(`<line x1="${ag1x}" y1="${t1y + 8}" x2="${ag1x}" y2="${t1y + t1h - 30}" stroke="#94a3b8" stroke-width="3.5"/>`);
+  // Agitator blades
+  const agAng = (Date.now() / 250) % (Math.PI * 2);
+  const bladeW = Math.cos(agAng) * 26;
+  bits.push(`<line x1="${ag1x - bladeW}" y1="${t1y + t1h - 45}" x2="${ag1x + bladeW}" y2="${t1y + t1h - 45}" stroke="#cbd5e1" stroke-width="5" stroke-linecap="round"/>`);
+  bits.push(`<line x1="${ag1x - bladeW * 0.8}" y1="${t1y + t1h - 110}" x2="${ag1x + bladeW * 0.8}" y2="${t1y + t1h - 110}" stroke="#cbd5e1" stroke-width="5" stroke-linecap="round"/>`);
+
+  // Ultrasonic Level Sensor on roof
+  bits.push(`<rect x="${t1x + 20}" y="${t1y - 6}" width="22" height="12" rx="2" fill="#475569" stroke="#0f172a"/>`);
+  bits.push(`<path d="M ${t1x + 31} ${t1y + 6} L ${t1x + 24} ${liqY1} M ${t1x + 31} ${t1y + 6} L ${t1x + 38} ${liqY1}" stroke="#38bdf8" stroke-dasharray="3,3" stroke-width="1.2" opacity="0.8"/>`);
+
+  // Tank 1 Badge
+  bits.push(`<rect x="${t1x + 10}" y="${t1y + 14}" width="${t1w - 20}" height="22" rx="3" fill="#0b0f17" stroke="#334155"/>`);
+  bits.push(`<text x="${t1x + t1w/2}" y="${t1y + 29}" text-anchor="middle" fill="#38bdf8" font-size="9" font-weight="700">PIT 1: SUCTION (${vol1.toFixed(0)} / 350 BBL)</text>`);
+
+  // --- TANK 2: INTERMEDIATE / SETTLING PIT (x = 245, y = 60, w = 205, h = 260) ---
+  const t2x = 245, t2y = 60, t2w = 205, t2h = 260;
+  bits.push(`<rect x="${t2x}" y="${t2y}" width="${t2w}" height="${t2h}" rx="4" fill="#131c2a" stroke="#334155" stroke-width="2"/>`);
+  for (let r = 0; r <= 3; r++) {
+    const rx = t2x + r * (t2w / 3);
+    bits.push(`<line x1="${rx}" y1="${t2y}" x2="${rx}" y2="${t2y + t2h}" stroke="#1e293b" stroke-width="2"/>`);
+  }
+  // Liquid in Tank 2 (settling pit ~220 bbl)
+  const vol2 = 220;
+  const liqH2 = (t2h - 40) * (vol2 / maxCap1);
+  const liqY2 = t2y + t2h - liqH2;
+  bits.push(`<rect x="${t2x + 3}" y="${liqY2}" width="${t2w - 6}" height="${liqH2 - 3}" rx="2" fill="#0284c7" opacity="0.5"/>`);
+  bits.push(`<path d="M ${t2x + 3} ${liqY2} Q ${t2x + t2w * 0.25} ${liqY2 - 3} ${t2x + t2w * 0.5} ${liqY2} T ${t2x + t2w - 3} ${liqY2}" fill="none" stroke="#38bdf8" stroke-width="2"/>`);
+
+  // Agitator 2
+  const ag2x = t2x + t2w / 2;
+  bits.push(`<rect x="${ag2x - 18}" y="${t2y - 12}" width="36" height="20" rx="3" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>`);
+  bits.push(`<line x1="${ag2x}" y1="${t2y + 8}" x2="${ag2x}" y2="${t2y + t2h - 30}" stroke="#94a3b8" stroke-width="3.5"/>`);
+  bits.push(`<line x1="${ag2x - bladeW}" y1="${t2y + t2h - 45}" x2="${ag2x + bladeW}" y2="${t2y + t2h - 45}" stroke="#cbd5e1" stroke-width="5" stroke-linecap="round"/>`);
+
+  // Tank 2 Badge
+  bits.push(`<rect x="${t2x + 10}" y="${t2y + 14}" width="${t2w - 20}" height="22" rx="3" fill="#0b0f17" stroke="#334155"/>`);
+  bits.push(`<text x="${t2x + t2w/2}" y="${t2y + 29}" text-anchor="middle" fill="#94a3b8" font-size="9" font-weight="700">PIT 2: INTERMEDIATE (220 / 350 BBL)</text>`);
+
+  // Equalizer valve between Tank 2 and Tank 1
+  bits.push(`<line x1="${t1x + t1w}" y1="${t1y + t1h - 40}" x2="${t2x}" y2="${t1y + t1h - 40}" stroke="#38bdf8" stroke-width="8"/>`);
+  bits.push(`<circle cx="${(t1x + t1w + t2x)/2}" cy="${t1y + t1h - 40}" r="8" fill="#22c55e" stroke="#0f172a"/>`);
+  bits.push(`<text x="${(t1x + t1w + t2x)/2}" y="${t1y + t1h - 22}" text-anchor="middle" fill="#94a3b8" font-size="7.5">EQUALIZER</text>`);
+
+  // --- TANK 3: PILL / SLUG / RESERVE PIT (x = 465, y = 60, w = 150, h = 260) ---
+  const t3x = 465, t3y = 60, t3w = 150, t3h = 260;
+  bits.push(`<rect x="${t3x}" y="${t3y}" width="${t3w}" height="${t3h}" rx="4" fill="#131c2a" stroke="#334155" stroke-width="2"/>`);
+  // Heavy pill mud (amber/brown fluid, 16.0 ppg)
+  bits.push(`<rect x="${t3x + 3}" y="${t3y + 120}" width="${t3w - 6}" height="${t3h - 123}" rx="2" fill="#ca8a04" opacity="0.6"/>`);
+  bits.push(`<line x1="${t3x + 3}" y1="${t3y + 120}" x2="${t3x + t3w - 3}" y2="${t3y + 120}" stroke="#facc15" stroke-width="2"/>`);
+  bits.push(`<rect x="${t3x + 10}" y="${t3y + 14}" width="${t3w - 20}" height="22" rx="3" fill="#0b0f17" stroke="#334155"/>`);
+  bits.push(`<text x="${t3x + t3w/2}" y="${t3y + 29}" text-anchor="middle" fill="#facc15" font-size="8.5" font-weight="700">PILL PIT (16.0 PPG)</text>`);
+
+  // Transfer line from Pill Pit to Pit 1
+  bits.push(`<path d="M ${t3x + 30} ${t3y + t3h} L ${t3x + 30} ${t3y + t3h + 20} L ${t1x + 140} ${t3y + t3h + 20} L ${t1x + 140} ${t1y + t1h}" fill="none" stroke="#ca8a04" stroke-width="4"/>`);
+  bits.push(`<circle cx="${t3x - 10}" cy="${t3y + t3h + 20}" r="6" fill="#eab308" stroke="#0f172a"/>`);
+  bits.push(`<text x="${t3x - 10}" y="${t3y + t3h + 34}" text-anchor="middle" fill="#94a3b8" font-size="7">PILL TRANSFER</text>`);
+
+  // --- CALIBRATED TRIP TANK WORKSTATION (x = 640, y = 50, w = 255, h = 450) ---
+  const ttx = 640, tty = 50, ttw = 255, tth = 450;
+  bits.push(`<rect x="${ttx}" y="${tty}" width="${ttw}" height="${tth}" rx="6" fill="#0e1726" stroke="#0284c7" stroke-width="2"/>`);
+  // Top Header Banner
+  bits.push(`<rect x="${ttx + 8}" y="${tty + 8}" width="${ttw - 16}" height="26" rx="3" fill="#0369a1"/>`);
+  bits.push(`<text x="${ttx + ttw/2}" y="${tty + 25}" text-anchor="middle" fill="#fff" font-size="10.5" font-weight="700" letter-spacing="0.06em">CALIBRATED TRIP TANK &bull; 50 BBL</text>`);
+
+  // Cylindrical Main Shell with Conical Bottom
+  const tankCx = ttx + 75;
+  bits.push(`<rect x="${tankCx - 55}" y="${tty + 46}" width="110" height="190" rx="4" fill="#1e293b" stroke="#334155" stroke-width="2"/>`);
+  // Conical bottom funnel
+  bits.push(`<polygon points="${tankCx - 55},${tty + 236} ${tankCx + 55},${tty + 236} ${tankCx + 16},${tty + 296} ${tankCx - 16},${tty + 296}" fill="#1e293b" stroke="#334155" stroke-width="2"/>`);
+
+  // Sight Glass Column alongside (x = ttx + 148 to ttx + 190)
+  const sgX = ttx + 155, sgY = tty + 48, sgW = 34, sgH = 240;
+  bits.push(`<rect x="${sgX}" y="${sgY}" width="${sgW}" height="${sgH}" rx="3" fill="#020617" stroke="#475569" stroke-width="2"/>`);
+  // Fluid column inside sight glass
+  const fillFrac = ttVol / 50.0;
+  const colH = Math.max(2, (sgH - 10) * fillFrac);
+  const colY = sgY + sgH - 5 - colH;
+  bits.push(`<rect x="${sgX + 3}" y="${colY}" width="${sgW - 6}" height="${colH}" rx="2" fill="#38bdf8" opacity="0.85"/>`);
+  // Fluorescent floating indicator pill at meniscus
+  bits.push(`<ellipse cx="${sgX + sgW/2}" cy="${colY}" rx="12" ry="4" fill="#f59e0b" stroke="#d97706" stroke-width="1.5"/>`);
+
+  // Calibrated tick marks & numbers on Sight Glass Scale
+  for (let b = 0; b <= 10; b++) {
+    const by = sgY + 5 + b * ((sgH - 10) / 10);
+    const bblMark = (10 - b) * 5;
+    bits.push(`<line x1="${sgX - 10}" y1="${by}" x2="${sgX}" y2="${by}" stroke="#cbd5e1" stroke-width="1.5"/>`);
+    bits.push(`<text x="${sgX - 14}" y="${by + 3.5}" text-anchor="end" fill="#cbd5e1" font-size="8" font-family="Consolas, monospace" font-weight="700">${bblMark}</text>`);
+    if (b < 10) {
+      const midY = by + ((sgH - 10) / 20);
+      bits.push(`<line x1="${sgX - 5}" y1="${midY}" x2="${sgX}" y2="${midY}" stroke="#64748b" stroke-width="1"/>`);
+    }
+  }
+  bits.push(`<text x="${sgX + sgW/2}" y="${sgY + sgH + 15}" text-anchor="middle" fill="#94a3b8" font-size="8" font-weight="700">0.5 BBL SCALE</text>`);
+
+  // Digital Tag on Trip Tank Shell
+  bits.push(`<rect x="${tankCx - 50}" y="${tty + 58}" width="100" height="36" rx="3" fill="#0b0f17" stroke="#38bdf8" stroke-width="1.5"/>`);
+  bits.push(`<text x="${tankCx}" y="${tty + 73}" text-anchor="middle" fill="#94a3b8" font-size="7.5" font-weight="700">CURRENT VOLUME</text>`);
+  bits.push(`<text x="${tankCx}" y="${tty + 89}" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="800" font-family="Consolas, monospace">${ttVol.toFixed(1)} bbl</text>`);
+
+  // Trip Tank to Annulus Tripping Line & Actuated Gate Valve (Interactive!)
+  bits.push(`<line x1="${tankCx}" y1="${tty + 296}" x2="${tankCx}" y2="${tty + 350}" stroke="#b8322c" stroke-width="8"/>`);
+  bits.push(`<line x1="${tankCx}" y1="${tty + 350}" x2="${ttx - 40}" y2="${tty + 350}" stroke="#b8322c" stroke-width="8"/>`);
+  if (ttOpen && isMovingPipe) {
+    bits.push(`<line x1="${tankCx}" y1="${tty + 350}" x2="${ttx - 40}" y2="${tty + 350}" stroke="#4ade80" stroke-width="4" stroke-dasharray="6,4"/>`);
+  }
+  // Clickable Trip Tank Valve
+  bits.push(gateValve(tankCx, tty + 350, "trip_tank_valve", "Trip Tank to Annulus Valve", ttOpen, false, true));
+  bits.push(`<text x="${tankCx}" y="${tty + 378}" text-anchor="middle" fill="${ttOpen ? '#86efac' : '#fca5a5'}" font-size="8" font-weight="700">TRIP VALVE: ${ttOpen ? 'OPEN' : 'CLOSED'}</text>`);
+
+  // Centrifugal Auto-Fill Pump & Recirc Line
+  const pumpX = ttx + 170, pumpY = tty + 340;
+  bits.push(`<circle cx="${pumpX}" cy="${pumpY}" r="16" fill="#0284c7" stroke="#0f172a" stroke-width="2"/>`);
+  bits.push(`<circle cx="${pumpX}" cy="${pumpY}" r="6" fill="#38bdf8"/>`);
+  bits.push(`<text x="${pumpX}" y="${pumpY + 28}" text-anchor="middle" fill="#38bdf8" font-size="8" font-weight="700">AUTO-FILL PUMP</text>`);
+  bits.push(`<rect x="${ttx + 95}" y="${tty + 388}" width="145" height="24" rx="3" fill="#1e293b" stroke="#334155"/>`);
+  bits.push(`<text x="${ttx + 167}" y="${tty + 403}" text-anchor="middle" fill="#e2e8f0" font-size="8.5" font-weight="700">FLOAT TOP-UP: ARMED (&lt;15 BBL)</text>`);
+
+  // Dump valve at bottom of cone
+  bits.push(`<line x1="${tankCx - 16}" y1="${tty + 296}" x2="${t1x + t1w - 10}" y2="${t1y + t1h}" stroke="#64748b" stroke-width="4"/>`);
+
+  // --- SURFACE MUD HOPPER & MIXING STATION (x = 25, y = 350, w = 590, h = 150) ---
+  const hopX = 25, hopY = 350, hopW = 590, hopH = 150;
+  bits.push(`<rect x="${hopX}" y="${hopY}" width="${hopW}" height="${hopH}" rx="4" fill="#0f172a" stroke="#334155" stroke-width="1.5"/>`);
+  bits.push(`<rect x="${hopX + 8}" y="${hopY + 8}" width="${hopW - 16}" height="20" rx="2" fill="#1e293b"/>`);
+  bits.push(`<text x="${hopX + hopW/2}" y="${hopY + 22}" text-anchor="middle" fill="#cbd5e1" font-size="9" font-weight="700">SURFACE MIXING HOPPER &bull; HIGH-SHEAR CHEMICAL &amp; BARITE ADDITION DECK</text>`);
+
+  // Venturi Funnel Icon
+  bits.push(`<polygon points="${hopX + 40},${hopY + 45} ${hopX + 90},${hopY + 45} ${hopX + 70},${hopY + 95} ${hopX + 60},${hopY + 95}" fill="#ca8a04" stroke="#713f12" stroke-width="1.5"/>`);
+  bits.push(`<rect x="${hopX + 58}" y="${hopY + 95}" width="14" height="30" fill="#475569" stroke="#1e293b"/>`);
+  bits.push(`<text x="${hopX + 65}" y="${hopY + 138}" text-anchor="middle" fill="#facc15" font-size="8" font-weight="700">VENTURI HOPPER</text>`);
+
+  // Mud Gun Manifold Piping across pits
+  bits.push(`<line x1="${hopX + 95}" y1="${hopY + 110}" x2="${t1x + t1w - 20}" y2="${hopY + 110}" stroke="#ca8a04" stroke-width="6"/>`);
+  bits.push(`<line x1="${t1x + t1w - 20}" y1="${hopY + 110}" x2="${t1x + t1w - 20}" y2="${t1y + t1h}" stroke="#ca8a04" stroke-width="6"/>`);
+
+  // Mud Properties Dashboard Box
+  bits.push(`<rect x="${hopX + 140}" y="${hopY + 42}" width="430" height="92" rx="4" fill="#090d16" stroke="#1e293b"/>`);
+  bits.push(`<text x="${hopX + 155}" y="${hopY + 62}" fill="#94a3b8" font-size="9" font-weight="700">ACTIVE FLUID PROPERTIES</text>`);
+
+  const mProps = [
+    ["Active Density:", `${mw} ppg`, "#facc15"],
+    ["Original Base:", `${(g.original_mud_weight_ppg || 9.8).toFixed(1)} ppg`, "#cbd5e1"],
+    ["Target Kill Mud:", `${(g.target_kill_mud_weight_ppg || 11.4).toFixed(1)} ppg`, "#4ade80"],
+    ["Mud Type:", `${g.is_obm ? 'Synthetic OBM' : 'Water-Based Mud (WBM)'}`, g.is_obm ? '#f59e0b' : '#38bdf8'],
+    ["Pump Flow Rate:", `${(g.flow_in_bpm || 0).toFixed(2)} bpm (${(g.pump_spm || 0).toFixed(0)} spm)`, "#38bdf8"],
+    ["Shaker Return Rate:", `${(g.flow_out_bpm || 0).toFixed(2)} bpm`, "#f472b6"]
+  ];
+  mProps.forEach(([k, val, c], i) => {
+    const col = i < 3 ? 0 : 1;
+    const row = i % 3;
+    const px = hopX + 155 + col * 215;
+    const py = hopY + 82 + row * 18;
+    bits.push(`<text x="${px}" y="${py}" fill="#94a3b8" font-size="8.5">${k} <tspan fill="${c}" font-weight="700" font-family="Consolas">${val}</tspan></text>`);
+  });
+
+  svg.innerHTML = bits.join("");
+  svg.querySelectorAll(".pv").forEach(gEl =>
+    gEl.onclick = () => toggleValve(gEl.dataset.valve));
+}
+
 /* -------------------------------- lineup ------------------------------- */
 function drawLineup(valves) {
   if (!valves) return;
@@ -3369,6 +3852,65 @@ if ($("btn-zero-tt")) {
   $("btn-zero-tt").addEventListener("click", () => send("zero-trip-tank", {}));
 }
 
+/* PVT and Trip Tank Screen controls */
+if ($("pvt-btn-zero-pit")) {
+  $("pvt-btn-zero-pit").addEventListener("click", () => send("zero-pits", {}));
+}
+if ($("pvt-btn-zero-tt")) {
+  $("pvt-btn-zero-tt").addEventListener("click", () => send("zero-trip-tank", {}));
+}
+if ($("pvt-btn-fill-tt")) {
+  $("pvt-btn-fill-tt").addEventListener("click", () => send("fill-trip-tank", {}));
+}
+if ($("pvt-btn-fill-kmw")) {
+  $("pvt-btn-fill-kmw").addEventListener("click", () => {
+    if (currentGauges && currentGauges.target_kill_mud_weight_ppg) {
+      if ($("pvt-mw-input")) $("pvt-mw-input").value = currentGauges.target_kill_mud_weight_ppg.toFixed(1);
+      send("mud-weight", {ppg: currentGauges.target_kill_mud_weight_ppg});
+    }
+  });
+}
+if ($("pvt-btn-set-mw")) {
+  $("pvt-btn-set-mw").addEventListener("click", () => {
+    const ppg = Number($("pvt-mw-input").value);
+    if (ppg > 0) send("mud-weight", {ppg: ppg});
+  });
+}
+if ($("pvt-btn-step-mw")) {
+  $("pvt-btn-step-mw").addEventListener("click", () => {
+    const cur = currentGauges ? currentGauges.active_mud_weight_ppg || 9.8 : 9.8;
+    const nextVal = Math.min(25.0, cur + 0.5);
+    if ($("pvt-mw-input")) $("pvt-mw-input").value = nextVal.toFixed(1);
+    send("mud-weight", {ppg: nextVal});
+  });
+}
+if ($("btn-hi-alarm-inc")) {
+  $("btn-hi-alarm-inc").onclick = () => { pvtHighAlarm += 1.0; $("lbl-hi-alarm").textContent = (pvtHighAlarm >= 0 ? "+" : "") + pvtHighAlarm.toFixed(1); };
+  $("btn-hi-alarm-dec").onclick = () => { pvtHighAlarm = Math.max(1.0, pvtHighAlarm - 1.0); $("lbl-hi-alarm").textContent = (pvtHighAlarm >= 0 ? "+" : "") + pvtHighAlarm.toFixed(1); };
+  $("btn-lo-alarm-inc").onclick = () => { pvtLowAlarm = Math.min(-1.0, pvtLowAlarm + 1.0); $("lbl-lo-alarm").textContent = pvtLowAlarm.toFixed(1); };
+  $("btn-lo-alarm-dec").onclick = () => { pvtLowAlarm -= 1.0; $("lbl-lo-alarm").textContent = pvtLowAlarm.toFixed(1); };
+}
+if ($("btn-ts-log")) {
+  $("btn-ts-log").onclick = logTripStand;
+}
+if ($("btn-ts-auto")) {
+  $("btn-ts-auto").onclick = () => {
+    autoLogTrip = !autoLogTrip;
+    $("btn-ts-auto").textContent = `⚡ Auto-Log Every 90 ft: ${autoLogTrip ? "ON" : "OFF"}`;
+    $("btn-ts-auto").className = autoLogTrip ? "on" : "";
+  };
+}
+if ($("btn-ts-reset")) {
+  $("btn-ts-reset").onclick = () => {
+    tripSheetData = [];
+    if (currentGauges) {
+      lastTripPipeMoved = currentGauges.pipe_moved_ft || 0;
+      lastTripTankVol = currentGauges.trip_tank_volume_bbl || 50.0;
+    }
+    renderTripSheet();
+  };
+}
+
 window.addEventListener("keydown", e => {
   if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT")) return;
   if (e.code === "Space") {
@@ -3406,6 +3948,7 @@ const SCREEN_TITLES = {
   edr: "Electronic Drilling Recorder (EDR Trends)",
   bop: "BOP Control Stack & Accumulators",
   manifolds: "Standpipe & Choke Manifolds (P&ID)",
+  pits: "Mud Pits, PVT & Calibrated Trip Tank",
   well: "Live Wellbore & Stratigraphy Schematic",
   sheet: "Kill Sheet Calculator & Step-Down Schedule",
   debrief: "Post-Run Assessment & AI Coach",
