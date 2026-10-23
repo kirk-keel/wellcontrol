@@ -5,7 +5,7 @@ pump online, and works the choke to circulate the influx out — with the well
 responding to what they actually do rather than what they intended.
 
 **Status: all five stages done.** Headless engine, lineup, validation, event log
-and assessment, all six screens on FastAPI, the full drilling → kick → detection
+and assessment, all ten screens on FastAPI, the full drilling → kick → detection
 → shut-in sequence, every kill method operable rather than merely planned, and a
 scenario library with fault injection.
 
@@ -150,22 +150,24 @@ Modelling all of them is more realistic and more tedious.
 
 ---
 
-## 4. Screens
+## 4. Screens & Cyber-Rig Workstation Suite
 
-The student switches between panels; an instructor can see all of them.
+The student switches between panels; an instructor can monitor all students from `/teacher` or coordinate multi-role team drills via `/crew`. All screens are styled in a modern industrial dark cyber-rig theme (`#0b0f17` console ground, `#111827` titanium/slate cards, `#06090e` digital windows, `#1e293b` borders) with custom dark scrollbars, with the physical SWACO choke panel retaining its authentic orange console face.
 
 | Screen | Shows | Controls |
 | --- | --- | --- |
-| **Driller's console** | Standpipe pressure, SPM, pit volume, flow out, stroke counters, hookload | Pump start/stop, SPM, pit mud weight |
-| **Choke panel** | Casing and drill pipe pressure, stroke counter, pump rate, choke position | Choke open/close, choke select |
-| **BOP panel** | Annular and ram status, accumulator pressure | Open/close each element |
-| **Manifold lineup** | Schematic of the circulating system | Click valves open/closed |
-| **Well schematic** | Cross-section: mud, kill mud, influx position, shoe, bit | — |
-| **Kill sheet** | The plan the student made, target vs actual, live DP schedule | — |
-| **EDR Trends** | Customizable multi-pen trend recorder (Pason/Totco style): SPP, SICP, SPM, pit gain, Δflow, hookload, trip tank, choke %, downhole pressures; split tracks & overlay; time window zoom; cursor scrub | Pen toggles, presets (Drilling, Kick, Kill, Tripping), mode & span selectors, CSV telemetry export |
-| **Guide & Coach** | Step-by-step checklist, live operation status, method rules | — |
-| **Debrief** | BHP trace vs target, event log, verdict, certified kill plot with metadata title block (student, instructor, complication, well, date) | Re-score against strict/custom rules, download certified PNG/SVG plot |
+| **Driller's console** (`driller`) | Standpipe pressure, SPM, pit gain, differential flow, stroke counters, hookload, bit depth, pipe moved, displacement | Pump start/stop, SPM, kill rate / drilling presets, stripping rate |
+| **Choke panel** (`choke`) | Four-dial instrument scan (Drill Pipe PSI, Casing PSI, Pump Strokes, Choke Position %), downhole pressure strip charts, surface pressure trends, status lamps | Choke open/close/jog (-2/+2), pump speed, procedural rig audio toggle |
+| **EDR Trends** (`edr`) | Customizable multi-pen trend recorder (Pason/Totco style): SPP, SICP, SPM, pit gain, Δflow, hookload, trip tank, choke %, downhole pressures; split tracks & overlay; time window zoom; cursor scrub | Pen toggles, presets (Drilling, Kick, Kill, Tripping), mode & span selectors, CSV telemetry export |
+| **BOP control console** (`bop`) | Dual-mode blowout preventer interface: (1) Surface Koomey Type 80 Remote Control Console (API 16D) with 4 chrome gauges, sight glass, triplex charge pumps, 4-way rotary levers, hazard-guarded shear ram, HCR wing modules, and 12-bottle nitrogen accumulator bank; (2) Subsea Electro-Hydraulic MUX Terminal (API 16D/53) with dual MUX pods, hydraulic readbacks, PT-1/PT-2 telemetry, stack elevation, and guarded EDS disconnect | Toggle Surface Koomey / Subsea MUX, operate 4-way valve levers, switch MUX pods, trigger emergency EDS disconnect |
+| **Standpipe & Choke/Kill Manifolds** (`manifolds`) | API Spec 16C piping mimics with digital Tap 1 / Tap 2 pressure gauges, triplex mud pumps MP1 & MP2, mud-gas separator (poor boy degasser) lines, emergency bypass, and scrollable all-valves lineup panel | Click any handwheel or gate valve to open/shut, operate manifold crossover & bleed lines |
+| **Mud Pits & Trip Tank** (`pits`) | Full API Spec 13C / IADC PVT workstation featuring live active mud volume (bbl), pit gain/loss with auto-alarming, differential flow (bpm), 50-bbl calibrated trip tank with 0.5-bbl graduations and float indicator, venturi mixing hopper, and an 8-column Stand-by-Stand tripping sheet with auto-logging and swabbing diagnostics | Zero pit/trip tank, refill trip tank, line up trip tank to annulus, adjust high/low PVT alarm limits, set mud weight via mixing hopper, record tripping stands |
+| **Well schematic** (`well`) | Live fluid column cross-section with Taylor gas bubble dynamics, casing shoe, cement sheath, drill bit nozzles, and formation stratigraphy | Visual inspection of annular and string fluid positions |
+| **Kill sheet** (`sheet`) | The plan the student made, target vs actual, live DP step-down schedule | Solved from student's latched shut-in readings (`SIDPP`, `SICP`, `pit gain`) |
+| **Debrief** (`debrief`) | Automated scoring, BHP trace vs target, event log, IADC/IWCF verdict, certified kill plot with metadata title block (student, instructor, complication, well, date) | Re-score against strict/custom rules, download certified PNG/SVG plot |
+| **Guide & Coach** (`guide`) | Step-by-step checklist, live operation status, method rules | Live procedural guide and operational coaching tips |
 | **Teacher Console** (`/teacher`) | Multi-student live grid, BHP, shoe margin, alarms | Master freeze/resume, live fault injector, whiteboard mode |
+| **Crew CRM Console** (`/crew`) | Dedicated multi-user rig stations (Driller, Choke, Toolpusher, Mud Engineer, Observer) with WebSocket sync | Station-specific controls, role permission gating, VHF intercom radio callouts |
 
 The choke panel is where the kill is executed and deserves the most care: it
 needs the drill pipe gauge, the casing gauge, the stroke counter and the choke

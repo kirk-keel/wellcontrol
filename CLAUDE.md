@@ -70,7 +70,7 @@ Three layers, each depending only on the ones above it:
 
 1. **Physics primitives** — `units`, `survey`, `geometry`, `hydrostatics`, `rheology`, `kick`, `killsheet`, `tolerance`, `subsea`, `hpht`, `mpd`, `stripping`. Pure functions and dataclasses, no cross-layer imports.
 2. **Kill methods** — `methods/`. Composes the primitives into procedures.
-3. **Presentation** — `plotting.py` (with standardized certification title block `plot_kill`, `plot_session_kill`, `save_kill_plot`), `app/` (Streamlit planner), and `sim/static/` (FastAPI 9-screen rig console + `/teacher` instructor master station + `/crew` collaborative simulator). Consume `KillPlan` and `Session`, never recompute physics.
+3. **Presentation** — `plotting.py` (with standardized certification title block `plot_kill`, `plot_session_kill`, `save_kill_plot`), `app/` (Streamlit planner), and `sim/static/` (FastAPI 10-screen industrial cyber-rig workstation + `/teacher` instructor master station + `/crew` collaborative simulator). Consume `KillPlan` and `Session`, never recompute physics.
 
 ### App layout
 
@@ -323,7 +323,7 @@ A related resolution trap: **peak casing pressure is a sharp cusp**, reached as 
 
 ## Where this is up to
 
-- **Simulator**: **all five stages done** — headless engine, lineup, validation, event log and assessment, all six screens, the full drilling → kick → detection → shut-in sequence, every kill method operable rather than merely planned (Driller's, Wait and Weight, Volumetric, Bullheading, Lube and Bleed, Reverse Circulation, Stripping), and a scenario library with fault injection. **UI decided: FastAPI + browser** — Streamlit has no game loop and reruns the whole script per interaction, which would make gauges into widgets and the choke laggy. The planner stays on Streamlit; the two apps share the library and nothing else.
+- **Simulator**: **all five stages done** — headless engine, lineup, validation, event log and assessment, all ten screens on FastAPI (`driller`, `choke`, `edr`, `bop`, `manifolds`, `pits`, `well`, `sheet`, `debrief`, `guide`), the full drilling → kick → detection → shut-in sequence, every kill method operable rather than merely planned (Driller's, Wait and Weight, Volumetric, Bullheading, Lube and Bleed, Reverse Circulation, Stripping), and a scenario library with fault injection. **UI: Modern Industrial Cyber-Rig Workstation** — dark titanium/slate theme (`#0b0f17`), responsive dark scrollbars, decoupling the physical SWACO orange choke console face from modern cyber screens (`bop`, `manifolds`, `pits`, `edr`). Fast, self-contained single-page architecture without external CDNs.
 - **Open question**: the stripping migration allowance, where the planner and the simulator disagree by about 4×. Written up under *Stripping* below; nothing has been changed on the strength of it.
 - **Importers**: done and validated against real-shaped files in `test_data/`, with an independent answer key. See *Importing real geometry* below.
 
